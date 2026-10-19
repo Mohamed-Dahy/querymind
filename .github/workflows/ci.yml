@@ -1,0 +1,94 @@
+# CI: runs on every push and pull request.
+#   checks       -> ruff (lint + format), mypy, unit tests (no database, no real LLM)
+#   integration  -> real Postgres + pgvector, seeded, then the read-only role tests
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch cancels the older, still-running build.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The workflow only needs to read the code.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, types, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (exactly as in uv.lock)
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Type-check
+        run: uv run mypy
+
+      - name: Unit tests
+        run: uv run pytest -m "not integration"
+
+  integration:
+    name: Integration tests (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Throwaway values for the CI-only database; nothing here is a real secret.
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: northwind
+      POSTGRES_ADMIN_USER: admin
+      POSTGRES_ADMIN_PASSWORD: ci-admin-password
+      ANALYST_RO_USER: analyst_ro
+      ANALYST_RO_PASSWORD: ci-readonly-password
+      # Config requires the active LLM provider's settings; no LLM is called in these tests.
+      LLM_PROVIDER: groq
+      GROQ_API_KEY: ci-not-a-real-key
+      GROQ_MODEL: openai/gpt-oss-120b
+    services:
+      # Same image as docker-compose.yml, started by GitHub next to the job.
+      db:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: ci-admin-password
+          POSTGRES_DB: northwind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d northwind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (exactly as in uv.lock)
+        run: uv sync --locked
+
+      - name: Seed Northwind + create the read-only role
+        run: uv run python data/seed_northwind.py
+
+      - name: Integration tests
+        run: uv run pytest -m integration
