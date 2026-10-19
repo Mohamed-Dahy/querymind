@@ -1,0 +1,30 @@
+# Local development services. Start with: docker compose up -d
+# Values come from .env (copy .env.example first).
+name: querymind
+
+services:
+  db:
+    # Postgres 16 with the pgvector extension pre-installed (used for schema RAG in Phase 3)
+    image: pgvector/pgvector:0.8.0-pg16
+    container_name: querymind-db
+    environment:
+      # The superuser created on first start = the "admin" role (setup only, never used by the agent)
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-northwind}
+    ports:
+      # 127.0.0.1 = reachable only from this machine. Host port 5433 avoids a local Postgres on 5432.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # $$ escapes $ so the variable is read inside the container, not by Compose
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  # Named volume: data survives `docker compose down` (removed only with `down -v`)
+  pgdata:

@@ -7,6 +7,9 @@ docs/
 .env.*
 !.env.example
 
+# --- Downloaded datasets (fetched by seed scripts, never committed) ---
+data/raw/
+
 # --- Python ---
 __pycache__/
 *.py[cod]
