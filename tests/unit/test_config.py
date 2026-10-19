@@ -15,7 +15,8 @@ VALID_ENV = {
     "ANALYST_RO_USER": "analyst_ro",
     "ANALYST_RO_PASSWORD": "ro-secret",
     "LLM_PROVIDER": "groq",
-    "LLM_MODEL": "test-model",
+    "GROQ_API_KEY": "gsk-secret",
+    "GROQ_MODEL": "groq-model",
 }
 
 
@@ -81,6 +82,55 @@ def test_secrets_are_hidden_when_printed(valid_env: pytest.MonkeyPatch) -> None:
     text = repr(settings) + str(settings.model_dump())
     assert "admin-secret" not in text
     assert "ro-secret" not in text
+    assert "gsk-secret" not in text
+
+
+def test_llm_settings_have_safe_defaults(valid_env: pytest.MonkeyPatch) -> None:
+    settings = load_settings(env_file=None)
+    assert settings.llm_temperature == 0.0
+    assert settings.llm_timeout_seconds == 60
+
+
+@pytest.mark.parametrize(
+    ("removed", "expected"),
+    [
+        (["GROQ_API_KEY"], "GROQ_API_KEY required when LLM_PROVIDER=groq"),
+        (["GROQ_MODEL"], "GROQ_MODEL required when LLM_PROVIDER=groq"),
+        (["GROQ_API_KEY", "GROQ_MODEL"], "GROQ_API_KEY and GROQ_MODEL required"),
+    ],
+)
+def test_active_provider_needs_its_key_and_model(
+    valid_env: pytest.MonkeyPatch, removed: list[str], expected: str
+) -> None:
+    for name in removed:
+        valid_env.delenv(name)
+    with pytest.raises(ConfigError, match=expected):
+        load_settings(env_file=None)
+
+
+def test_gemini_needs_its_own_key_and_model(valid_env: pytest.MonkeyPatch) -> None:
+    valid_env.setenv("LLM_PROVIDER", "gemini")
+    with pytest.raises(ConfigError, match="GOOGLE_API_KEY and GEMINI_MODEL required"):
+        load_settings(env_file=None)
+
+
+def test_only_the_active_provider_is_required(valid_env: pytest.MonkeyPatch) -> None:
+    # Gemini selected and configured; Groq's settings can be absent.
+    valid_env.setenv("LLM_PROVIDER", "gemini")
+    valid_env.setenv("GOOGLE_API_KEY", "google-secret")
+    valid_env.setenv("GEMINI_MODEL", "gemini-model")
+    valid_env.delenv("GROQ_API_KEY")
+    valid_env.delenv("GROQ_MODEL")
+    settings = load_settings(env_file=None)
+    model, api_key = settings.llm_credentials()
+    assert model == "gemini-model"
+    assert api_key.get_secret_value() == "google-secret"
+
+
+def test_llm_credentials_follow_the_active_provider(valid_env: pytest.MonkeyPatch) -> None:
+    model, api_key = load_settings(env_file=None).llm_credentials()
+    assert model == "groq-model"
+    assert api_key.get_secret_value() == "gsk-secret"
 
 
 def test_conninfo_uses_the_right_role(valid_env: pytest.MonkeyPatch) -> None:
