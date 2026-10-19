@@ -1,0 +1,31 @@
+# --- Private working docs (kept local, not pushed) ---
+docs/
+/CLAUDE.md
+
+# --- Secrets: never commit ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# --- uv / virtual environment ---
+.venv/
+
+# --- Tool caches ---
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
