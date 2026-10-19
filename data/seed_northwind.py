@@ -1,7 +1,7 @@
 """Load the Northwind sample database and create the agent's read-only role.
 
 Run (after `docker compose up -d --wait`):
-    uv run --env-file .env python data/seed_northwind.py
+    uv run python data/seed_northwind.py
 
 Safe to re-run: the Northwind tables are dropped and recreated, and the read-only
 role's password and privileges are reset every time.
@@ -9,13 +9,14 @@ role's password and privileges are reset every time.
 
 import hashlib
 import logging
-import os
 import sys
 import urllib.request
 from pathlib import Path
 
 import psycopg
 from psycopg import sql
+
+from querymind.config import ConfigError, get_settings
 
 logger = logging.getLogger("seed_northwind")
 
@@ -43,34 +44,9 @@ BUSINESS_TABLES = (
     "us_states",
 )
 
-# Any read-only query running longer than this is cancelled, so a runaway query can't hang the DB.
-READ_ONLY_STATEMENT_TIMEOUT = "10s"
-
-REQUIRED_ENV = (
-    "POSTGRES_HOST",
-    "POSTGRES_PORT",
-    "POSTGRES_DB",
-    "POSTGRES_ADMIN_USER",
-    "POSTGRES_ADMIN_PASSWORD",
-    "ANALYST_RO_USER",
-    "ANALYST_RO_PASSWORD",
-)
-
 
 class SeedError(Exception):
-    """Seeding cannot continue (missing config or an unexpected download)."""
-
-
-def read_env() -> dict[str, str]:
-    """Return the required environment variables, or fail with a clear message."""
-    missing = [name for name in REQUIRED_ENV if not os.environ.get(name)]
-    if missing:
-        raise SeedError(
-            f"Missing environment variables: {', '.join(missing)}. "
-            "Copy .env.example to .env, then run: "
-            "uv run --env-file .env python data/seed_northwind.py"
-        )
-    return {name: os.environ[name] for name in REQUIRED_ENV}
+    """Seeding cannot continue (an unexpected download)."""
 
 
 def fetch_northwind_sql() -> str:
@@ -102,9 +78,13 @@ def load_northwind(conn: psycopg.Connection, script: str) -> None:
 
 
 def create_read_only_role(
-    conn: psycopg.Connection, *, db_name: str, user: str, password: str
+    conn: psycopg.Connection, *, db_name: str, user: str, password: str, timeout_seconds: int
 ) -> None:
-    """Create (or reset) the read-only role and grant SELECT on business tables only."""
+    """Create (or reset) the read-only role and grant SELECT on business tables only.
+
+    `timeout_seconds` becomes the role's default statement_timeout: any query running longer
+    is cancelled, so a runaway query can't hang the database.
+    """
     role = sql.Identifier(user)
     database = sql.Identifier(db_name)
     # A login role with no special powers. sql.Literal quotes the password safely.
@@ -121,7 +101,7 @@ def create_read_only_role(
     statements: list[sql.SQL | sql.Composed] = [
         # Session defaults for every connection this role opens.
         sql.SQL("ALTER ROLE {} SET statement_timeout = {}").format(
-            role, sql.Literal(READ_ONLY_STATEMENT_TIMEOUT)
+            role, sql.Literal(f"{timeout_seconds}s")
         ),
         sql.SQL("ALTER ROLE {} SET default_transaction_read_only = on").format(role),
         # Postgres gives every role (PUBLIC) CONNECT + TEMP on new databases; take that away,
@@ -155,33 +135,28 @@ def main() -> int:
     """Seed the database. Returns a process exit code (0 = success)."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
-        env = read_env()
+        settings = get_settings()
         script = fetch_northwind_sql()
+        # Seeding is the one job that uses the admin role.
         # `with` = one transaction: commit if everything succeeds, roll back everything if not.
-        with psycopg.connect(
-            host=env["POSTGRES_HOST"],
-            port=int(env["POSTGRES_PORT"]),
-            dbname=env["POSTGRES_DB"],
-            user=env["POSTGRES_ADMIN_USER"],
-            password=env["POSTGRES_ADMIN_PASSWORD"],
-            connect_timeout=10,
-        ) as conn:
+        with psycopg.connect(settings.admin_conninfo()) as conn:
             load_northwind(conn, script)
             create_read_only_role(
                 conn,
-                db_name=env["POSTGRES_DB"],
-                user=env["ANALYST_RO_USER"],
-                password=env["ANALYST_RO_PASSWORD"],
+                db_name=settings.postgres_db,
+                user=settings.analyst_ro_user,
+                password=settings.analyst_ro_password.get_secret_value(),
+                timeout_seconds=settings.query_timeout_seconds,
             )
             counts = count_rows(conn)
-    except (SeedError, psycopg.Error, OSError) as exc:
+    except (ConfigError, SeedError, psycopg.Error, OSError) as exc:
         logger.error("Seeding failed: %s", exc)
         return 1
 
     logger.info(
         "Loaded %d tables: %s", len(counts), ", ".join(f"{t}={n}" for t, n in counts.items())
     )
-    logger.info("Read-only role %r is ready.", env["ANALYST_RO_USER"])
+    logger.info("Read-only role %r is ready.", settings.analyst_ro_user)
     return 0
 
 

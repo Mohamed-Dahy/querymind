@@ -9,6 +9,8 @@ import psycopg
 import pytest
 from psycopg import errors, sql
 
+from querymind.config import Settings
+
 pytestmark = pytest.mark.integration
 
 EXPECTED_ROWS = {
@@ -80,8 +82,9 @@ def test_cannot_read_password_hashes(ro_conn: psycopg.Connection) -> None:
 # --- Role settings ------------------------------------------------------------------------
 
 
-def test_session_defaults(ro_conn: psycopg.Connection) -> None:
-    assert ro_conn.execute("SHOW statement_timeout").fetchone() == ("10s",)
+def test_session_defaults(ro_conn: psycopg.Connection, settings: Settings) -> None:
+    timeout = f"{settings.query_timeout_seconds}s"
+    assert ro_conn.execute("SHOW statement_timeout").fetchone() == (timeout,)
     assert ro_conn.execute("SHOW default_transaction_read_only").fetchone() == ("on",)
 
 

@@ -5,6 +5,7 @@ description = "AI data analyst agent: plain-language questions to safe SQL, answ
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.16.0",
 ]
 
 [build-system]
@@ -35,6 +36,8 @@ strict = true
 mypy_path = "src"
 # What plain `uv run mypy` checks: app code, tests, and data scripts
 files = ["src", "tests", "data"]
+# Teaches mypy how pydantic models and settings are built
+plugins = ["pydantic.mypy"]
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
