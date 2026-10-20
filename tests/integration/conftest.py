@@ -11,6 +11,7 @@ import psycopg
 import pytest
 
 from querymind.config import ConfigError, Settings, get_settings
+from querymind.db.connection import connect_readonly
 
 
 @pytest.fixture(scope="session")
@@ -26,7 +27,7 @@ def settings() -> Settings:
 def ro_conn(settings: Settings) -> Iterator[psycopg.Connection]:
     """Connection as the agent's read-only role (analyst_ro)."""
     try:
-        conn = psycopg.connect(settings.readonly_conninfo())
+        conn = connect_readonly(settings)
     except psycopg.OperationalError as exc:
         pytest.fail(
             f"Cannot connect as {settings.analyst_ro_user!r}: {exc}\n"
