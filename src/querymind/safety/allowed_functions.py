@@ -98,6 +98,14 @@ ALLOWED_FUNCTION_TYPES: frozenset[type[exp.Func]] = frozenset(
         exp.Explode,  # unnest
         exp.Array,  # ARRAY[...]
         exp.ArraySize,  # array_length
+        # Operators, not functions: sqlglot 30 models these as Func subclasses, so they must be
+        # listed or every query using them is blocked (AND/OR were, until the golden set in
+        # step 1.8 caught it). test_sql_validator.py tries every common operator to guard this.
+        exp.And,
+        exp.Or,
+        exp.RegexpLike,  # a ~ 'pattern', a !~ 'pattern'
+        exp.RegexpILike,  # a ~* 'pattern'
+        exp.Collate,  # a COLLATE "C"
     }
 )
 

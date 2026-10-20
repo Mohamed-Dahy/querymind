@@ -65,6 +65,10 @@ GOOD_QUERIES = [
     "SELECT g.n FROM generate_series(1, 12) AS g(n)",  # a function as a table
     "SELECT '; DROP TABLE orders' AS just_text",  # dangerous-looking *text* is only a value
     "SELECT $$; DROP TABLE orders$$",  # same, with a dollar-quoted string
+    # Conditions combined with AND / OR (blocked until step 1.8: sqlglot models them as Func).
+    "SELECT count(*) FROM orders WHERE order_date >= DATE '1997-01-01' AND freight > 10",
+    "SELECT * FROM customers WHERE country = 'Germany' OR country = 'France'",
+    "SELECT * FROM products WHERE (unit_price > 10 AND units_in_stock = 0) OR discontinued = 1",
 ]
 
 
@@ -87,6 +91,25 @@ def test_returns_real_tables_not_cte_names() -> None:
 def test_output_is_regenerated_without_comments() -> None:
     query = validate("SELECT order_id /* note */ FROM orders -- done")
     assert query.sql == f"SELECT order_id FROM orders LIMIT {SQL_LIMIT}"
+
+
+# Every common operator must pass. sqlglot models some operators as Func subclasses (AND, OR,
+# ~, COLLATE in v30), so the function allowlist would block them unless listed. This test makes
+# a sqlglot upgrade that reclassifies another operator fail here, loudly.
+OPERATORS = [
+    "a AND b", "a OR b", "NOT a", "a = 1", "a <> 1", "a != 1", "a < 1", "a <= 1", "a > 1",
+    "a >= 1", "a IS NULL", "a IS NOT NULL", "a IS DISTINCT FROM b", "a LIKE 'x%'",
+    "a ILIKE 'x%'", "a NOT LIKE 'x'", "a BETWEEN 1 AND 2", "a IN (1, 2)", "a NOT IN (1, 2)",
+    "a = ANY(ARRAY[1])", "a > ALL (SELECT 1)", "a || b", "a + 1", "a - 1", "a * 2", "a / 2",
+    "a % 2", "-a", "a ^ 2", "a ~ 'x'", "a ~* 'x'", "a !~ 'x'", "a SIMILAR TO 'x'", "a::int",
+    "a IS TRUE", "DATE '1997-01-01'", "a + interval '1 day'", "a COLLATE \"C\"",
+    "a = 1 OR b = 2 AND c = 3",
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("expression", OPERATORS)
+def test_common_operators_are_allowed(expression: str) -> None:
+    validate(f"SELECT {expression} FROM orders")
 
 
 # --- Check 1: one statement, parseable -----------------------------------------------------

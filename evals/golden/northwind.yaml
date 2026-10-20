@@ -1,0 +1,309 @@
+# Golden question set for Northwind: questions with hand-written, checked reference SQL.
+#
+# The eval (Phase 1.9) asks QueryMind each question, runs both SQLs, and compares the
+# RESULTS (not the SQL text): many different queries can be correct.
+#
+# Rules for every entry:
+#   - The question says exactly what to return, so a correct answer has the same columns.
+#   - No relative dates ("last month"): Northwind's orders run from July 1996 to May 1998.
+#   - Top-N questions have no ties at the cut-off, so the right answer is unique.
+#   - ordered: true only when the order IS part of the answer (rankings, time series)
+#     and has no ties; otherwise rows are compared in any order.
+#   - "Sales" / "revenue" = unit_price * quantity * (1 - discount) from order_details
+#     (the standard Northwind definition; the semantic layer in Phase 3 will teach it).
+#
+# Tags: filter, aggregation, join, group_by, date_range, top_n, subquery, self_join,
+#       window, cte, set_logic
+
+database: northwind
+version: 1
+
+questions:
+  # --- Easy: one table, filters, simple aggregates --------------------------------------
+  - id: e01_customer_count
+    tier: easy
+    tags: [aggregation]
+    question: How many customers are there?
+    sql: SELECT count(*) FROM customers
+
+  - id: e02_discontinued_count
+    tier: easy
+    tags: [filter, aggregation]
+    question: How many products are discontinued?
+    sql: SELECT count(*) FROM products WHERE discontinued = 1
+
+  - id: e03_german_customers
+    tier: easy
+    tags: [filter]
+    question: List the company names of all customers based in Germany.
+    sql: SELECT company_name FROM customers WHERE country = 'Germany'
+
+  - id: e04_out_of_stock
+    tier: easy
+    tags: [filter]
+    question: What are the names of the products that are out of stock?
+    sql: SELECT product_name FROM products WHERE units_in_stock = 0
+
+  - id: e05_average_price
+    tier: easy
+    tags: [aggregation]
+    question: What is the average unit price of all products?
+    sql: SELECT avg(unit_price) FROM products
+
+  - id: e06_top5_expensive
+    tier: easy
+    tags: [top_n]
+    ordered: true
+    question: List the names of the 5 most expensive products, from most to least expensive.
+    sql: SELECT product_name FROM products ORDER BY unit_price DESC LIMIT 5
+
+  - id: e07_orders_1997
+    tier: easy
+    tags: [date_range, aggregation]
+    question: How many orders were placed in 1997?
+    sql: |
+      SELECT count(*) FROM orders
+      WHERE order_date >= DATE '1997-01-01' AND order_date < DATE '1998-01-01'
+
+  - id: e08_shipper_names
+    tier: easy
+    tags: []
+    question: What are the company names of all shippers?
+    sql: SELECT company_name FROM shippers
+
+  - id: e09_london_employees
+    tier: easy
+    tags: [filter, aggregation]
+    question: How many employees are based in London?
+    sql: SELECT count(*) FROM employees WHERE city = 'London'
+
+  - id: e10_max_freight
+    tier: easy
+    tags: [aggregation]
+    question: What is the highest freight cost of any single order?
+    sql: SELECT max(freight) FROM orders
+
+  # --- Medium: joins, grouping, date ranges, subqueries ----------------------------------
+  - id: m01_customers_per_country
+    tier: medium
+    tags: [group_by, aggregation]
+    question: How many customers are there in each country? Return the country and the number of customers.
+    sql: SELECT country, count(*) FROM customers GROUP BY country
+
+  - id: m02_beverages
+    tier: medium
+    tags: [join, filter]
+    question: List the names of the products in the Beverages category.
+    sql: |
+      SELECT p.product_name
+      FROM products AS p
+      JOIN categories AS c ON c.category_id = p.category_id
+      WHERE c.category_name = 'Beverages'
+
+  - id: m03_products_per_category
+    tier: medium
+    tags: [join, group_by]
+    question: How many products does each category have? Return the category name and the number of products.
+    sql: |
+      SELECT c.category_name, count(*)
+      FROM products AS p
+      JOIN categories AS c ON c.category_id = p.category_id
+      GROUP BY c.category_name
+
+  - id: m04_busiest_employee
+    tier: medium
+    tags: [join, group_by, top_n]
+    question: Which employee handled the most orders? Return their first name, last name and number of orders.
+    sql: |
+      SELECT e.first_name, e.last_name, count(*) AS order_count
+      FROM orders AS o
+      JOIN employees AS e ON e.employee_id = o.employee_id
+      GROUP BY e.employee_id, e.first_name, e.last_name
+      ORDER BY order_count DESC
+      LIMIT 1
+
+  - id: m05_freight_per_shipper
+    tier: medium
+    tags: [join, group_by]
+    question: What is the total freight cost per shipper? Return the shipper's company name and the total freight.
+    sql: |
+      SELECT s.company_name, sum(o.freight)
+      FROM orders AS o
+      JOIN shippers AS s ON s.shipper_id = o.ship_via
+      GROUP BY s.company_name
+
+  - id: m06_orders_per_country
+    tier: medium
+    tags: [join, group_by]
+    # Germany and the USA tie at 122 orders, so row order isn't compared.
+    question: How many orders did customers from each country place? Return the country and the number of orders.
+    sql: |
+      SELECT c.country, count(*)
+      FROM orders AS o
+      JOIN customers AS c ON c.customer_id = o.customer_id
+      GROUP BY c.country
+    notes: Uses the customer's country, not the ship_country of the order.
+
+  - id: m07_revenue_1997
+    tier: medium
+    tags: [join, date_range, aggregation]
+    question: What was the total sales revenue in 1997?
+    sql: |
+      SELECT sum(od.unit_price * od.quantity * (1 - od.discount))
+      FROM order_details AS od
+      JOIN orders AS o ON o.order_id = od.order_id
+      WHERE o.order_date >= DATE '1997-01-01' AND o.order_date < DATE '1998-01-01'
+    notes: Revenue includes the discount. A query without it is a real (semantic) mistake.
+
+  - id: m08_late_shipments
+    tier: medium
+    tags: [filter, aggregation]
+    question: How many orders were shipped after their required date?
+    sql: SELECT count(*) FROM orders WHERE shipped_date > required_date
+
+  - id: m09_us_suppliers_products
+    tier: medium
+    tags: [join, filter, group_by]
+    question: For each supplier based in the USA, how many products do they supply? Return the supplier's company name and the number of products.
+    sql: |
+      SELECT s.company_name, count(*)
+      FROM products AS p
+      JOIN suppliers AS s ON s.supplier_id = p.supplier_id
+      WHERE s.country = 'USA'
+      GROUP BY s.company_name
+
+  - id: m10_orders_per_month_1997
+    tier: medium
+    tags: [date_range, group_by]
+    ordered: true
+    question: How many orders were placed in each month of 1997? Return the month number (1-12) and the number of orders, in month order.
+    sql: |
+      SELECT extract(month FROM order_date) AS month, count(*)
+      FROM orders
+      WHERE order_date >= DATE '1997-01-01' AND order_date < DATE '1998-01-01'
+      GROUP BY 1
+      ORDER BY 1
+
+  - id: m11_customers_without_orders
+    tier: medium
+    tags: [subquery]
+    question: Which customers have never placed an order? Return their company names.
+    sql: |
+      SELECT c.company_name
+      FROM customers AS c
+      WHERE NOT EXISTS (SELECT 1 FROM orders AS o WHERE o.customer_id = c.customer_id)
+
+  - id: m12_average_shipping_days
+    tier: medium
+    tags: [aggregation, filter]
+    question: On average, how many days passed between the order date and the shipped date, for orders that were shipped?
+    sql: |
+      SELECT avg(shipped_date - order_date)
+      FROM orders
+      WHERE shipped_date IS NOT NULL
+
+  # --- Hard: revenue rankings, window functions, CTEs, self-joins, set logic --------------
+  - id: h01_top5_products_revenue
+    tier: hard
+    tags: [join, group_by, top_n]
+    ordered: true
+    question: What are the top 5 products by total sales revenue? Return the product name and its revenue, highest first.
+    sql: |
+      SELECT p.product_name, sum(od.unit_price * od.quantity * (1 - od.discount)) AS revenue
+      FROM order_details AS od
+      JOIN products AS p ON p.product_id = od.product_id
+      GROUP BY p.product_name
+      ORDER BY revenue DESC
+      LIMIT 5
+
+  - id: h02_top3_customers_revenue
+    tier: hard
+    tags: [join, group_by, top_n]
+    ordered: true
+    question: Who are the top 3 customers by total sales revenue? Return the company name and revenue, highest first.
+    sql: |
+      SELECT c.company_name, sum(od.unit_price * od.quantity * (1 - od.discount)) AS revenue
+      FROM order_details AS od
+      JOIN orders AS o ON o.order_id = od.order_id
+      JOIN customers AS c ON c.customer_id = o.customer_id
+      GROUP BY c.company_name
+      ORDER BY revenue DESC
+      LIMIT 3
+
+  - id: h03_priciest_per_category
+    tier: hard
+    tags: [window, join]
+    question: For each category, which product has the highest unit price? Return the category name, the product name and its unit price.
+    sql: |
+      WITH ranked AS (
+        SELECT c.category_name, p.product_name, p.unit_price,
+               rank() OVER (PARTITION BY p.category_id ORDER BY p.unit_price DESC) AS price_rank
+        FROM products AS p
+        JOIN categories AS c ON c.category_id = p.category_id
+      )
+      SELECT category_name, product_name, unit_price FROM ranked WHERE price_rank = 1
+
+  - id: h04_revenue_per_year
+    tier: hard
+    tags: [join, group_by, date_range]
+    ordered: true
+    question: What was the total sales revenue in each year? Return the year and the revenue, in year order.
+    sql: |
+      SELECT extract(year FROM o.order_date) AS year,
+             sum(od.unit_price * od.quantity * (1 - od.discount)) AS revenue
+      FROM order_details AS od
+      JOIN orders AS o ON o.order_id = od.order_id
+      GROUP BY 1
+      ORDER BY 1
+
+  - id: h05_employee_managers
+    tier: hard
+    tags: [self_join]
+    question: List every employee with their manager. Return the employee's first and last name and the manager's first and last name, including employees who have no manager.
+    sql: |
+      SELECT e.first_name, e.last_name, m.first_name, m.last_name
+      FROM employees AS e
+      LEFT JOIN employees AS m ON m.employee_id = e.reports_to
+
+  - id: h06_running_revenue_1997
+    tier: hard
+    tags: [window, cte, date_range]
+    ordered: true
+    question: For each month of 1997, what was the sales revenue and the running total of revenue so far that year? Return the month number, the monthly revenue and the running total, in month order.
+    sql: |
+      WITH monthly AS (
+        SELECT extract(month FROM o.order_date) AS month,
+               sum(od.unit_price * od.quantity * (1 - od.discount)) AS revenue
+        FROM order_details AS od
+        JOIN orders AS o ON o.order_id = od.order_id
+        WHERE o.order_date >= DATE '1997-01-01' AND o.order_date < DATE '1998-01-01'
+        GROUP BY 1
+      )
+      SELECT month, revenue, sum(revenue) OVER (ORDER BY month) AS running_total
+      FROM monthly
+      ORDER BY month
+
+  - id: h07_category_revenue_share
+    tier: hard
+    tags: [window, join, group_by]
+    question: What percentage of total sales revenue does each category account for? Return the category name and its percentage (0-100).
+    sql: |
+      SELECT c.category_name,
+             100.0 * sum(od.unit_price * od.quantity * (1 - od.discount))
+               / sum(sum(od.unit_price * od.quantity * (1 - od.discount))) OVER () AS percentage
+      FROM order_details AS od
+      JOIN products AS p ON p.product_id = od.product_id
+      JOIN categories AS c ON c.category_id = p.category_id
+      GROUP BY c.category_name
+
+  - id: h08_customers_1996_and_1998
+    tier: hard
+    tags: [set_logic, subquery, date_range]
+    question: Which customers placed at least one order in 1996 and at least one order in 1998? Return their company names.
+    sql: |
+      SELECT c.company_name
+      FROM customers AS c
+      WHERE EXISTS (SELECT 1 FROM orders AS o WHERE o.customer_id = c.customer_id
+                      AND o.order_date >= DATE '1996-01-01' AND o.order_date < DATE '1997-01-01')
+        AND EXISTS (SELECT 1 FROM orders AS o WHERE o.customer_id = c.customer_id
+                      AND o.order_date >= DATE '1998-01-01' AND o.order_date < DATE '1999-01-01')

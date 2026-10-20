@@ -10,6 +10,7 @@ dependencies = [
     "langchain-groq>=1.1.3",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.16.0",
+    "pyyaml>=6.0.3",
     "sqlglot>=30.23.0",
     "streamlit>=1.66.0",
     "uvicorn>=0.54.0",
@@ -42,13 +43,15 @@ python_version = "3.12"
 strict = true
 mypy_path = "src"
 # What plain `uv run mypy` checks: app code, tests, data and helper scripts
-files = ["src", "tests", "data", "scripts", "ui"]
+files = ["src", "tests", "data", "scripts", "ui", "evals"]
 # Teaches mypy how pydantic models and settings are built
 plugins = ["pydantic.mypy"]
 
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repo root, so tests can import top-level folders like `evals` (querymind is installed).
+pythonpath = ["."]
 addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
 markers = [
     "integration: needs the Docker Postgres database (deselect with -m 'not integration')",
@@ -60,4 +63,5 @@ dev = [
     "pre-commit>=4.7.0",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
+    "types-pyyaml>=6.0.12.20260906",
 ]

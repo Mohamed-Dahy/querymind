@@ -46,6 +46,8 @@ ROUND_TRIP_QUERIES = [
     "SELECT * FROM orders FETCH FIRST 3 ROWS ONLY",
     "SELECT * FROM customers WHERE company_name ILIKE '%market%'",
     "SELECT $$; DROP TABLE orders$$ AS just_text",
+    "SELECT count(*) FROM orders WHERE order_date >= DATE '1997-01-01' AND freight > 10",
+    "SELECT company_name FROM customers WHERE country = 'Germany' OR city ~* '^lon'",
 ]
 
 
