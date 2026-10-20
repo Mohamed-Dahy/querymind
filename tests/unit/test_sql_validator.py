@@ -14,6 +14,8 @@ from querymind.safety.sql_validator import MAX_SQL_CHARS, ValidatedQuery, valida
 
 ALLOWED = frozenset({"orders", "customers", "products", "order_details", "employees"})
 MAX_ROWS = 100
+# The SQL may return one row more than the user sees: that's how the executor spots truncation.
+SQL_LIMIT = MAX_ROWS + 1
 
 
 def validate(sql: str, max_rows: int = MAX_ROWS) -> ValidatedQuery:
@@ -84,7 +86,7 @@ def test_returns_real_tables_not_cte_names() -> None:
 
 def test_output_is_regenerated_without_comments() -> None:
     query = validate("SELECT order_id /* note */ FROM orders -- done")
-    assert query.sql == f"SELECT order_id FROM orders LIMIT {MAX_ROWS}"
+    assert query.sql == f"SELECT order_id FROM orders LIMIT {SQL_LIMIT}"
 
 
 # --- Check 1: one statement, parseable -----------------------------------------------------
@@ -263,19 +265,19 @@ def test_schema_qualified_functions_rejected(sql: str, function: str) -> None:
 @pytest.mark.parametrize(
     ("sql", "expected_end"),
     [
-        ("SELECT * FROM orders", f"LIMIT {MAX_ROWS}"),  # added
+        ("SELECT * FROM orders", f"LIMIT {SQL_LIMIT}"),  # added
         ("SELECT * FROM orders LIMIT 5", "LIMIT 5"),  # smaller: kept
-        ("SELECT * FROM orders LIMIT 999999", f"LIMIT {MAX_ROWS}"),  # bigger: lowered
-        ("SELECT * FROM orders LIMIT ALL", f"LIMIT {MAX_ROWS}"),
-        ("SELECT * FROM orders LIMIT NULL", f"LIMIT {MAX_ROWS}"),
-        ("SELECT * FROM orders LIMIT (SELECT 5000)", f"LIMIT {MAX_ROWS}"),
+        ("SELECT * FROM orders LIMIT 999999", f"LIMIT {SQL_LIMIT}"),  # bigger: lowered
+        ("SELECT * FROM orders LIMIT ALL", f"LIMIT {SQL_LIMIT}"),
+        ("SELECT * FROM orders LIMIT NULL", f"LIMIT {SQL_LIMIT}"),
+        ("SELECT * FROM orders LIMIT (SELECT 5000)", f"LIMIT {SQL_LIMIT}"),
         ("SELECT * FROM orders LIMIT 5 OFFSET 10", "LIMIT 5 OFFSET 10"),
         ("SELECT * FROM orders FETCH FIRST 3 ROWS ONLY", "FETCH FIRST 3 ROWS ONLY"),
-        ("SELECT * FROM orders FETCH FIRST 5000 ROWS ONLY", f"LIMIT {MAX_ROWS}"),
+        ("SELECT * FROM orders FETCH FIRST 5000 ROWS ONLY", f"LIMIT {SQL_LIMIT}"),
         # A LIMIT inside a subquery doesn't limit the result: the outer query still gets one.
-        ("SELECT * FROM (SELECT * FROM orders LIMIT 5) t", f"t LIMIT {MAX_ROWS}"),
+        ("SELECT * FROM (SELECT * FROM orders LIMIT 5) t", f"t LIMIT {SQL_LIMIT}"),
         # On a UNION the LIMIT applies to the whole result.
-        ("SELECT order_id FROM orders UNION SELECT 1", f"SELECT 1 LIMIT {MAX_ROWS}"),
+        ("SELECT order_id FROM orders UNION SELECT 1", f"SELECT 1 LIMIT {SQL_LIMIT}"),
         ("SELECT order_id FROM orders UNION SELECT 1 LIMIT 7", "SELECT 1 LIMIT 7"),
     ],
 )
@@ -283,8 +285,20 @@ def test_row_limit_enforced(sql: str, expected_end: str) -> None:
     assert validate(sql).sql.endswith(expected_end)
 
 
-def test_limit_equal_to_max_is_kept() -> None:
-    assert validate(f"SELECT * FROM orders LIMIT {MAX_ROWS}").sql.endswith(f"LIMIT {MAX_ROWS}")
+@pytest.mark.parametrize("limit", [MAX_ROWS, SQL_LIMIT])
+def test_limit_up_to_max_plus_one_is_kept(limit: int) -> None:
+    assert validate(f"SELECT * FROM orders LIMIT {limit}").sql.endswith(f"LIMIT {limit}")
+
+
+def test_fetch_with_ties_rejected() -> None:
+    # WITH TIES returns every row tied with the last one: no fixed maximum.
+    assert_rejected(
+        "SELECT * FROM products ORDER BY category_id FETCH FIRST 3 ROWS WITH TIES", "WITH TIES"
+    )
+
+
+def test_validated_query_carries_max_rows() -> None:
+    assert validate("SELECT * FROM orders", max_rows=7).max_rows == 7
 
 
 # --- ValidatedQuery and reporting ----------------------------------------------------------
@@ -292,7 +306,7 @@ def test_limit_equal_to_max_is_kept() -> None:
 
 def test_validated_query_cannot_be_forged() -> None:
     with pytest.raises(TypeError, match="only be created by validate_sql"):
-        ValidatedQuery(sql="DROP TABLE orders", tables=frozenset(), _key=object())
+        ValidatedQuery(sql="DROP TABLE orders", tables=frozenset(), max_rows=1, _key=object())
 
 
 def test_reason_is_available_for_the_user() -> None:

@@ -62,4 +62,4 @@ def test_validated_sql_runs_on_postgres(
 ) -> None:
     query = validate_sql(sql, allowed_tables=allowed_tables, max_rows=MAX_ROWS)
     rows = ro_conn.execute(query.sql).fetchall()
-    assert len(rows) <= MAX_ROWS
+    assert len(rows) <= MAX_ROWS + 1  # the validator allows one extra row (truncation check)

@@ -1,8 +1,9 @@
 """The SQL safety gate: every query the LLM writes must pass `validate_sql` before it runs.
 
     query = validate_sql(draft.sql, allowed_tables=schema.table_names, max_rows=1000)
-    query.sql     # safe SQL, with a LIMIT, ready for the executor
-    query.tables  # the real tables it reads
+    query.sql       # safe SQL, with a LIMIT, ready for the executor
+    query.tables    # the real tables it reads
+    query.max_rows  # the row cap the executor will apply
 
 How it works: sqlglot parses the SQL into a tree (like a sentence diagram), and we check the
 tree, not the text. Text checks ("does it contain DELETE?") are easy to fool with comments,
@@ -14,7 +15,9 @@ Checks, in order (the first failure raises UnsafeSqlError):
   3. Nothing inside it writes, locks or changes settings (DML in a CTE, SELECT INTO, FOR UPDATE).
   4. Every table is an allowed table in the public schema (so no system catalogs).
   5. Every function is on the allowlist (safety/allowed_functions.py).
-  6. The outer query returns at most `max_rows` rows: a LIMIT is added, or lowered if too high.
+  6. The outer query returns at most `max_rows + 1` rows: a LIMIT is added, or lowered if too
+     high. The one extra row lets the executor tell "exactly max_rows rows" apart from "more
+     rows existed and were cut off" (it shows max_rows and reports `truncated`).
 
 The SQL that comes out is regenerated from the checked tree, so what runs is exactly what was
 checked, never a different reading of the original text.
@@ -82,6 +85,7 @@ class ValidatedQuery:
 
     sql: str
     tables: frozenset[str]
+    max_rows: int  # carried along, so the executor caps rows with the same number
     _key: object = field(repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -95,7 +99,7 @@ def validate_sql(sql: str, *, allowed_tables: Collection[str], max_rows: int) ->
     Args:
         sql: the query to check (usually written by the LLM).
         allowed_tables: tables the user may read, e.g. `SchemaInfo.table_names`.
-        max_rows: the most rows the query may return.
+        max_rows: the most rows the user may get back (the SQL allows one more, see check 6).
 
     Raises:
         UnsafeSqlError: with a plain-language reason, at the first check that fails.
@@ -105,14 +109,16 @@ def validate_sql(sql: str, *, allowed_tables: Collection[str], max_rows: int) ->
         _reject_forbidden_nodes(query)
         tables = _check_tables(query, allowed_tables)
         _check_functions(query)
+        _enforce_row_limit(query, max_rows + 1)
     except UnsafeSqlError as exc:
         logger.warning("unsafe sql rejected", extra={"reason": exc.reason, "sql": sql})
         raise
 
-    _enforce_row_limit(query, max_rows)
     # comments=False: comments are dropped; they can't change a query, only hide things.
     safe_sql = query.sql(dialect="postgres", comments=False)
-    return ValidatedQuery(sql=safe_sql, tables=frozenset(tables), _key=_VALIDATOR_KEY)
+    return ValidatedQuery(
+        sql=safe_sql, tables=frozenset(tables), max_rows=max_rows, _key=_VALIDATOR_KEY
+    )
 
 
 def _parse_single_select(sql: str) -> exp.Query:
@@ -222,14 +228,23 @@ def _check_functions(query: exp.Query) -> None:
             raise UnsafeSqlError(f"Function {_function_name(func)} is not allowed.")
 
 
-def _enforce_row_limit(query: exp.Query, max_rows: int) -> None:
-    """Check 6: the outer query gets LIMIT max_rows unless it already has a smaller one.
+def _enforce_row_limit(query: exp.Query, limit: int) -> None:
+    """Check 6: the outer query gets LIMIT `limit` unless it already has a smaller one.
 
     Only the outer LIMIT counts: a LIMIT inside a subquery does not limit the result.
     """
-    current = _literal_row_limit(query.args.get("limit"))
-    if current is None or current > max_rows:
-        query.set("limit", exp.Limit(expression=exp.Literal.number(max_rows)))
+    node = query.args.get("limit")
+    if isinstance(node, exp.Fetch) and _fetch_option(node, "with_ties", "percent"):
+        # WITH TIES can return any number of tied rows, so no row cap could be guaranteed.
+        raise UnsafeSqlError("FETCH ... WITH TIES / PERCENT is not supported; use LIMIT.")
+    current = _literal_row_limit(node)
+    if current is None or current > limit:
+        query.set("limit", exp.Limit(expression=exp.Literal.number(limit)))
+
+
+def _fetch_option(node: exp.Fetch, *names: str) -> bool:
+    options = node.args.get("limit_options")
+    return options is not None and any(options.args.get(name) for name in names)
 
 
 def _literal_row_limit(node: exp.Expression | None) -> int | None:
