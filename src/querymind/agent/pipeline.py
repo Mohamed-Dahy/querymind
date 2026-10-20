@@ -19,9 +19,9 @@ from collections.abc import Callable
 
 import psycopg
 
-from querymind.agent.schemas import AskResult
+from querymind.agent.schemas import AnswerSummary, AskResult
 from querymind.agent.sql_generator import generate_sql
-from querymind.agent.summarizer import summarize
+from querymind.agent.summarizer import fallback_answer, summarize
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.executor import execute_query
@@ -49,8 +49,11 @@ class Pipeline:
         self._schema: tuple[SchemaInfo, str] | None = None
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
 
-    def ask(self, question: str) -> AskResult:
+    def ask(self, question: str, *, summarize_answer: bool = True) -> AskResult:
         """Answer one question.
+
+        `summarize_answer=False` skips the second LLM call and uses the plain templated answer.
+        The eval uses it: it scores the SQL's results, so the summary would only cost tokens.
 
         Raises:
             ValueError: the question is empty.
@@ -73,7 +76,10 @@ class Pipeline:
                     conn, query, timeout_seconds=self._settings.query_timeout_seconds
                 )
             # Outside the `with`: the connection is closed before the slower summary LLM call.
-            answer = summarize(self._llm, question=question, result=result)
+            if summarize_answer:
+                answer = summarize(self._llm, question=question, result=result)
+            else:
+                answer = AnswerSummary(text=fallback_answer(result), from_llm=False)
         except Exception as exc:
             self._audit(question, sql, outcome=type(exc).__name__, started=started)
             raise

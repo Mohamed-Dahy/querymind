@@ -3,23 +3,26 @@
 [![CI](https://github.com/Mohamed-Dahy/querymind/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohamed-Dahy/querymind/actions/workflows/ci.yml)
 
 **An AI data analyst for company databases.** Ask a question in plain English and get back the answer,
-the SQL that produced it, a result table, and a chart.
+the SQL that produced it, and a result table (charts are on the roadmap).
 
-> "Which country placed the most orders in 1997?" → answer + SQL + table + chart
+> "Which employee handled the most orders?" → "Margaret Peacock handled the most orders, with 156." + SQL + table
 
 QueryMind is built to **assist** data teams, not replace them. It handles routine questions so analysts
 can focus on deeper work, and it always shows its SQL so every answer can be checked.
 
-> 🚧 **Status: early development.** The foundations are in place (database, read-only access, config, LLM
-> layer, CI). The question-to-answer pipeline is next.
+> 🚧 **Status: first working version.** Ask questions through a chat UI or an HTTP API. On a 30-question
+> test set with known answers it gets **29/30** right. Next: self-correcting agent, then larger databases.
 
 ---
 
-## How it will work
+## How it works
 
 ```
-Question → LLM writes SQL → safety check → run on a read-only DB user → answer + table + chart
+Question → LLM writes SQL → safety check → run on a read-only DB user → plain-language answer + table + SQL
 ```
+
+The answer is checked too: every number in it must appear in the query result, or a plain sentence built from
+the data is shown instead.
 
 ## Safety first
 
@@ -27,9 +30,13 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 
 - **Read-only database user.** The agent connects as `analyst_ro`, which can only `SELECT` from business
   tables. Every write (INSERT, UPDATE, DELETE, DROP, …) is blocked by Postgres itself. Tests prove this.
-- **Query timeout.** Any query running longer than 10 seconds is cancelled.
+- **SQL validation.** Every generated query is parsed (sqlglot) and must be a single read-only `SELECT`, using
+  only allowed tables and an allowlist of functions. Writes hidden in CTEs, system catalogs, `pg_sleep` and
+  similar tricks are rejected before anything runs.
+- **Query timeout and row limit.** Queries are stopped after 10 seconds and return at most 1,000 rows.
+- **Audit trail.** Every question, its SQL and its outcome is logged.
 - **Secrets stay out of code.** All passwords and API keys come from environment variables.
-- *Coming next:* SQL validation before every query, row limits, PII masking, and an audit log.
+- *Coming later:* PII masking and per-user permissions.
 
 ## Tech stack
 
@@ -38,10 +45,12 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 | Language | Python 3.12, [uv](https://docs.astral.sh/uv/) |
 | Database | PostgreSQL 16 + pgvector (Docker) |
 | LLMs | Groq and Gemini through one interface (LangChain wrappers) |
+| SQL safety | sqlglot |
+| API / UI | FastAPI, Streamlit |
 | Config | pydantic-settings |
 | Quality | ruff, mypy (strict), pytest, pre-commit |
 | CI | GitHub Actions |
-| Planned | LangGraph, FastAPI, Streamlit, AWS (Bedrock, ECS), Terraform |
+| Planned | LangGraph, AWS (Bedrock, ECS), Terraform |
 
 ---
 
@@ -66,11 +75,18 @@ docker compose up -d --wait            # start Postgres + pgvector on 127.0.0.1:
 uv run python data/seed_northwind.py   # load the sample data + create the read-only user
 ```
 
-### Try the LLM connection
+### Ask questions
 
 ```bash
-uv run python scripts/llm_smoke.py                    # uses LLM_PROVIDER from .env
-uv run python scripts/llm_smoke.py --provider gemini  # or pick a provider
+uv run uvicorn querymind.api.main:app     # the API on http://127.0.0.1:8000 (docs at /docs)
+uv run streamlit run ui/app.py            # in a second terminal: the chat UI on http://localhost:8501
+uv run python scripts/ask.py "How many orders were placed in 1997?"   # or straight from the terminal
+```
+
+### Measure accuracy
+
+```bash
+uv run python -m evals.run --suite golden   # 30 questions with known answers (uses real LLM calls)
 ```
 
 ### Run the checks

@@ -1,0 +1,189 @@
+"""The eval runner with fakes: scoring, retries, errors and the report. No DB, no LLM."""
+
+import logging
+from collections.abc import Callable, Sequence
+
+from evals.golden_set import GoldenQuestion
+from evals.run import (
+    AuditSqlCapture,
+    build_report,
+    evaluate,
+    evaluate_question,
+    summarize_outcomes,
+)
+from querymind.agent.schemas import AnswerSummary, AskResult
+from querymind.db.errors import QueryExecutionError
+from querymind.db.executor import QueryResult
+from querymind.llm import LLMProviderError
+from querymind.safety.errors import UnsafeSqlError
+
+
+def result(rows: Sequence[Sequence[object]]) -> QueryResult:
+    return QueryResult.model_validate(
+        {
+            "columns": ["n"],
+            "rows": rows,
+            "row_count": len(rows),
+            "truncated": False,
+            "duration_ms": 1,
+        }
+    )
+
+
+def question(qid: str, tier: str = "easy", tags: tuple[str, ...] = ()) -> GoldenQuestion:
+    return GoldenQuestion.model_validate(
+        {"id": qid, "tier": tier, "question": f"question {qid}?", "sql": "SELECT 1", "tags": tags}
+    )
+
+
+def answer(rows: list[list[object]]) -> AskResult:
+    return AskResult(
+        question="q",
+        sql="SELECT n FROM t LIMIT 1001",
+        explanation="",
+        result=result(rows),
+        answer=AnswerSummary(text="", from_llm=False),
+    )
+
+
+REFERENCE = {"q1": result([[91]]), "q2": result([[408]]), "q3": result([[156]])}
+
+
+def reference(item: GoldenQuestion) -> QueryResult:
+    return REFERENCE[item.id]
+
+
+def asker(replies: dict[str, list[object]]) -> Callable[[str], AskResult]:
+    """Answer each question with the next queued reply: rows, or an exception to raise."""
+
+    def ask(text: str) -> AskResult:
+        reply = replies[text.removeprefix("question ").removesuffix("?")].pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return answer(reply)  # type: ignore[arg-type]
+
+    return ask
+
+
+def no_sleep(_seconds: float) -> None:
+    pass
+
+
+def test_correct_and_wrong_answers() -> None:
+    ask = asker({"q1": [[[91]]], "q2": [[[407]]]})
+    right = evaluate_question(question("q1"), ask=ask, reference=reference)
+    wrong = evaluate_question(question("q2"), ask=ask, reference=reference)
+    assert (right.passed, right.strict, right.sql) == (True, True, "SELECT n FROM t LIMIT 1001")
+    assert (wrong.passed, wrong.error) == (False, None)
+    assert wrong.reason == "no column matches the values of 'n'"
+
+
+def test_pipeline_errors_count_as_wrong() -> None:
+    ask = asker({"q1": [UnsafeSqlError("Only SELECT queries are allowed.")]})
+    outcome = evaluate_question(question("q1"), ask=ask, reference=reference)
+    assert outcome.passed is False
+    assert outcome.error == "UnsafeSqlError"
+    assert outcome.reason == "Only SELECT queries are allowed."
+    assert outcome.sql is None
+
+
+def test_failed_questions_keep_the_sql_that_was_tried() -> None:
+    ask = asker({"q1": [UnsafeSqlError("Only SELECT queries are allowed.")]})
+    outcome = evaluate_question(
+        question("q1"), ask=ask, reference=reference, failed_sql=lambda: "DELETE FROM orders"
+    )
+    assert outcome.sql == "DELETE FROM orders"
+
+
+def test_audit_capture_reads_the_sql_field() -> None:
+    capture = AuditSqlCapture.attach()
+    try:
+        logging.getLogger("querymind.audit").info("ask", extra={"sql": "SELECT 1", "outcome": "x"})
+        assert capture.last_sql == "SELECT 1"
+    finally:
+        logging.getLogger("querymind.audit").removeHandler(capture)
+
+
+def test_rate_limits_are_retried_not_scored() -> None:
+    pauses: list[float] = []
+    ask = asker({"q1": [LLMProviderError("429 rate limited"), [[91]]]})
+    outcome = evaluate_question(
+        question("q1"), ask=ask, reference=reference, retries=2, backoff_seconds=10,
+        sleep=pauses.append,
+    )  # fmt: skip
+    assert outcome.passed is True
+    assert outcome.attempts == 2
+    assert pauses == [10]
+
+
+def test_rate_limits_give_up_after_the_retries() -> None:
+    errors: list[object] = [LLMProviderError("429")] * 3
+    outcome = evaluate_question(
+        question("q1"), ask=asker({"q1": errors}), reference=reference, retries=2, sleep=no_sleep
+    )
+    assert (outcome.passed, outcome.error, outcome.attempts) == (False, "LLMProviderError", 3)
+    assert outcome.scored is False  # no verdict: the agent never got to answer
+
+
+def test_unscored_questions_are_left_out_of_the_accuracy() -> None:
+    ask = asker({"q1": [[[91]]], "q2": [LLMProviderError("429")] * 3})
+    outcomes = evaluate(
+        [question("q1"), question("q2")], ask=ask, reference=reference, sleep=no_sleep
+    )
+    summary = summarize_outcomes(outcomes)
+    assert str(summary.accuracy) == "1/1 (100.0%)"  # not 1/2
+    assert summary.not_scored == ["q2"]
+    assert summary.errors == {}  # a rate limit isn't an agent error
+    report = build_report(outcomes, title="t", meta={})
+    assert "| Not scored (LLM provider unavailable) | 1 |" in report
+    assert "--ids q2" in report
+    assert "| `q2` | easy | SKIP |" in report
+    assert "## Failures in detail" not in report
+
+
+def test_summary_scores_by_tier_and_tag() -> None:
+    items = [question("q1", "easy", ("filter",)), question("q2", "medium", ("join",)),
+             question("q3", "hard", ("join", "window"))]  # fmt: skip
+    ask = asker({"q1": [[[91]]], "q2": [[[408]]], "q3": [QueryExecutionError("bad", detail="x")]})
+    outcomes = evaluate(items, ask=ask, reference=reference, sleep=no_sleep)
+
+    summary = summarize_outcomes(outcomes)
+    assert str(summary.accuracy) == "2/3 (66.7%)"
+    assert {tier: str(s) for tier, s in summary.by_tier.items()} == {
+        "easy": "1/1 (100.0%)",
+        "medium": "1/1 (100.0%)",
+        "hard": "0/1 (0.0%)",
+    }
+    assert str(summary.by_tag["join"]) == "1/2 (50.0%)"
+    assert summary.errors == {"QueryExecutionError": 1}
+
+
+def test_progress_callback_and_delay() -> None:
+    seen: list[tuple[int, str]] = []
+    pauses: list[float] = []
+    evaluate(
+        [question("q1"), question("q2")],
+        ask=asker({"q1": [[[91]]], "q2": [[[408]]]}),
+        reference=reference,
+        delay_seconds=1.5,
+        on_outcome=lambda number, o: seen.append((number, o.item.id)),
+        sleep=pauses.append,
+    )
+    assert seen == [(1, "q1"), (2, "q2")]
+    assert pauses == [1.5]  # between questions only, not before the first
+
+
+def test_report_shows_scores_and_failures() -> None:
+    outcomes = evaluate(
+        [question("q1"), question("q2")],
+        ask=asker({"q1": [[[91]]], "q2": [[[999]]]}),
+        reference=reference,
+        sleep=no_sleep,
+    )
+    report = build_report(outcomes, title="Test eval", meta={"LLM": "fake"})
+    assert report.startswith("# Test eval\n")
+    assert "- **LLM:** fake" in report
+    assert "| **Execution accuracy** (extra columns allowed) | **1/2 (50.0%)** |" in report
+    assert "| `q2` | easy | FAIL |" in report
+    assert "### `q2` (easy): wrong result" in report
+    assert "```sql\nSELECT n FROM t LIMIT 1001\n```" in report  # QueryMind's SQL

@@ -116,3 +116,12 @@ def test_every_question_is_audit_logged(
     assert ok.row_count == 1  # type: ignore[attr-defined]
     assert rejected.outcome == "UnsafeSqlError"  # type: ignore[attr-defined]
     assert rejected.sql == "DROP TABLE products"  # type: ignore[attr-defined]
+
+
+def test_summary_can_be_skipped(settings: Settings) -> None:
+    # The eval scores results only, so it skips the summary call (half the LLM tokens).
+    pipeline, fake = make_pipeline(settings, draft("SELECT count(*) AS n FROM customers"))
+    result = pipeline.ask("How many customers?", summarize_answer=False)
+    assert result.answer.text == "n: 91"
+    assert result.answer.from_llm is False
+    assert len(fake.calls) == 1  # only the SQL call
