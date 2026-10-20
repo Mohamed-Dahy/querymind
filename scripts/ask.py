@@ -4,8 +4,8 @@
     uv run python scripts/ask.py                     # the 10 sample questions below
     uv run python scripts/ask.py --provider gemini   # the other provider
 
-Step 1.2: prints the SQL the LLM writes. It does NOT run it yet: generated SQL may only run
-after the validator (1.3) has checked it, which the executor (1.4) will do.
+Step 1.3: prints the SQL the LLM writes, then the validator's verdict: the safe SQL that
+would run, or why it was rejected. Nothing runs yet; the executor arrives in 1.4.
 """
 
 import argparse
@@ -20,6 +20,8 @@ from querymind.config import ConfigError, get_settings
 from querymind.db.connection import connect_readonly
 from querymind.db.schema import describe_schema, introspect_schema
 from querymind.llm import LLMError, create_llm_provider
+from querymind.safety.errors import UnsafeSqlError
+from querymind.safety.sql_validator import validate_sql
 
 # Simple Northwind questions for the 1.2 manual check: filters, joins, aggregations, top-N.
 SAMPLE_QUESTIONS = [
@@ -50,7 +52,8 @@ def main() -> int:
         if args.provider:
             settings = settings.model_copy(update={"llm_provider": args.provider})
         with connect_readonly(settings) as conn:
-            schema_text = describe_schema(introspect_schema(conn))
+            schema = introspect_schema(conn)
+        schema_text = describe_schema(schema)
     except (ConfigError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -70,7 +73,16 @@ def main() -> int:
         print(textwrap.indent(draft.sql, " " * 8))
         print(f"    explanation: {draft.explanation}")
         print(f"    tables_used: {', '.join(draft.tables_used)}")
-        print(f"    ({llm.name}, {time.perf_counter() - started:.1f}s)\n")
+        print(f"    ({llm.name}, {time.perf_counter() - started:.1f}s)")
+        try:
+            query = validate_sql(
+                draft.sql, allowed_tables=schema.table_names, max_rows=settings.max_rows
+            )
+        except UnsafeSqlError as exc:
+            failures += 1
+            print(f"    REJECTED: {exc.reason}\n")
+            continue
+        print(f"    validated:   {query.sql}\n")
     return 1 if failures else 0
 
 
