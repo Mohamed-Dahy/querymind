@@ -6,6 +6,7 @@ error handling and logging all live here, once.
 
 import logging
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from langchain_core.exceptions import OutputParserException
@@ -29,6 +30,7 @@ class LangChainProvider(LLMProvider):
         name: str,
         chat_model: BaseChatModel,
         provider_errors: tuple[type[Exception], ...],
+        structured_output_options: Mapping[str, Any] | None = None,
     ) -> None:
         """
         Args:
@@ -36,10 +38,13 @@ class LangChainProvider(LLMProvider):
             chat_model: the configured LangChain chat model.
             provider_errors: the vendor exceptions that mean "the provider could not answer";
                 they are re-raised as `LLMProviderError`.
+            structured_output_options: extra arguments for LangChain's `with_structured_output`,
+                e.g. `{"method": "json_schema", "strict": True}`. Empty = LangChain's default.
         """
         self.name = name
         self._chat_model = chat_model
         self._provider_errors = provider_errors
+        self._structured_output_options = dict(structured_output_options or {})
 
     def generate_text(self, prompt: str, *, system: str | None = None) -> str:
         message = self._invoke(self._chat_model, prompt, system, kind="text")
@@ -53,7 +58,9 @@ class LangChainProvider(LLMProvider):
     ) -> T:
         # LangChain asks the model to fill `schema` (via tool calling or JSON schema)
         # and parses the reply into a Pydantic object for us.
-        structured_model = self._chat_model.with_structured_output(schema)
+        structured_model = self._chat_model.with_structured_output(
+            schema, **self._structured_output_options
+        )
         result = self._invoke(
             structured_model, prompt, system, kind=f"structured:{schema.__name__}"
         )

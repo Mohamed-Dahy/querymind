@@ -74,6 +74,20 @@ def test_generate_structured_returns_the_schema_object(
     chat_model.with_structured_output.assert_called_once_with(Answer)
 
 
+def test_structured_output_options_are_passed_to_langchain(chat_model: MagicMock) -> None:
+    provider = LangChainProvider(
+        name="test",
+        chat_model=chat_model,
+        provider_errors=(VendorDown,),
+        structured_output_options={"method": "json_schema", "strict": True},
+    )
+    chat_model.with_structured_output.return_value.invoke.return_value = Answer(value=1)
+    provider.generate_structured("question", Answer)
+    chat_model.with_structured_output.assert_called_once_with(
+        Answer, method="json_schema", strict=True
+    )
+
+
 def test_wrong_structured_type_is_an_output_error(
     provider: LangChainProvider, chat_model: MagicMock
 ) -> None:

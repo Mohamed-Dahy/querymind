@@ -47,6 +47,19 @@ def test_groq_settings_build_a_groq_provider() -> None:
     assert chat.groq_api_key.get_secret_value() == "gsk_test"  # type: ignore[attr-defined]
 
 
+def test_groq_gpt_oss_uses_strict_json_schema() -> None:
+    provider = create_llm_provider(make_settings())
+    assert provider._structured_output_options == {  # type: ignore[attr-defined]
+        "method": "json_schema",
+        "strict": True,
+    }
+
+
+def test_other_groq_models_keep_tool_calling() -> None:
+    provider = create_llm_provider(make_settings(groq_model="llama-3.1-8b-instant"))
+    assert provider._structured_output_options == {}  # type: ignore[attr-defined]
+
+
 def test_gemini_settings_build_a_gemini_provider() -> None:
     provider = create_llm_provider(make_settings(llm_provider="gemini"))
     assert isinstance(provider, GeminiProvider)

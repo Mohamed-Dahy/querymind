@@ -11,8 +11,7 @@ import argparse
 import sys
 import time
 
-from pydantic import BaseModel, Field
-
+from querymind.agent.schemas import SqlDraft
 from querymind.config import ConfigError, get_settings
 from querymind.llm import LLMError, create_llm_provider
 
@@ -20,14 +19,6 @@ SCHEMA = """\
 customers(customer_id, company_name, city, country)
 orders(order_id, customer_id, order_date, ship_country)
 order_details(order_id, product_id, unit_price, quantity, discount)"""
-
-
-class SqlDraft(BaseModel):
-    """A taste of Phase 1.2: the shape we'll ask the LLM to fill."""
-
-    sql: str = Field(description="One PostgreSQL SELECT statement")
-    explanation: str = Field(description="One sentence on what the query does")
-    tables_used: list[str] = Field(description="Tables the query reads")
 
 
 def main() -> int:
