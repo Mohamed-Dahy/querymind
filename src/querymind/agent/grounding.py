@@ -70,9 +70,14 @@ def find_numbers(text: str) -> list[NumberMention]:
     return mentions
 
 
-def find_ungrounded_numbers(answer: str, *, result: QueryResult, question: str = "") -> list[str]:
-    """Numbers in `answer` that match nothing in the result (or the question). Empty = grounded."""
-    known = _known_values(result, question)
+def find_ungrounded_numbers(
+    answer: str, *, result: QueryResult, question: str = "", also_known: Iterable[float] = ()
+) -> list[str]:
+    """Numbers in `answer` that match nothing known. Empty list = grounded.
+
+    `also_known`: numbers the caller itself told the LLM, e.g. "showing the first 20 rows".
+    """
+    known = _known_values(result, question) | {abs(float(value)) for value in also_known}
     return [
         mention.text
         for mention in find_numbers(answer)

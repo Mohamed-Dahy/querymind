@@ -46,7 +46,11 @@ def summarize(llm: LLMProvider, *, question: str, result: QueryResult) -> Answer
         logger.warning("summary failed, using fallback", extra={"error": str(exc)})
         return AnswerSummary(text=fallback_answer(result), from_llm=False)
 
-    ungrounded = find_ungrounded_numbers(text, result=result, question=question)
+    # The prompt itself says how many rows were shown ("Showing the first 20 of 21 rows"), so
+    # the LLM may repeat that number too.
+    ungrounded = find_ungrounded_numbers(
+        text, result=result, question=question, also_known=[len(shown)]
+    )
     if ungrounded:
         logger.warning(
             "summary used numbers not in the result, using fallback",

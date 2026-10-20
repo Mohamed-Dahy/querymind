@@ -129,3 +129,13 @@ def test_booleans_are_not_numbers() -> None:
     result = make_result(["discontinued"], [[True]])
     assert find_ungrounded_numbers("1 product is discontinued.", result=result) == []  # row count
     assert find_ungrounded_numbers("2 products are discontinued.", result=result) == ["2"]
+
+
+def test_numbers_the_caller_told_the_llm_are_allowed() -> None:
+    assert ungrounded("Based on the first 2 rows, Beverages leads.") == ["2"]
+    assert (
+        find_ungrounded_numbers(
+            "Based on the first 2 rows, Beverages leads.", result=SALES, also_known=[2]
+        )
+        == []
+    )

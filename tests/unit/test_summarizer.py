@@ -128,3 +128,14 @@ def test_typographic_spaces_and_hyphens_become_plain() -> None:
 
 def test_accents_are_kept() -> None:
     assert clean_text("  Côte de Blaye costs 263.5  ") == "Côte de Blaye costs 263.5"
+
+
+def test_answer_may_repeat_how_many_rows_were_shown() -> None:
+    # Found in the 1.7 demo: "Based on the first 20 rows shown: ..." was wrongly rejected,
+    # because 20 comes from our own prompt note, not from the data.
+    # Names without digits, so 20 can only come from the prompt note.
+    rows = [[f"Country {chr(65 + i)}", 100 + i] for i in range(21)]
+    result = make_result(["country", "orders"], rows)
+    fake = FakeLLMProvider(["Based on the first 20 rows shown, Country A placed 100 orders."])
+    summary = summarize(fake, question="Orders per country?", result=result)
+    assert summary.from_llm is True
