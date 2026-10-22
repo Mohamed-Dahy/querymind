@@ -20,7 +20,8 @@ pytestmark = pytest.mark.integration
 
 GOLDEN = load_golden_set(GOLDEN_DIR / "northwind.yaml")
 BUSINESS = load_golden_set(GOLDEN_DIR / "northwind_business.yaml")  # business terms (3.1)
-ALL_QUESTIONS = GOLDEN.questions + BUSINESS.questions
+CHINOOK = load_golden_set(GOLDEN_DIR / "chinook.yaml")  # the music store (3.2)
+ALL_QUESTIONS = GOLDEN.questions + BUSINESS.questions + CHINOOK.questions
 BY_ID = {q.id: q for q in ALL_QUESTIONS}
 
 
@@ -63,6 +64,11 @@ def test_ordered_questions_sort_their_result(item: GoldenQuestion) -> None:
         ("b03_late_shipments_1997", [[22]]),
         ("b06_active_customers", [[71]]),
         ("b04_carrier_most_late", [["United Package", 16]]),
+        # Chinook (3.2)
+        ("c01_track_count", [[3503]]),
+        ("c05_long_track_count", [[1069]]),
+        ("c09_rep_with_most_customers", [["Jane", "Peacock", 21]]),
+        ("c10_artists_without_albums", [[71]]),
     ],
 )
 def test_known_northwind_facts(
@@ -92,6 +98,9 @@ def test_top_n_answers_have_no_ties_at_the_cutoff(
         ("b08_top_clients_turnover_1997", 3, "turnover"),
         ("b12_reps_for_key_accounts", 3, "key_account_orders"),
         ("b13_active_customers_by_country", 3, "active_customers"),
+        ("c08_top3_artists_by_albums", 3, "albums"),
+        ("c09_rep_with_most_customers", 1, "customers"),
+        ("c12_top3_genres_by_sales", 3, "sales"),
     ]:
         sql = BY_ID[question_id].sql.replace(f"LIMIT {n}", f"LIMIT {n + 1}")
         if value_column == "unit_price":  # e06 only returns names; fetch the prices to compare

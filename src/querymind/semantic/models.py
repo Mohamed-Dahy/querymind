@@ -74,6 +74,11 @@ class JoinPath(_Model):
 class SemanticLayer(_Model):
     database: str
     version: int
+    # What this part of the database is about. Several layers can share one database (3.2).
+    description: str = ""
+    # Every table this layer covers, described or not (e.g. Northwind's `region`). Empty = just
+    # the tables listed under `tables`. The data dictionary (3.2) and retrieval (3.3) use it.
+    scope: tuple[str, ...] = ()
     tables: dict[str, TableInfo] = {}
     metrics: dict[str, Metric] = {}
     joins: tuple[JoinPath, ...] = ()
@@ -82,7 +87,16 @@ class SemanticLayer(_Model):
     def _names_are_valid(self) -> Self:
         _check_names(self.tables, "table")
         _check_names(self.metrics, "metric")
+        if self.scope:
+            outside = sorted(set(self.tables) - set(self.scope))
+            if outside:
+                raise ValueError(f"tables described but not in scope: {', '.join(outside)}")
         return self
+
+    @property
+    def table_scope(self) -> tuple[str, ...]:
+        """The tables this layer covers."""
+        return self.scope or tuple(self.tables)
 
     @property
     def pii_columns(self) -> frozenset[tuple[str, str]]:

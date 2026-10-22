@@ -4,7 +4,8 @@ Run (after `docker compose up -d --wait`):
     uv run python data/seed_northwind.py
 
 Safe to re-run: the Northwind tables are dropped and recreated, and the read-only
-role's password and privileges are reset every time.
+role's password and privileges are reset every time. The reset revokes every table grant,
+so after re-running this, run data/seed_chinook.py again too (Phase 3.2).
 """
 
 import hashlib
@@ -49,25 +50,32 @@ class SeedError(Exception):
     """Seeding cannot continue (an unexpected download)."""
 
 
-def fetch_northwind_sql() -> str:
-    """Download northwind.sql once (cached in data/raw/) and verify its SHA-256 hash."""
-    path = RAW_DIR / "northwind.sql"
+def fetch_pinned(url: str, filename: str, sha256: str) -> str:
+    """Download a SQL file once (cached in data/raw/) and verify its SHA-256 hash.
+
+    Also used by seed_chinook.py: every script we run as superuser must be pinned.
+    """
+    path = RAW_DIR / filename
     if not path.exists():
         RAW_DIR.mkdir(parents=True, exist_ok=True)
-        logger.info("Downloading %s", NORTHWIND_URL)
-        with urllib.request.urlopen(NORTHWIND_URL, timeout=30) as response:
+        logger.info("Downloading %s", url)
+        with urllib.request.urlopen(url, timeout=30) as response:
             path.write_bytes(response.read())
 
     data = path.read_bytes()
     digest = hashlib.sha256(data).hexdigest()
-    if digest != NORTHWIND_SHA256:
+    if digest != sha256:
         # Delete it so a corrupted or partial download is fetched again next run.
         path.unlink()
         raise SeedError(
-            f"northwind.sql hash mismatch (got {digest}). "
+            f"{filename} hash mismatch (got {digest}). "
             "The upstream file changed or the download was corrupted. Not running it."
         )
     return data.decode("utf-8")
+
+
+def fetch_northwind_sql() -> str:
+    return fetch_pinned(NORTHWIND_URL, "northwind.sql", NORTHWIND_SHA256)
 
 
 def load_northwind(conn: psycopg.Connection, script: str) -> None:

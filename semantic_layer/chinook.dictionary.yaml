@@ -1,0 +1,123 @@
+# Data dictionary drafted by an LLM (scripts/draft_dictionary.py), for a person to review.
+# Read each table, fix anything wrong, then set `reviewed: true`: reviewed tables are never
+# overwritten by a new draft. Used by schema retrieval (Phase 3.3).
+
+database: chinook
+generated_by: gemini / gemini-3.5-flash-lite
+tables:
+  album:
+    reviewed: false
+    description: Each row represents a music album, used to store album titles and link them to their
+      respective artists.
+    columns:
+      album_id: Primary key for the album.
+      title: Title of the album.
+      artist_id: Foreign key pointing to artist(artist_id).
+  artist:
+    reviewed: false
+    description: Each row represents an artist and is used to store the artist's unique identifier and
+      name.
+    columns:
+      artist_id: Primary key for the artist.
+      name: Name of the artist.
+  customer:
+    reviewed: false
+    description: One row represents a customer in the online music store, used to store contact and support
+      representative details.
+    columns:
+      customer_id: Unique identifier for the customer.
+      first_name: Customer's first name.
+      last_name: Customer's last name.
+      company: Company name; NULL means no company provided.
+      address: Customer's street address.
+      city: City of the customer's address.
+      state: State or province; NULL means none applicable.
+      country: Country of the customer's address.
+      postal_code: Postal or ZIP code.
+      phone: Customer's phone number.
+      fax: Customer's fax number; NULL means none provided.
+      email: Customer's email address.
+      support_rep_id: Points to employee(employee_id) for the assigned support representative.
+  employee:
+    reviewed: false
+    description: One row represents an employee of the online music store and is used to store their personal
+      and employment details.
+    columns:
+      employee_id: Primary key uniquely identifying the employee.
+      last_name: Employee's family name.
+      first_name: Employee's given name.
+      title: Job title of the employee.
+      reports_to: Foreign key pointing to employee(employee_id) for their manager; NULL if none.
+      birth_date: Personal data timestamp of the employee's birth.
+      hire_date: Timestamp of when the employee was hired.
+      address: Personal data street address of the employee.
+      city: City of the employee's address.
+      state: State or province of the employee's address.
+      country: Country of the employee's address.
+      postal_code: Personal data postal code of the employee's address.
+      phone: Personal data phone number of the employee.
+      fax: Personal data fax number of the employee.
+      email: Personal data email address of the employee.
+  genre:
+    reviewed: false
+    description: Each row represents a music genre, used to classify tracks by their musical style.
+    columns:
+      genre_id: Unique integer identifier for the genre.
+      name: Text name of the music genre.
+  invoice:
+    reviewed: false
+    description: Each row represents a customer invoice, used to track purchase dates, billing locations,
+      and the total amount charged.
+    columns:
+      invoice_id: Primary key uniquely identifying the invoice.
+      customer_id: Foreign key pointing to customer(customer_id).
+      invoice_date: Timestamp of when the invoice was issued.
+      billing_address: Personal data holding the billing street address.
+      billing_city: City of the billing address.
+      billing_state: State or province of the billing address; NULL if not applicable.
+      billing_country: Country of the billing address.
+      billing_postal_code: Personal data holding the postal code of the billing address.
+      total: Total monetary amount of the invoice.
+  invoice_line:
+    reviewed: false
+    description: Each row represents a specific line item within an invoice, used to record purchased
+      tracks and their quantities.
+    columns:
+      invoice_line_id: Unique identifier for the invoice line.
+      invoice_id: Foreign key pointing to invoice(invoice_id).
+      track_id: Foreign key pointing to track(track_id).
+      unit_price: Price per unit of the track.
+      quantity: Number of units purchased for the track.
+  media_type:
+    reviewed: false
+    description: Each row represents a distinct media format used to categorize and track the types of
+      audio and video files available in the store.
+    columns:
+      media_type_id: Unique identifier for the media type.
+      name: Descriptive name of the media file format.
+  playlist:
+    reviewed: false
+    description: Each row represents a playlist, used to group music and video tracks together.
+    columns:
+      playlist_id: Unique identifier for the playlist.
+      name: Name of the playlist.
+  playlist_track:
+    reviewed: false
+    description: Each row represents a track assigned to a specific playlist to manage playlist contents.
+    columns:
+      playlist_id: The unique identifier of the playlist, pointing to the playlist table.
+      track_id: The unique identifier of the track, pointing to the track table.
+  track:
+    reviewed: false
+    description: Each row represents a single music track available in the store, used to store audio
+      file details and pricing.
+    columns:
+      track_id: Primary key for the track.
+      name: Name of the track.
+      album_id: Foreign key pointing to album(album_id).
+      media_type_id: Foreign key pointing to media_type(media_type_id).
+      genre_id: Foreign key pointing to genre(genre_id).
+      composer: Composer of the track, can be NULL.
+      milliseconds: Duration of the track in milliseconds.
+      bytes: File size of the track in bytes.
+      unit_price: Price per unit of the track.

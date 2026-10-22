@@ -9,11 +9,11 @@ Usage:
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from psycopg.conninfo import make_conninfo
 from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class ConfigError(Exception):
@@ -64,15 +64,21 @@ class Settings(BaseSettings):
     # How many SQL queries the agent may try per question: the first + repairs after an error.
     max_sql_attempts: int = Field(default=3, ge=1, le=5)
 
-    # --- Semantic layer (3.1) ---
-    # Business definitions shown to the LLM (metrics, synonyms, joins). Relative to where the app
-    # is started (the repo root). Empty = none.
-    semantic_layer_path: Path | None = Path("semantic_layer/northwind.yaml")
+    # --- Semantic layer (3.1, 3.2) ---
+    # Business definitions shown to the LLM (metrics, synonyms, joins), one file per part of the
+    # database. In .env: comma-separated, relative to where the app starts (the repo root).
+    # Empty = none. NoDecode: read the env value as plain text, not as JSON.
+    semantic_layer_paths: Annotated[list[Path], NoDecode] = [
+        Path("semantic_layer/northwind.yaml"),
+        Path("semantic_layer/chinook.yaml"),
+    ]
 
-    @field_validator("semantic_layer_path", mode="before")
+    @field_validator("semantic_layer_paths", mode="before")
     @classmethod
-    def _empty_path_is_none(cls, value: object) -> object:
-        return None if value == "" else value
+    def _comma_separated(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
 
     @model_validator(mode="after")
     def _active_provider_is_configured(self) -> Self:

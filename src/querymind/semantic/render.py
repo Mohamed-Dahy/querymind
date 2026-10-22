@@ -7,22 +7,18 @@ column notes and preferred joins. PII flags are left out (they are for masking, 
 `tables=` keeps only the parts about those tables; schema retrieval (3.3) will use it.
 """
 
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 
 from querymind.db.schema import SchemaInfo, describe_schema
 from querymind.semantic.models import Metric, SemanticLayer
 
-HEADER = (
-    "Business definitions for this database. When the question uses one of these terms, "
-    "use exactly this definition:"
-)
+HEADER = "When the question uses one of these terms, use exactly this definition:"
 
 
-def schema_prompt_text(schema: SchemaInfo, layer: SemanticLayer | None) -> str:
-    """The schema description, followed by the business definitions (if there is a layer)."""
-    text = describe_schema(schema)
-    block = describe_semantics(layer) if layer is not None else ""
-    return f"{text}\n\n{block}" if block else text
+def schema_prompt_text(schema: SchemaInfo, layers: Sequence[SemanticLayer]) -> str:
+    """The schema description, followed by each layer's business definitions."""
+    blocks = [block for layer in layers if (block := describe_semantics(layer))]
+    return "\n\n".join([describe_schema(schema), *blocks])
 
 
 def describe_semantics(layer: SemanticLayer, tables: Collection[str] | None = None) -> str:
@@ -63,7 +59,10 @@ def describe_semantics(layer: SemanticLayer, tables: Collection[str] | None = No
         ),
     ]
     body = "\n\n".join(s for s in sections if s)
-    return f"{HEADER}\n\n{body}" if body else ""
+    if not body:
+        return ""
+    about = f": {layer.description.rstrip('.')}" if layer.description else ""
+    return f"Business definitions for the {layer.database} tables{about}. {HEADER}\n\n{body}"
 
 
 def _metric(name: str, metric: Metric) -> str:

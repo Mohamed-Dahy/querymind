@@ -8,6 +8,7 @@ from evals.golden_set import GOLDEN_DIR, GoldenSetError, load_golden_set
 
 NORTHWIND = GOLDEN_DIR / "northwind.yaml"
 BUSINESS = GOLDEN_DIR / "northwind_business.yaml"
+CHINOOK = GOLDEN_DIR / "chinook.yaml"
 
 
 def test_northwind_has_30_questions_across_tiers() -> None:
@@ -31,6 +32,15 @@ def test_business_questions_all_need_a_definition() -> None:
     # The two files are scored separately, but their ids must not collide in reports.
     golden_ids = {q.id for q in load_golden_set(NORTHWIND).questions}
     assert golden_ids.isdisjoint(q.id for q in business.questions)
+
+
+def test_chinook_has_15_questions_across_tiers() -> None:
+    chinook = load_golden_set(CHINOOK)
+    assert chinook.database == "chinook"
+    counts = {tier: len(chinook.by_tier(tier)) for tier in ("easy", "medium", "hard")}
+    assert counts == {"easy": 5, "medium": 6, "hard": 4}
+    ids = [q.id for path in (NORTHWIND, BUSINESS, CHINOOK) for q in load_golden_set(path).questions]
+    assert len(ids) == len(set(ids))  # unique across every suite
 
 
 def test_ranking_and_time_series_questions_are_ordered() -> None:

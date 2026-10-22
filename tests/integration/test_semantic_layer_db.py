@@ -1,4 +1,4 @@
-"""The shipped semantic layer against real Northwind: names exist, every metric's SQL runs.
+"""The shipped semantic layers against the real database: names exist, every metric's SQL runs.
 
 A definition that doesn't run would teach the LLM broken SQL, so each one goes through the same
 gate as the agent's queries (validator, then the read-only role) and must return a row.
@@ -17,12 +17,14 @@ from querymind.db.executor import QueryResult, execute_query
 from querymind.db.schema import SchemaInfo, introspect_schema
 from querymind.llm.fake import FakeLLMProvider
 from querymind.safety.sql_validator import validate_sql
-from querymind.semantic.loader import check_against, load_semantic_layer
-from querymind.semantic.models import Metric
+from querymind.semantic.loader import check_against, load_semantic_layers
+from querymind.semantic.models import Metric, SemanticLayer
 
 pytestmark = pytest.mark.integration
 
-LAYER = load_semantic_layer(Path(__file__).parents[2] / "semantic_layer" / "northwind.yaml")
+LAYERS_DIR = Path(__file__).parents[2] / "semantic_layer"
+LAYERS = load_semantic_layers([LAYERS_DIR / "northwind.yaml", LAYERS_DIR / "chinook.yaml"])
+METRICS = {name: metric for layer in LAYERS for name, metric in layer.metrics.items()}
 
 
 @pytest.fixture(scope="module")
@@ -41,13 +43,14 @@ def run_metric(conn: psycopg.Connection, schema: SchemaInfo, metric: Metric) -> 
     return execute_query(conn, query, timeout_seconds=10)
 
 
-def test_the_layer_matches_the_database(schema: SchemaInfo) -> None:
-    check_against(LAYER, schema)  # every table and column it names exists for analyst_ro
+@pytest.mark.parametrize("layer", LAYERS, ids=lambda layer: layer.database)
+def test_the_layer_matches_the_database(schema: SchemaInfo, layer: SemanticLayer) -> None:
+    check_against(layer, schema)  # every table and column it names exists for analyst_ro
 
 
-@pytest.mark.parametrize("name", sorted(LAYER.metrics))
+@pytest.mark.parametrize("name", sorted(METRICS))
 def test_every_metric_runs(ro_conn: psycopg.Connection, schema: SchemaInfo, name: str) -> None:
-    result = run_metric(ro_conn, schema, LAYER.metrics[name])
+    result = run_metric(ro_conn, schema, METRICS[name])
     assert result.row_count == 1
     [[value]] = result.rows
     assert isinstance(value, int | float) and value > 0, "a definition matching nothing is suspect"
@@ -55,12 +58,21 @@ def test_every_metric_runs(ro_conn: psycopg.Connection, schema: SchemaInfo, name
 
 @pytest.mark.parametrize(
     ("name", "expected"),
-    [("key_account", 7), ("active_customer", 71), ("late_shipment", 37), ("needs_restock", 2)],
+    [
+        ("key_account", 7),
+        ("active_customer", 71),
+        ("late_shipment", 37),
+        ("needs_restock", 2),
+        ("big_spender", 5),  # Chinook (3.2)
+        ("long_track", 1069),
+        ("video_track", 214),
+        ("unsold_track", 1519),
+    ],
 )
 def test_company_rules_give_the_known_counts(
     ro_conn: psycopg.Connection, schema: SchemaInfo, name: str, expected: int
 ) -> None:
-    assert run_metric(ro_conn, schema, LAYER.metrics[name]).rows == [[expected]]
+    assert run_metric(ro_conn, schema, METRICS[name]).rows == [[expected]]
 
 
 def test_the_llm_sees_the_definitions(settings: Settings) -> None:
@@ -74,3 +86,5 @@ def test_the_llm_sees_the_definitions(settings: Settings) -> None:
     assert "Table customers" in prompt
     assert "- key_account (also: key accounts" in prompt
     assert "HAVING sum(d.unit_price * d.quantity * (1 - d.discount)) >= 30000" in prompt
+    assert "Business definitions for the chinook tables: Our online music store" in prompt
+    assert "Table invoice_line" in prompt  # both businesses' tables, until retrieval (3.3)

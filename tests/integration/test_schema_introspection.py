@@ -19,8 +19,22 @@ from querymind.db.schema import (
 
 pytestmark = pytest.mark.integration
 
-# The 14 tables the seed script grants analyst_ro SELECT on (data/seed_northwind.py).
-GRANTED_TABLES = {
+# The tables the seed scripts grant analyst_ro SELECT on: 14 from data/seed_northwind.py and
+# 11 from data/seed_chinook.py (3.2).
+CHINOOK_TABLES = {
+    "album",
+    "artist",
+    "customer",
+    "employee",
+    "genre",
+    "invoice",
+    "invoice_line",
+    "media_type",
+    "playlist",
+    "playlist_track",
+    "track",
+}
+GRANTED_TABLES = CHINOOK_TABLES | {
     "categories",
     "customer_customer_demo",
     "customer_demographics",

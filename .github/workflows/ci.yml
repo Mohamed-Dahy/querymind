@@ -90,5 +90,8 @@ jobs:
       - name: Seed Northwind + create the read-only role
         run: uv run python data/seed_northwind.py
 
+      - name: Seed Chinook next to it (Phase 3.2)
+        run: uv run python data/seed_chinook.py
+
       - name: Integration tests
         run: uv run pytest -m integration

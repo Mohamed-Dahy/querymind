@@ -1,0 +1,167 @@
+# Data dictionary drafted by an LLM (scripts/draft_dictionary.py), for a person to review.
+# Read each table, fix anything wrong, then set `reviewed: true`: reviewed tables are never
+# overwritten by a new draft. Used by schema retrieval (Phase 3.3).
+
+database: northwind
+generated_by: gemini / gemini-3.5-flash-lite
+tables:
+  customers:
+    reviewed: false
+    description: Each row represents a customer in the food trading business, used to store company and
+      contact details.
+    columns:
+      customer_id: Unique identifier for the customer.
+      company_name: Name of the customer's company.
+      contact_name: Name of the customer contact person.
+      contact_title: Job title of the customer contact person.
+      address: Street address of the customer.
+      city: City of the customer location.
+      region: State or region of the customer location; NULL if not applicable.
+      postal_code: Postal code of the customer location.
+      country: Country of the customer location.
+      phone: Telephone number of the customer.
+      fax: Fax number of the customer.
+  categories:
+    reviewed: false
+    description: Each row represents a product category, used to classify items sold in the business.
+    columns:
+      category_id: Unique identifier for the category, acting as the primary key.
+      category_name: Name of the product category.
+      description: Text describing the types of products in the category.
+      picture: Binary data holding an image representing the category.
+  customer_customer_demo:
+    reviewed: false
+    description: Each row maps a customer to a specific customer demographic category, used for customer
+      segmentation.
+    columns:
+      customer_id: Points to customers(customer_id).
+      customer_type_id: Points to customer_demographics(customer_type_id).
+  customer_demographics:
+    reviewed: false
+    description: Each row represents a customer demographic type and its description, used to categorize
+      customers.
+    columns:
+      customer_type_id: Primary key holding the customer type identifier.
+      customer_desc: Text describing the customer demographic category.
+  employee_territories:
+    reviewed: false
+    description: Each row represents an association between an employee and a territory, used to track
+      employee coverage areas.
+    columns:
+      employee_id: Points to employees(employee_id).
+      territory_id: Points to territories(territory_id).
+  employees:
+    reviewed: false
+    description: Each row represents an employee and their details, used to store staff records for the
+      food trading business.
+    columns:
+      employee_id: Primary key identifier for the employee.
+      last_name: Employee's last name.
+      first_name: Employee's first name.
+      title: Job title of the employee.
+      title_of_courtesy: Courtesy title used for the employee.
+      birth_date: 'Personal data: employee''s birth date.'
+      hire_date: Date the employee was hired.
+      address: 'Personal data: street address of the employee.'
+      city: City of the employee's address.
+      region: Region or state of the employee's address.
+      postal_code: 'Personal data: postal code of the employee''s address.'
+      country: Country of the employee's address.
+      home_phone: 'Personal data: home phone number of the employee.'
+      extension: Internal phone extension for the employee.
+      photo: Binary image data of the employee.
+      notes: 'Personal data: additional notes about the employee.'
+      reports_to: Foreign key pointing to the manager's employee_id; NULL if no manager.
+      photo_path: URL path to the employee's photo.
+  order_details:
+    reviewed: false
+    description: Each row represents a line item within an order, detailing the product, price, quantity,
+      and discount for tracking order contents.
+    columns:
+      order_id: Points to orders(order_id).
+      product_id: Points to products(product_id).
+      unit_price: Price per unit of the product.
+      quantity: Number of units ordered.
+      discount: Discount applied to the line item.
+  orders:
+    reviewed: false
+    description: One row represents a customer order, used to track order dates, shipping details, and
+      fulfillment status.
+    columns:
+      order_id: Unique identifier for the order.
+      customer_id: Points to customers(customer_id).
+      employee_id: Points to employees(employee_id).
+      order_date: Date the order was placed.
+      required_date: Date the order is required by.
+      shipped_date: Date the order was shipped, or NULL if not shipped.
+      ship_via: Points to shippers(shipper_id).
+      freight: Freight cost for the order.
+      ship_name: Name of the shipping recipient.
+      ship_address: Street address for delivery.
+      ship_city: City for delivery.
+      ship_region: State or region for delivery, or NULL if not applicable.
+      ship_postal_code: Postal code for delivery, or NULL if none.
+      ship_country: Country for delivery.
+  products:
+    reviewed: false
+    description: Each row represents a product sold by the business, used to track inventory, pricing,
+      and supplier details.
+    columns:
+      product_id: Primary key for the product.
+      product_name: Name of the product.
+      supplier_id: Foreign key pointing to suppliers(supplier_id).
+      category_id: Foreign key pointing to categories(category_id).
+      quantity_per_unit: Description of unit size or packaging quantity.
+      unit_price: Price per unit of the product.
+      units_in_stock: Number of units currently in stock.
+      units_on_order: Number of units currently on order.
+      reorder_level: Stock level threshold that triggers a reorder.
+      discontinued: Integer flag indicating if the product is discontinued.
+  region:
+    reviewed: false
+    description: Each row represents a geographical region, used for organizing territories and business
+      operations.
+    columns:
+      region_id: Unique identifier for the region.
+      region_description: Text description of the region name.
+  shippers:
+    reviewed: false
+    description: Each row represents a delivery company used by the business to ship orders.
+    columns:
+      shipper_id: Unique identifier for the shipper, serving as the primary key.
+      company_name: Name of the shipping company.
+      phone: Phone number for the shipper.
+  suppliers:
+    reviewed: false
+    description: Each row represents a supplier providing products to the business, used to manage vendor
+      details.
+    columns:
+      supplier_id: Unique identifier for the supplier, acting as the primary key.
+      company_name: Name of the supplier company.
+      contact_name: Personal data.
+      contact_title: Personal data.
+      address: Personal data.
+      city: City where the supplier is located.
+      region: State or region of the supplier; NULL if not applicable.
+      postal_code: Personal data.
+      country: Country where the supplier is located.
+      phone: Personal data.
+      fax: Personal data.
+      homepage: Website or homepage reference for the supplier; NULL if none.
+  territories:
+    reviewed: false
+    description: Each row represents a sales territory with a description and region, used for geographic
+      sales tracking.
+    columns:
+      territory_id: Primary key holding the territory identifier code.
+      territory_description: Holds the name or description of the territory.
+      region_id: Foreign key pointing to region(region_id).
+  us_states:
+    reviewed: false
+    description: Each row represents a US state with its name, abbreviation, and region, used for geographic
+      reference.
+    columns:
+      state_id: Unique identifier for the state
+      state_name: Full name of the state
+      state_abbr: Two-letter postal abbreviation for the state
+      state_region: Geographical region where the state is located

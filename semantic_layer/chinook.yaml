@@ -1,0 +1,118 @@
+# Semantic layer for Chinook: our online music store (Phase 3.2).
+#
+# Chinook's 11 tables sit in the same database as Northwind's 14 (the food trading business).
+# Both have customers and employees: Chinook's tables are singular (customer, employee),
+# Northwind's plural (customers, employees). The descriptions say which business each belongs to.
+#
+# Company rules (not standard Chinook facts): big spender = 45 or more in total purchases;
+# long track = over 5 minutes.
+
+database: chinook
+version: 1
+description: Our online music store (tracks, albums, artists, invoices).
+scope: [album, artist, customer, employee, genre, invoice, invoice_line, media_type, playlist,
+        playlist_track, track]
+
+tables:
+  customer:
+    description: People who buy music from our online music store (not the trading business's customers).
+    synonyms: [music store customers, listeners, music buyers]
+    columns:
+      support_rep_id: {description: "The employee who supports this customer."}
+      first_name: {pii: true}
+      last_name: {pii: true}
+      address: {pii: true}
+      postal_code: {pii: true}
+      phone: {pii: true}
+      fax: {pii: true}
+      email: {pii: true}
+  employee:
+    description: Music store staff, including the support reps who look after customers.
+    synonyms: [music store staff, support reps]
+    columns:
+      birth_date: {pii: true}
+      address: {pii: true}
+      postal_code: {pii: true}
+      phone: {pii: true}
+      fax: {pii: true}
+      email: {pii: true}
+  track:
+    description: A song or video we sell.
+    synonyms: [songs, tunes, recordings]
+    columns:
+      milliseconds: {description: "Length in milliseconds (60000 = one minute)."}
+      bytes: {description: "File size in bytes."}
+      unit_price: {description: "List price of one track."}
+  album:
+    synonyms: [records]
+  artist:
+    synonyms: [bands, musicians, performers, singers]
+  genre:
+    synonyms: [music styles, music genres]
+  media_type:
+    description: The file format of a track (audio or video).
+    synonyms: [formats, file formats]
+  invoice:
+    description: One music purchase by a customer (2021 to 2025).
+    synonyms: [music orders, music purchases, receipts, bills]
+    columns:
+      total: {description: "Amount of the whole invoice (the sum of its lines)."}
+      billing_address: {pii: true}
+      billing_postal_code: {pii: true}
+  invoice_line:
+    description: One track on an invoice; the source of music sales amounts.
+    synonyms: [invoice lines]
+  playlist:
+    synonyms: [mixes]
+
+metrics:
+  music_sales:
+    kind: measure
+    table: invoice_line
+    description: Money from track sales (price times quantity).
+    synonyms: [music revenue, track sales, music store sales]
+    sql: sum(invoice_line.unit_price * invoice_line.quantity)
+
+  big_spender:
+    kind: condition
+    table: customer
+    description: A music store customer with 45 or more in total purchases (company rule).
+    synonyms: [big spenders, top music customers]
+    sql: >-
+      customer.customer_id IN (
+        SELECT i.customer_id FROM invoice AS i GROUP BY i.customer_id HAVING sum(i.total) >= 45)
+
+  long_track:
+    kind: condition
+    table: track
+    description: A track longer than 5 minutes (company rule).
+    synonyms: [long tracks, long songs]
+    sql: track.milliseconds > 300000
+
+  video_track:
+    kind: condition
+    table: track
+    description: A track whose file is a video.
+    synonyms: [videos, music videos]
+    sql: >-
+      track.media_type_id IN (SELECT m.media_type_id FROM media_type AS m WHERE m.name ILIKE '%video%')
+
+  unsold_track:
+    kind: condition
+    table: track
+    description: A track that has never been sold.
+    synonyms: [unsold tracks, never sold]
+    sql: >-
+      NOT EXISTS (SELECT 1 FROM invoice_line AS il WHERE il.track_id = track.track_id)
+
+joins:
+  - {left: album.artist_id, right: artist.artist_id}
+  - {left: track.album_id, right: album.album_id}
+  - {left: track.genre_id, right: genre.genre_id}
+  - {left: track.media_type_id, right: media_type.media_type_id}
+  - {left: invoice_line.track_id, right: track.track_id}
+  - {left: invoice_line.invoice_id, right: invoice.invoice_id}
+  - {left: invoice.customer_id, right: customer.customer_id}
+  - {left: customer.support_rep_id, right: employee.employee_id, note: the customer's support rep}
+  - {left: playlist_track.playlist_id, right: playlist.playlist_id}
+  - {left: playlist_track.track_id, right: track.track_id}

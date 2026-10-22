@@ -1,0 +1,147 @@
+# Golden question set for Chinook, our online music store (Phase 3.2).
+#
+# Chinook sits in the same database as Northwind (25 tables). This set checks QueryMind still
+# answers music-store questions right when both businesses are in the schema, and (3.3) when
+# only the retrieved tables are shown.
+#
+# Same rules as northwind.yaml: the question says what to return; no ties at a top-N cut-off;
+# ordered: true only when the order is part of the answer. Music sales = invoice_line.unit_price *
+# invoice_line.quantity (equal to the invoice totals). Invoices run from 2021 to 2025.
+
+database: chinook
+version: 1
+
+questions:
+  # --- Easy ------------------------------------------------------------------------------
+  - id: c01_track_count
+    tier: easy
+    tags: [aggregation]
+    question: How many tracks does the music store have?
+    sql: SELECT count(*) FROM track
+
+  - id: c02_artist_count
+    tier: easy
+    tags: [aggregation]
+    question: How many artists are there in the music store?
+    sql: SELECT count(*) FROM artist
+
+  - id: c03_genre_names
+    tier: easy
+    tags: [filter]
+    question: List the names of all music genres.
+    sql: SELECT name FROM genre
+
+  - id: c04_brazil_music_customers
+    tier: easy
+    tags: [filter]
+    question: Which music store customers live in Brazil? Return their first and last names.
+    sql: SELECT first_name, last_name FROM customer WHERE country = 'Brazil'
+
+  - id: c05_long_track_count
+    tier: easy
+    tags: [business_term, aggregation]
+    question: How many long tracks do we have?
+    sql: SELECT count(*) FROM track WHERE milliseconds > 300000
+
+  # --- Medium ----------------------------------------------------------------------------
+  - id: c06_tracks_per_media_type
+    tier: medium
+    tags: [join, group_by]
+    question: How many tracks are there of each media type? Return the media type name and the number.
+    sql: >-
+      SELECT m.name, count(*) FROM track AS t
+      JOIN media_type AS m ON m.media_type_id = t.media_type_id GROUP BY m.name
+
+  - id: c07_music_sales_2023
+    tier: medium
+    tags: [join, aggregation, date_range]
+    question: What were the music store's total sales in 2023?
+    sql: >-
+      SELECT sum(il.unit_price * il.quantity) FROM invoice_line AS il
+      JOIN invoice AS i ON i.invoice_id = il.invoice_id
+      WHERE i.invoice_date >= '2023-01-01' AND i.invoice_date < '2024-01-01'
+
+  - id: c08_top3_artists_by_albums
+    tier: medium
+    tags: [join, group_by, top_n]
+    ordered: true
+    question: >-
+      Which 3 artists have the most albums? Return the artist name and the number of albums,
+      most first.
+    sql: >-
+      SELECT ar.name, count(*) AS albums FROM artist AS ar
+      JOIN album AS al ON al.artist_id = ar.artist_id
+      GROUP BY ar.name ORDER BY albums DESC LIMIT 3
+
+  - id: c09_rep_with_most_customers
+    tier: medium
+    tags: [join, group_by, top_n]
+    question: >-
+      Which support rep looks after the most music store customers? Return the rep's first name,
+      last name and number of customers.
+    sql: >-
+      SELECT e.first_name, e.last_name, count(*) AS customers FROM employee AS e
+      JOIN customer AS c ON c.support_rep_id = e.employee_id
+      GROUP BY e.first_name, e.last_name ORDER BY customers DESC LIMIT 1
+
+  - id: c10_artists_without_albums
+    tier: medium
+    tags: [subquery, set_logic]
+    question: How many artists have no albums in the store?
+    sql: >-
+      SELECT count(*) FROM artist AS ar
+      WHERE NOT EXISTS (SELECT 1 FROM album AS al WHERE al.artist_id = ar.artist_id)
+
+  - id: c11_big_spender_names
+    tier: medium
+    tags: [business_term, subquery]
+    question: Who are our big spenders? Return their first and last names.
+    sql: >-
+      SELECT c.first_name, c.last_name FROM customer AS c
+      WHERE c.customer_id IN (
+        SELECT i.customer_id FROM invoice AS i GROUP BY i.customer_id HAVING sum(i.total) >= 45)
+
+  # --- Hard ------------------------------------------------------------------------------
+  - id: c12_top3_genres_by_sales
+    tier: hard
+    tags: [join, group_by, top_n]
+    ordered: true
+    question: >-
+      Which 3 genres brought in the most music sales? Return the genre name and its sales,
+      highest first.
+    sql: >-
+      SELECT g.name, sum(il.unit_price * il.quantity) AS sales FROM genre AS g
+      JOIN track AS t ON t.genre_id = g.genre_id
+      JOIN invoice_line AS il ON il.track_id = t.track_id
+      GROUP BY g.name ORDER BY sales DESC LIMIT 3
+
+  - id: c13_sales_per_year
+    tier: hard
+    tags: [join, group_by, date_range]
+    ordered: true
+    question: What were the music store's sales in each year? Return the year and the sales, by year.
+    sql: >-
+      SELECT extract(year FROM i.invoice_date) AS year, sum(il.unit_price * il.quantity) AS sales
+      FROM invoice AS i JOIN invoice_line AS il ON il.invoice_id = i.invoice_id
+      GROUP BY year ORDER BY year
+
+  - id: c14_sales_by_support_rep
+    tier: hard
+    tags: [join, group_by]
+    ordered: true
+    question: >-
+      How much did the customers of each support rep spend in total? Return the rep's first name,
+      last name and the total, highest first.
+    sql: >-
+      SELECT e.first_name, e.last_name, sum(i.total) AS total FROM employee AS e
+      JOIN customer AS c ON c.support_rep_id = e.employee_id
+      JOIN invoice AS i ON i.customer_id = c.customer_id
+      GROUP BY e.first_name, e.last_name ORDER BY total DESC
+
+  - id: c15_usa_sales_share
+    tier: hard
+    tags: [aggregation]
+    question: What percentage of the music store's sales came from customers billed in the USA?
+    sql: >-
+      SELECT 100.0 * sum(CASE WHEN billing_country = 'USA' THEN total ELSE 0 END) / sum(total)
+      FROM invoice

@@ -16,10 +16,13 @@
 
 database: northwind
 version: 1
+description: Our food trading business (customers, orders, products, suppliers, shippers).
+scope: [categories, customer_customer_demo, customer_demographics, customers, employee_territories,
+        employees, order_details, orders, products, region, shippers, suppliers, territories, us_states]
 
 tables:
   customers:
-    description: Companies that buy from us.
+    description: Companies that buy food from our trading business (not the music store's customer table).
     synonyms: [clients, accounts, buyers]
     columns:
       company_name: {description: "The customer's name; use it when listing customers."}
@@ -30,7 +33,7 @@ tables:
       phone: {pii: true}
       fax: {pii: true}
   employees:
-    description: Our staff; the sales representatives who handle orders.
+    description: Trading business staff; the sales representatives who handle orders.
     synonyms: [staff, sales reps, salespeople, reps]
     columns:
       reports_to: {description: "The employee's manager (another employee_id)."}

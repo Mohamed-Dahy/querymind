@@ -8,6 +8,7 @@ Two separate checks: the file's *shape* (Pydantic, no database needed) and its *
 was renamed would teach the LLM to write SQL that fails, so both are errors, not warnings.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import yaml
@@ -40,6 +41,20 @@ def load_semantic_layer(path: Path) -> SemanticLayer:
         raise SemanticLayerError(f"{path} has the wrong shape:\n{exc}") from exc
 
 
+def load_semantic_layers(paths: Sequence[Path]) -> list[SemanticLayer]:
+    """Load several layers (e.g. Northwind + Chinook in one database). Names must not overlap."""
+    layers = [load_semantic_layer(path) for path in paths]
+    seen: dict[str, str] = {}
+    for layer in layers:
+        for name in {*layer.table_scope, *layer.metrics}:
+            if name in seen:
+                raise SemanticLayerError(
+                    f"{name!r} is defined in both {seen[name]} and {layer.database}"
+                )
+            seen[name] = layer.database
+    return layers
+
+
 def check_against(layer: SemanticLayer, schema: SchemaInfo) -> None:
     """Every table and column the layer names must exist in `schema` (as the agent's role sees it).
 
@@ -57,6 +72,9 @@ def check_against(layer: SemanticLayer, schema: SchemaInfo) -> None:
         elif column not in columns[table]:
             problems.append(f"{where}: unknown column {table}.{column}")
 
+    for table in layer.scope:
+        if table not in columns:
+            problems.append(f"scope: unknown table {table}")
     for table, info in layer.tables.items():
         if table not in columns:
             problems.append(f"tables: unknown table {table}")

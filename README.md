@@ -110,6 +110,7 @@ cp .env.example .env                   # then edit .env: passwords + your API ke
 
 docker compose up -d --wait            # start Postgres + pgvector on 127.0.0.1:5433
 uv run python data/seed_northwind.py   # load the sample data + create the read-only user
+uv run python data/seed_chinook.py     # load the second sample (a music store) next to it
 ```
 
 ### Ask questions

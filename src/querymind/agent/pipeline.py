@@ -48,7 +48,7 @@ from querymind.db.errors import QueryExecutionError, QueryTimeoutError
 from querymind.db.schema import SchemaInfo, introspect_schema
 from querymind.llm import LLMProvider
 from querymind.safety.errors import UnsafeSqlError
-from querymind.semantic.loader import check_against, load_semantic_layer
+from querymind.semantic.loader import check_against, load_semantic_layers
 from querymind.semantic.models import SemanticLayer
 from querymind.semantic.render import schema_prompt_text
 
@@ -76,8 +76,9 @@ class Pipeline:
         self._checkpointer = InMemorySaver(serde=serde)
         self._graph = build_graph(checkpointer=self._checkpointer)
         # Read the business definitions now: a broken file fails at startup, not on a question.
-        path = settings.semantic_layer_path
-        self._semantic_layer: SemanticLayer | None = load_semantic_layer(path) if path else None
+        self._semantic_layers: list[SemanticLayer] = load_semantic_layers(
+            settings.semantic_layer_paths
+        )
         self._schema: tuple[SchemaInfo, str] | None = None
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
         self._conversations: OrderedDict[str, None] = OrderedDict()  # least recent first
@@ -183,9 +184,9 @@ class Pipeline:
             if self._schema is None:
                 with self._connect(self._settings) as conn:
                     schema = introspect_schema(conn)
-                if self._semantic_layer is not None:
-                    check_against(self._semantic_layer, schema)  # names must exist (3.1)
-                self._schema = (schema, schema_prompt_text(schema, self._semantic_layer))
+                for layer in self._semantic_layers:
+                    check_against(layer, schema)  # every name it uses must exist (3.1)
+                self._schema = (schema, schema_prompt_text(schema, self._semantic_layers))
             return self._schema
 
     def _keep_or_forget(self, thread_id: str, *, keep: bool) -> None:

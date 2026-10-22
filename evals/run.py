@@ -7,6 +7,7 @@
     uv run python -m evals.run --suite golden --max-attempts 1     # no self-correction (ablation)
     uv run python -m evals.run --suite business                     # questions in business terms
     uv run python -m evals.run --suite business --no-semantic-layer # same, without definitions
+    uv run python -m evals.run --suite chinook                      # the music store (3.2)
 
 For each question: QueryMind writes and runs its own SQL (the real pipeline, real LLM), the
 reference SQL runs too, and the two RESULTS are compared (evals/compare.py). The score is the
@@ -30,7 +31,7 @@ from evals.compare import compare_results
 from evals.golden_set import GOLDEN_DIR, GoldenQuestion, load_golden_set
 from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest, Refusal
-from querymind.config import ConfigError, get_settings
+from querymind.config import ConfigError, Settings, get_settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError, QueryError
 from querymind.db.executor import QueryResult, execute_query
@@ -42,6 +43,7 @@ from querymind.safety.sql_validator import validate_sql
 SUITES = {
     "golden": GOLDEN_DIR / "northwind.yaml",
     "business": GOLDEN_DIR / "northwind_business.yaml",  # needs the semantic layer (3.1)
+    "chinook": GOLDEN_DIR / "chinook.yaml",  # the music store, next to Northwind (3.2)
 }
 TIERS = ("easy", "medium", "hard")
 CONFIDENCE_LEVELS = ("high", "medium", "low")
@@ -380,7 +382,7 @@ def main() -> int:
         if args.max_attempts:
             settings = settings.model_copy(update={"max_sql_attempts": args.max_attempts})
         if args.no_semantic_layer:
-            settings = settings.model_copy(update={"semantic_layer_path": None})
+            settings = settings.model_copy(update={"semantic_layer_paths": []})
         model, _ = settings.llm_credentials()
         references = run_references(items)
     except (ConfigError, psycopg.Error) as exc:
@@ -400,7 +402,7 @@ def main() -> int:
     print(
         f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}, "
         f"max {settings.max_sql_attempts} SQL attempts, "
-        f"semantic layer: {settings.semantic_layer_path or 'off'}\n"
+        f"semantic layer: {_layers(settings)}\n"
     )
     outcomes = evaluate(
         items,
@@ -434,13 +436,17 @@ def main() -> int:
             "Code": _git_commit(),
             "Max rows / timeout": f"{settings.max_rows} / {settings.query_timeout_seconds} s",
             "Max SQL attempts": str(settings.max_sql_attempts),
-            "Semantic layer": str(settings.semantic_layer_path or "off"),
+            "Semantic layer": _layers(settings),
         }
         title = f"QueryMind eval: {args.suite} ({golden.database})"
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(build_report(outcomes, title=title, meta=meta), encoding="utf-8")
         print(f"\nReport written to {args.report}")
     return 0
+
+
+def _layers(settings: Settings) -> str:
+    return ", ".join(p.name for p in settings.semantic_layer_paths) or "off"
 
 
 class AuditCapture(logging.Handler):

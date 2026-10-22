@@ -109,7 +109,7 @@ def pipeline_with(*responses: FakeResponse) -> tuple[Pipeline, FakeLLMProvider]:
         "groq_api_key": SecretStr("gsk_test"),
         "groq_model": "openai/gpt-oss-120b",
         "max_sql_attempts": 3,
-        "semantic_layer_path": None,  # the fake SCHEMA has no Northwind tables to define
+        "semantic_layer_paths": [],  # the fake SCHEMA has no Northwind tables to define
     }
     llm = FakeLLMProvider(responses)
     return Pipeline(llm=llm, settings=Settings.model_validate(values), connect=MagicMock()), llm
