@@ -97,6 +97,8 @@ def ask(client: QueryMindClient, question: str) -> AskResponse | ApiError:
 def render_answer(response: AskResponse) -> None:
     """The answer first, then the table, then the SQL as evidence."""
     st.markdown(response.answer)
+    for warning in response.warnings:
+        st.warning(warning.message, icon=":material/warning:")
     if not response.answer_from_llm:
         st.caption(
             ":information_source: Built directly from the data (the AI's wording wasn't used)."

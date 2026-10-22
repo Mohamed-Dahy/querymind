@@ -6,8 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from querymind import __version__
-from querymind.agent.schemas import AnswerSummary, AskResult
+from querymind.agent.schemas import AnswerSummary, AskResult, SanityWarning
 from querymind.api.main import create_app
+from querymind.api.schemas import AskResponse
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMOutputError, LLMProviderError
@@ -60,8 +61,21 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         "rows": [[91]],
         "row_count": 1,
         "truncated": False,
+        "warnings": [],
     }
     assert pipeline.questions == ["How many customers are there?"]  # whitespace stripped
+
+
+def test_warnings_are_sent_without_the_llm_hint() -> None:
+    warning = SanityWarning(
+        code="duplicate_rows",
+        message="Some rows appear more than once.",
+        detail="2 of the 4 rows are exact duplicates... use DISTINCT.",
+    )
+    response = AskResponse.from_result(RESULT.model_copy(update={"warnings": (warning,)}))
+    assert [w.model_dump() for w in response.warnings] == [
+        {"code": "duplicate_rows", "message": "Some rows appear more than once."}
+    ]
 
 
 def test_health() -> None:

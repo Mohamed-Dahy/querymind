@@ -16,6 +16,15 @@ class AskRequest(BaseModel):
     )
 
 
+class ResultWarning(BaseModel):
+    """A sign that the result may be wrong although the query ran (see agent/sanity.py)."""
+
+    code: str = Field(examples=["duplicate_rows"])
+    message: str = Field(
+        examples=["Some rows appear more than once, which can mean a join counted things twice."]
+    )
+
+
 class AskResponse(BaseModel):
     """The answer, plus everything needed to check it: the SQL that ran and its rows."""
 
@@ -30,6 +39,9 @@ class AskResponse(BaseModel):
     rows: list[list[JsonValue]]
     row_count: int
     truncated: bool = Field(description="True if more rows existed than the row limit")
+    warnings: list[ResultWarning] = Field(
+        default=[], description="Signs the result may be wrong (empty, duplicated rows...)"
+    )
 
     @classmethod
     def from_result(cls, result: AskResult) -> "AskResponse":
@@ -43,6 +55,8 @@ class AskResponse(BaseModel):
             rows=result.result.rows,
             row_count=result.result.row_count,
             truncated=result.result.truncated,
+            # Only code + message: a warning's `detail` is a hint written for the LLM.
+            warnings=[ResultWarning(code=w.code, message=w.message) for w in result.warnings],
         )
 
 

@@ -70,7 +70,12 @@ def print_result(result: AskResult) -> None:
     """The answer first (what a user wants), then the SQL and the first rows as evidence."""
     source = "" if result.answer.from_llm else "  [fallback: the LLM answer was not used]"
     print(f"    answer: {result.answer.text}{source}")
-    print("    sql:")
+    for warning in result.warnings:
+        print(f"    WARNING ({warning.code}): {warning.message}")
+    for number, attempt in enumerate(result.failed_attempts, start=1):
+        print(f"    try {number} {attempt.error_kind}: {attempt.detail[:110]}")
+    tries = f" (after {result.sql_attempts} tries)" if result.sql_attempts > 1 else ""
+    print(f"    sql{tries}:")
     print(textwrap.indent(result.sql, " " * 8))
     data = result.result
     print(f"    result: {' | '.join(data.columns)}")

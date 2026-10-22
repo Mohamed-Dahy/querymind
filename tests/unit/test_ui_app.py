@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from querymind.api.schemas import AskResponse, HealthResponse
+from querymind.api.schemas import AskResponse, HealthResponse, ResultWarning
 from querymind.client import ApiError, QueryMindClient
 
 APP = str(Path(__file__).parents[2] / "ui" / "app.py")
@@ -27,6 +27,9 @@ ANSWER = AskResponse(
 )
 
 
+DOUBLED = ResultWarning(code="duplicate_rows", message="Some rows appear more than once.")
+
+
 @pytest.fixture
 def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Replace the client's HTTP calls. Returns the list of questions the UI sent."""
@@ -38,6 +41,8 @@ def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
             raise ApiError("unsafe_sql", "Only SELECT queries are allowed.", status=422)
         if question == "db down":
             raise ApiError("db_unavailable", "Could not connect to the database.", status=503)
+        if question == "doubled":
+            return ANSWER.model_copy(update={"warnings": [DOUBLED]})
         return ANSWER
 
     monkeypatch.setattr(QueryMindClient, "ask", ask)
@@ -72,6 +77,14 @@ def test_question_shows_answer_table_and_sql(fake_api: list[str]) -> None:
     assert table.value.iloc[0]["product_name"] == "Côte de Blaye"
     assert app.expander[0].label == "Show SQL"
     assert app.code[0].value == ANSWER.sql
+
+
+def test_result_warnings_are_shown(fake_api: list[str]) -> None:
+    app = run_app()
+    app.chat_input[0].set_value("doubled").run()
+    assert [w.value for w in app.warning] == ["Some rows appear more than once."]
+    app.chat_input[0].set_value("Top products?").run()
+    assert len(app.warning) == 1  # the clean answer adds none
 
 
 def test_example_button_asks_that_question(fake_api: list[str]) -> None:

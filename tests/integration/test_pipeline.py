@@ -100,6 +100,21 @@ def test_a_real_postgres_error_is_fixed_by_a_repair(
     assert audit.attempt_errors == [f"db_error: {failed.detail}"]  # type: ignore[attr-defined]
 
 
+def test_an_empty_result_is_retried_with_a_hint(settings: Settings) -> None:
+    # A classic: the user typed "germany", the data says "Germany", '=' is case-sensitive.
+    wrong = "SELECT company_name FROM customers WHERE country = 'germany'"
+    right = "SELECT company_name FROM customers WHERE country ILIKE 'germany'"
+    pipeline, fake = make_pipeline(settings, draft(wrong), draft(right), "There are 11.")
+    result = pipeline.ask("Which customers are in germany?")
+
+    assert result.result.row_count == 11
+    assert result.warnings == ()  # the repaired result looks fine
+    assert result.sql_attempts == 2
+    (suspicious,) = result.failed_attempts
+    assert suspicious.error_kind == "suspicious"
+    assert "returned no rows" in fake.calls[1].prompt
+
+
 def test_audit_keeps_the_validated_sql_when_the_database_fails(
     settings: Settings, caplog: pytest.LogCaptureFixture
 ) -> None:

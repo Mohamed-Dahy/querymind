@@ -9,6 +9,7 @@ import pytest
 import sqlglot
 
 from evals.golden_set import GOLDEN_DIR, GoldenQuestion, load_golden_set
+from querymind.agent.sanity import check_result
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.executor import QueryResult, execute_query
@@ -87,3 +88,12 @@ def test_top_n_answers_have_no_ties_at_the_cutoff(
         query = validate_sql(sql, allowed_tables=allowed_tables, max_rows=100)
         rows = execute_query(ro_conn, query, timeout_seconds=10).rows
         assert rows[n - 1][-1] != rows[n][-1], question_id
+
+
+@pytest.mark.parametrize("item", GOLDEN.questions, ids=lambda q: q.id)
+def test_right_answers_raise_no_sanity_warnings(
+    ro_conn: psycopg.Connection, allowed_tables: frozenset[str], item: GoldenQuestion
+) -> None:
+    # The sanity check (2.3) must not cry wolf: these 30 results are known to be right.
+    warnings = check_result(run(ro_conn, item, allowed_tables))
+    assert [w.code for w in warnings] == []

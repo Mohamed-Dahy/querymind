@@ -37,13 +37,24 @@ class AnswerSummary(BaseModel):
     from_llm: bool
 
 
+class SanityWarning(BaseModel):
+    """A sign that a result may be wrong although the query ran (agent/sanity.py)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    code: Literal["empty", "duplicate_rows", "negative_total", "absurd_magnitude"]
+    message: str  # for people: shown under the answer
+    detail: str  # for the LLM: what to check when it repairs the query
+
+
 class SqlAttempt(BaseModel):
     """One SQL try that failed: shown to the LLM so it can fix it, and kept for the audit."""
 
     model_config = ConfigDict(frozen=True)
 
     sql: str  # the validated SQL if it passed the validator, else the LLM's draft
-    error_kind: Literal["unsafe", "db_error", "timeout"]
+    # "suspicious" = it ran, but the result looked wrong (an empty result, duplicate rows).
+    error_kind: Literal["unsafe", "db_error", "timeout", "suspicious"]
     message: str  # for people: what the API would show
     detail: str  # for the LLM: the validator's reason, or Postgres's own short message
 
@@ -58,10 +69,7 @@ class AskResult(BaseModel):
     explanation: str
     result: QueryResult
     answer: AnswerSummary
-    # The tries that failed before the one that worked (empty = right first time).
+    # The tries that failed or looked wrong before this answer (empty = right first time).
     failed_attempts: tuple[SqlAttempt, ...] = ()
-
-    @property
-    def sql_attempts(self) -> int:
-        """How many SQL queries it took, the successful one included."""
-        return len(self.failed_attempts) + 1
+    sql_attempts: int = 1  # SQL queries tried for this answer, including the one shown
+    warnings: tuple[SanityWarning, ...] = ()  # signs the result may still be wrong

@@ -96,6 +96,8 @@ class Pipeline:
             result=state["result"],
             answer=state["answer"],
             failed_attempts=tuple(state.get("attempts", [])),
+            sql_attempts=_queries_run(state),
+            warnings=tuple(state.get("warnings", [])),
         )
 
     def _schema_info(self) -> tuple[SchemaInfo, str]:
@@ -117,16 +119,38 @@ class Pipeline:
             "ask",
             extra={
                 "question": question,
-                "sql": state.get("sql"),  # the last SQL tried (validated, if it got that far)
+                "sql": _last_sql(state),  # validated, if it got that far
                 "outcome": outcome,
                 "row_count": result.row_count if result else None,
-                # Queries tried, the working one included, and why each failed one failed.
-                "sql_attempts": len(failed) + (1 if result else 0),
+                # Queries tried, and why each failed (or suspicious) one was retried.
+                "sql_attempts": _queries_run(state),
                 "attempt_errors": [f"{a.error_kind}: {a.detail}" for a in failed],
+                "warnings": [w.code for w in state.get("warnings", [])],
                 "provider": self._llm.name,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )
+
+
+def _queries_run(state: AgentState) -> int:
+    """SQL queries tried. Each attempt was one; a result that isn't an attempt is one more.
+
+    The exception: after a suspicious result whose repairs all failed, the answer *is* that
+    suspicious attempt's result (still flagged for repair), so it isn't counted twice.
+    """
+    attempts = len(state.get("attempts", []))
+    answered_with_new_query = "result" in state and not state.get("needs_repair", False)
+    return attempts + (1 if answered_with_new_query else 0)
+
+
+def _last_sql(state: AgentState) -> str | None:
+    """The SQL to report: the one whose result we have, else the last one tried, else the draft."""
+    if "result" in state:
+        return state["sql"]
+    if attempts := state.get("attempts"):
+        return attempts[-1].sql
+    draft = state.get("draft")
+    return draft.sql if draft else None
 
 
 def _error_from(attempt: SqlAttempt) -> Exception:
@@ -135,4 +159,7 @@ def _error_from(attempt: SqlAttempt) -> Exception:
         return UnsafeSqlError(attempt.message)
     if attempt.error_kind == "db_error":
         return QueryExecutionError(attempt.message, detail=attempt.detail)
-    return QueryTimeoutError(attempt.message)
+    if attempt.error_kind == "timeout":
+        return QueryTimeoutError(attempt.message)
+    # A suspicious attempt always leaves a result to answer with, so it never ends a run.
+    raise AssertionError(f"no error for a {attempt.error_kind!r} attempt")

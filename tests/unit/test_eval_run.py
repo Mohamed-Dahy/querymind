@@ -53,6 +53,7 @@ def answer(rows: list[list[object]], *, retried: bool = False) -> AskResult:
         result=result(rows),
         answer=AnswerSummary(text="", from_llm=False),
         failed_attempts=(FIXED,) if retried else (),
+        sql_attempts=2 if retried else 1,
     )
 
 

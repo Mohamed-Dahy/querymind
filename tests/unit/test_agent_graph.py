@@ -1,7 +1,7 @@
 """The agent graph with a fake LLM and a stubbed executor: no DB, no network.
 
-Wiring (2.1) and the self-correction loop (2.2). The real DB + graph path is covered by
-tests/integration/test_pipeline.py.
+Wiring (2.1), the self-correction loop (2.2) and the sanity check (2.3). The real DB + graph
+path is covered by tests/integration/test_pipeline.py.
 """
 
 from collections import deque
@@ -24,6 +24,13 @@ from querymind.llm.fake import FakeLLMProvider
 from querymind.safety.sql_validator import ValidatedQuery
 
 RESULT = QueryResult(columns=["n"], rows=[[91]], row_count=1, truncated=False, duration_ms=2)
+EMPTY = QueryResult(columns=["n"], rows=[], row_count=0, truncated=False, duration_ms=2)
+DOUBLED = QueryResult(
+    columns=["city"], rows=[["Berlin"], ["Berlin"]], row_count=2, truncated=False, duration_ms=2
+)
+NEGATIVE = QueryResult(
+    columns=["total_sales"], rows=[[-5.0]], row_count=1, truncated=False, duration_ms=2
+)
 START: AgentState = {
     "question": "How many customers are there?",
     "schema_text": "Table customers (customer_id text PK, ...)",
@@ -49,19 +56,21 @@ def settings(**overrides: Any) -> Settings:
 
 
 class StubExecutor:
-    """Stands in for execute_query: records each query; answers RESULT or a queued error."""
+    """Stands in for execute_query: records each query; answers with the next queued reply
+    (a result to return, or an error to raise), and RESULT once the queue is empty."""
 
     def __init__(self) -> None:
         self.queries: list[ValidatedQuery] = []
-        self.errors: deque[Exception] = deque()
+        self.replies: deque[QueryResult | Exception] = deque()
 
     def __call__(
         self, conn: psycopg.Connection, query: ValidatedQuery, *, timeout_seconds: int
     ) -> QueryResult:
         self.queries.append(query)
-        if self.errors:
-            raise self.errors.popleft()
-        return RESULT
+        reply = self.replies.popleft() if self.replies else RESULT
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
 
 
 @pytest.fixture
@@ -107,7 +116,7 @@ def test_nodes_run_in_order_and_fill_the_state(executor: StubExecutor) -> None:
             START, context=context(answering_llm()), stream_mode="updates"
         )
     ]
-    assert steps == ["generate_sql", "run_sql", "summarize"]
+    assert steps == ["generate_sql", "run_sql", "check_result", "summarize"]
 
     final = build_graph().invoke(START, context=context(answering_llm()))
     assert final["sql"] == "SELECT COUNT(*) AS n FROM customers LIMIT 1001"  # the validated SQL
@@ -115,6 +124,7 @@ def test_nodes_run_in_order_and_fill_the_state(executor: StubExecutor) -> None:
     assert final["result"] == RESULT
     assert final["answer"] == AnswerSummary(text="There are 91.", from_llm=True)
     assert final.get("attempts", []) == []  # right first time
+    assert final["warnings"] == []  # and nothing looks wrong
 
 
 def test_only_validated_sql_reaches_the_executor(executor: StubExecutor) -> None:
@@ -152,11 +162,11 @@ def test_summary_can_be_skipped(executor: StubExecutor) -> None:
 def test_state_holds_only_saveable_values(executor: StubExecutor) -> None:
     # Phase 2.6 saves the state between turns. A connection can't be saved, and a reloaded
     # ValidatedQuery would carry the validator's stamp without having been validated.
-    executor.errors.append(db_error())  # so the state also holds an attempt
+    executor.replies.append(db_error())  # so the state also holds an attempt
     llm = FakeLLMProvider([GOOD, GOOD, "There are 91."])
     final = build_graph().invoke(START, context=context(llm))
     for key, value in final.items():
-        assert isinstance(value, str | list | BaseModel), key
+        assert isinstance(value, str | bool | list | BaseModel), key
         assert not isinstance(value, ValidatedQuery), key
     assert all(isinstance(a, SqlAttempt) for a in final["attempts"])
 
@@ -166,9 +176,12 @@ def test_diagram_shows_the_nodes_and_edges() -> None:
     for edge in [
         "__start__ --> generate_sql",
         "generate_sql --> run_sql",
-        "run_sql -.-> summarize",  # dotted = a conditional edge (one of these is taken)
+        "run_sql -.-> check_result",  # dotted = a conditional edge (one of these is taken)
         "run_sql -.-> repair_sql",
+        "run_sql -.-> summarize",
         "run_sql -.-> __end__",
+        "check_result -.-> summarize",
+        "check_result -.-> repair_sql",
         "repair_sql --> run_sql",  # the self-correction loop
         "summarize --> __end__",
     ]:
@@ -179,7 +192,7 @@ def test_diagram_shows_the_nodes_and_edges() -> None:
 
 
 def test_database_error_is_sent_back_and_fixed(executor: StubExecutor) -> None:
-    executor.errors.append(db_error())
+    executor.replies.append(db_error())
     llm = FakeLLMProvider([draft("SELECT freight AS n FROM orders"), GOOD, "91."])
     final = build_graph().invoke(START, context=context(llm))
 
@@ -208,7 +221,7 @@ def test_unsafe_sql_is_sent_back_with_the_reason(executor: StubExecutor) -> None
 
 
 def test_timeout_asks_for_a_simpler_query(executor: StubExecutor) -> None:
-    executor.errors.append(QueryTimeoutError("The query took longer than 10 s and was stopped."))
+    executor.replies.append(QueryTimeoutError("The query took longer than 10 s and was stopped."))
     llm = FakeLLMProvider([GOOD, GOOD, "91."])
     final = build_graph().invoke(START, context=context(llm))
     assert final["attempts"][0].error_kind == "timeout"
@@ -217,7 +230,7 @@ def test_timeout_asks_for_a_simpler_query(executor: StubExecutor) -> None:
 
 def test_a_repaired_query_is_validated_again(executor: StubExecutor) -> None:
     # The repair is a new draft: it gets no free pass. Here it's unsafe, so it never runs.
-    executor.errors.append(db_error())
+    executor.replies.append(db_error())
     llm = FakeLLMProvider([GOOD, draft("DROP TABLE customers"), GOOD, "91."])
     final = build_graph().invoke(START, context=context(llm))
     assert [a.error_kind for a in final["attempts"]] == ["db_error", "unsafe"]
@@ -228,7 +241,7 @@ def test_a_repaired_query_is_validated_again(executor: StubExecutor) -> None:
 
 
 def test_gives_up_after_max_attempts(executor: StubExecutor) -> None:
-    executor.errors.extend([db_error(), db_error(), db_error()])
+    executor.replies.extend([db_error(), db_error(), db_error()])
     llm = FakeLLMProvider([GOOD, GOOD, GOOD])
     final = build_graph().invoke(START, context=context(llm))
     assert "result" not in final
@@ -237,7 +250,7 @@ def test_gives_up_after_max_attempts(executor: StubExecutor) -> None:
 
 
 def test_one_attempt_means_no_repair(executor: StubExecutor) -> None:
-    executor.errors.append(db_error())
+    executor.replies.append(db_error())
     llm = FakeLLMProvider([GOOD])
     final = build_graph().invoke(START, context=context(llm, max_sql_attempts=1))
     assert len(final["attempts"]) == 1
@@ -249,7 +262,7 @@ def test_one_attempt_means_no_repair(executor: StubExecutor) -> None:
 )
 def test_llm_errors_are_not_retried_by_the_loop(executor: StubExecutor, error: Exception) -> None:
     # A failing LLM isn't fixed by asking it again right away: the run ends (the eval backs off).
-    executor.errors.append(db_error())
+    executor.replies.append(db_error())
     llm = FakeLLMProvider([GOOD, error])
     with pytest.raises(type(error)):
         build_graph().invoke(START, context=context(llm))
@@ -262,3 +275,68 @@ def test_database_down_is_not_retried_by_the_loop(executor: StubExecutor) -> Non
     with pytest.raises(DatabaseUnavailableError):
         build_graph().invoke(START, context=context(llm, connect))
     assert len(llm.calls) == 1  # no repair: different SQL won't bring the database back
+
+
+# --- Sanity check (2.3) ----------------------------------------------------------------------
+
+
+def test_an_empty_result_gets_one_repair(executor: StubExecutor) -> None:
+    executor.replies.append(EMPTY)  # then RESULT
+    llm = FakeLLMProvider([GOOD, GOOD, "91."])
+    final = build_graph().invoke(START, context=context(llm))
+    assert final["result"] == RESULT
+    assert final["warnings"] == []  # the repaired result looks fine
+    (suspicious,) = final["attempts"]
+    assert suspicious.error_kind == "suspicious"
+    assert "It ran, but the result looks wrong: The query ran but returned no rows" in (
+        llm.calls[1].prompt
+    )
+
+
+def test_still_empty_after_the_repair_is_answered_with_a_warning(executor: StubExecutor) -> None:
+    # "Which products were never ordered?" can truly be empty: one repair, then we answer.
+    executor.replies.extend([EMPTY, EMPTY])
+    llm = FakeLLMProvider([GOOD, GOOD])
+    final = build_graph().invoke(START, context=context(llm))
+    assert final["result"] == EMPTY
+    assert [w.code for w in final["warnings"]] == ["empty"]
+    # Generate + ONE repair. No second sanity repair, and no summary call: an empty result
+    # gets the templated answer (Phase 1 rule).
+    assert len(llm.calls) == 2
+
+
+def test_duplicate_rows_get_one_repair(executor: StubExecutor) -> None:
+    executor.replies.append(DOUBLED)
+    llm = FakeLLMProvider([GOOD, GOOD, "91."])
+    final = build_graph().invoke(START, context=context(llm))
+    assert final["result"] == RESULT
+    assert "a join multiplied rows" in llm.calls[1].prompt
+
+
+def test_a_negative_total_is_only_a_warning(executor: StubExecutor) -> None:
+    executor.replies.append(NEGATIVE)
+    llm = FakeLLMProvider([GOOD, "Total sales: -5."])
+    final = build_graph().invoke(START, context=context(llm))
+    assert [w.code for w in final["warnings"]] == ["negative_total"]
+    assert final.get("attempts", []) == []  # no repair
+    assert len(llm.calls) == 2
+
+
+def test_a_failed_repair_keeps_the_first_result(executor: StubExecutor) -> None:
+    # Empty result → repair → the repairs fail in the database → answer the empty result.
+    executor.replies.extend([EMPTY, db_error(), db_error()])
+    llm = FakeLLMProvider([GOOD, GOOD, GOOD])
+    final = build_graph().invoke(START, context=context(llm))
+    assert final["result"] == EMPTY
+    assert final["sql"] == "SELECT COUNT(*) AS n FROM customers LIMIT 1001"  # its own SQL
+    assert [w.code for w in final["warnings"]] == ["empty"]
+    assert [a.error_kind for a in final["attempts"]] == ["suspicious", "db_error", "db_error"]
+    assert final["answer"].from_llm is False  # empty → templated answer
+
+
+def test_no_sanity_repair_without_tries_left(executor: StubExecutor) -> None:
+    executor.replies.append(EMPTY)
+    llm = FakeLLMProvider([GOOD])
+    final = build_graph().invoke(START, context=context(llm, max_sql_attempts=1))
+    assert [w.code for w in final["warnings"]] == ["empty"]
+    assert len(llm.calls) == 1  # no repair: the one allowed query was used

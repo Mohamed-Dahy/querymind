@@ -20,7 +20,7 @@ from typing import Annotated, TypedDict
 
 import psycopg
 
-from querymind.agent.schemas import AnswerSummary, SqlAttempt
+from querymind.agent.schemas import AnswerSummary, SanityWarning, SqlAttempt, SqlDraft
 from querymind.config import Settings
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProvider
@@ -34,12 +34,17 @@ class AgentState(TypedDict, total=False):
     schema_text: str  # the schema description the LLM sees
     table_names: list[str]  # the validator's table allowlist
     # Filled in by the nodes.
-    sql: str  # the LLM's draft, then the validated SQL that ran (with its LIMIT)
+    draft: SqlDraft  # the query to try next (from generate_sql or repair_sql), not trusted yet
+    # The last query that ran, as a set: its validated SQL, the LLM's explanation, its rows.
+    # A later failed repair doesn't touch them, so a good-enough result is never lost.
+    sql: str
     explanation: str
-    # Failed tries, oldest first. `operator.add` is a *reducer*: a node returns only its new
-    # attempt ({"attempts": [one]}) and LangGraph appends it, instead of replacing the list.
-    attempts: Annotated[list[SqlAttempt], operator.add]
     result: QueryResult
+    warnings: list[SanityWarning]  # signs that `result` may be wrong (check_result)
+    # Failed or suspicious tries, oldest first. `operator.add` is a *reducer*: a node returns
+    # only its new attempt ({"attempts": [one]}) and LangGraph appends it, instead of replacing.
+    attempts: Annotated[list[SqlAttempt], operator.add]
+    needs_repair: bool  # True after a failed or suspicious query: route to repair_sql
     answer: AnswerSummary
 
 

@@ -11,8 +11,9 @@ QueryMind is built to **assist** data teams, not replace them. It handles routin
 can focus on deeper work, and it always shows its SQL so every answer can be checked.
 
 > 🚧 **Status: working agent.** Ask questions through a chat UI or an HTTP API. When a query fails, the agent
-> reads the database's error and fixes its own SQL. On a 30-question test set with known answers it gets
-> **30/30** right (29/30 before self-correction). Next: sanity checks and clarifying questions, then larger databases.
+> reads the database's error and fixes its own SQL; when a result looks wrong (no rows, duplicated rows), it
+> checks again and warns you. On a 30-question test set with known answers it gets **30/30** right (29/30 before
+> self-correction). Next: clarifying questions, then larger databases.
 
 ---
 
@@ -24,15 +25,18 @@ Question → LLM writes SQL → safety check → run on a read-only DB user → 
 
 The steps run as a [LangGraph](https://langchain-ai.github.io/langgraph/) agent graph. When a query is unsafe,
 fails in the database or runs too long, the error goes back to the LLM, which writes a fixed query (up to 3 tries).
-Every fixed query is checked again before it runs.
+Every fixed query is checked again before it runs. A result that looks wrong (no rows, duplicated rows) gets one
+more try, and any warning that's left is shown with the answer.
 
 ```mermaid
 graph TD;
     start([Start]) --> generate_sql;
     generate_sql["generate_sql<br/>LLM writes SQL"] --> run_sql;
-    run_sql["run_sql<br/>validate, then run read-only"] -. worked .-> summarize;
+    run_sql["run_sql<br/>validate, then run read-only"] -. ran .-> check_result;
     run_sql -. failed, tries left .-> repair_sql;
     run_sql -. failed, no tries left .-> done([End]);
+    check_result["check_result<br/>does the result look right?"] -. looks fine .-> summarize;
+    check_result -. looks wrong .-> repair_sql;
     repair_sql["repair_sql<br/>LLM fixes it, given the error"] --> run_sql;
     summarize["summarize<br/>answer, checked against the data"] --> done;
 ```
