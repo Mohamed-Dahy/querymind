@@ -114,6 +114,22 @@ def test_vendor_errors_become_provider_errors(
     assert isinstance(info.value.__cause__, VendorDown)  # original error kept for debugging
 
 
+def test_vendor_errors_about_the_answer_become_output_errors(chat_model: MagicMock) -> None:
+    # e.g. Groq's 400 "json_validate_failed": the model refused in plain text. Not an outage.
+    provider = LangChainProvider(
+        name="test",
+        chat_model=chat_model,
+        provider_errors=(VendorDown,),
+        is_output_error=lambda exc: "refused" in str(exc),
+    )
+    chat_model.invoke.side_effect = VendorDown("model refused")
+    with pytest.raises(LLMOutputError, match="did not match the schema"):
+        provider.generate_text("question")
+    chat_model.invoke.side_effect = VendorDown("rate limited")
+    with pytest.raises(LLMProviderError):
+        provider.generate_text("question")
+
+
 def test_unexpected_errors_are_not_hidden(
     provider: LangChainProvider, chat_model: MagicMock
 ) -> None:

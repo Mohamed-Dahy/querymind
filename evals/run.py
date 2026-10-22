@@ -29,7 +29,7 @@ from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AskResult
 from querymind.config import ConfigError, get_settings
 from querymind.db.connection import connect_readonly
-from querymind.db.errors import QueryError
+from querymind.db.errors import DatabaseUnavailableError, QueryError
 from querymind.db.executor import QueryResult, execute_query
 from querymind.db.schema import introspect_schema
 from querymind.llm import LLMError, LLMProviderError, create_llm_provider
@@ -72,15 +72,16 @@ def evaluate_question(
 ) -> Outcome:
     """Ask one golden question and compare QueryMind's result with the reference result.
 
-    An LLMProviderError (usually a rate limit) is retried after a pause; if it never works, the
-    question is *not scored*: being throttled says nothing about the agent's accuracy. Every
-    other failure (unsafe SQL, a database error, unusable LLM output) counts as a wrong answer.
+    An LLMProviderError (usually a rate limit) or a database that can't be reached is retried
+    after a pause; if it never works, the question is *not scored*: an outage says nothing about
+    the agent's accuracy. Every other failure (unsafe SQL, a query error, unusable LLM output)
+    counts as a wrong answer.
     """
     started = time.perf_counter()
     for attempt in range(1, retries + 2):
         try:
             answer = ask(item.question)
-        except LLMProviderError as exc:
+        except (LLMProviderError, DatabaseUnavailableError) as exc:
             if attempt <= retries:
                 sleep(backoff_seconds * attempt)
                 continue
@@ -178,7 +179,7 @@ class Summary:
     by_tier: dict[str, Score]
     by_tag: dict[str, Score]
     errors: dict[str, int]  # exception type → how many scored questions failed with it
-    not_scored: list[str]  # ids of questions with no verdict (provider unavailable)
+    not_scored: list[str]  # ids of questions with no verdict (LLM or database unavailable)
     seconds: float
 
 
@@ -212,7 +213,7 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
         "|---|---|",
         f"| **Execution accuracy** (extra columns allowed) | **{summary.accuracy}** |",
         f"| Strict (exactly the asked-for columns) | {summary.strict} |",
-        f"| Not scored (LLM provider unavailable) | {len(summary.not_scored)} |",
+        f"| Not scored (LLM or database unavailable) | {len(summary.not_scored)} |",
         f"| Total time | {summary.seconds:.0f} s |",
         "",
         "## By tier",
@@ -232,8 +233,8 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
         lines += [
             "## Not scored",
             "",
-            "The LLM provider refused these after every retry (usually a rate limit), so the agent",
-            "never answered. They are left out of the accuracy above. Rerun them with:",
+            "The LLM provider or the database was unavailable after every retry (usually a rate",
+            "limit), so the agent never answered. They are left out of the accuracy above. Rerun:",
             "",
             "```",
             f"uv run python -m evals.run --suite golden --ids {' '.join(summary.not_scored)}",
@@ -306,6 +307,10 @@ def main() -> int:
     except (ConfigError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    except DatabaseUnavailableError as exc:
+        print(f"Error: {exc.__cause__}", file=sys.stderr)
+        print("Is the database running? docker compose up -d --wait", file=sys.stderr)
+        return 1
     pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
     capture = AuditSqlCapture.attach()
 
@@ -330,7 +335,7 @@ def main() -> int:
     print("  " + "   ".join(f"{tier}: {score}" for tier, score in summary.by_tier.items()))
     if summary.not_scored:
         print()
-        print(f"Not scored (LLM provider unavailable): {', '.join(summary.not_scored)}")
+        print(f"Not scored (LLM or database unavailable): {', '.join(summary.not_scored)}")
         print(f"Rerun: uv run python -m evals.run --ids {' '.join(summary.not_scored)}")
     if args.report:
         meta = {

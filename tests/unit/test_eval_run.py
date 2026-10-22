@@ -12,7 +12,7 @@ from evals.run import (
     summarize_outcomes,
 )
 from querymind.agent.schemas import AnswerSummary, AskResult
-from querymind.db.errors import QueryExecutionError
+from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProviderError
 from querymind.safety.errors import UnsafeSqlError
@@ -125,6 +125,14 @@ def test_rate_limits_give_up_after_the_retries() -> None:
     assert outcome.scored is False  # no verdict: the agent never got to answer
 
 
+def test_database_down_is_not_scored() -> None:
+    errors: list[object] = [DatabaseUnavailableError("Could not connect to the database.")] * 3
+    outcome = evaluate_question(
+        question("q1"), ask=asker({"q1": errors}), reference=reference, retries=2, sleep=no_sleep
+    )
+    assert (outcome.scored, outcome.attempts) == (False, 3)  # an outage, not a wrong answer
+
+
 def test_unscored_questions_are_left_out_of_the_accuracy() -> None:
     ask = asker({"q1": [[[91]]], "q2": [LLMProviderError("429")] * 3})
     outcomes = evaluate(
@@ -135,7 +143,7 @@ def test_unscored_questions_are_left_out_of_the_accuracy() -> None:
     assert summary.not_scored == ["q2"]
     assert summary.errors == {}  # a rate limit isn't an agent error
     report = build_report(outcomes, title="t", meta={})
-    assert "| Not scored (LLM provider unavailable) | 1 |" in report
+    assert "| Not scored (LLM or database unavailable) | 1 |" in report
     assert "--ids q2" in report
     assert "| `q2` | easy | SKIP |" in report
     assert "## Failures in detail" not in report

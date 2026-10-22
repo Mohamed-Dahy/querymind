@@ -25,6 +25,7 @@ ERROR_TITLES = {
     "invalid_request": "That question can't be sent.",
     "query_timeout": "The query took too long.",
     "query_failed": "The database couldn't run the query.",
+    "db_unavailable": "The database isn't reachable right now.",
     "llm_unavailable": "The AI model is unavailable right now. Please try again.",
     "llm_bad_output": "The AI model gave an unusable answer. Please try rephrasing.",
     "api_unreachable": "The QueryMind API isn't reachable.",

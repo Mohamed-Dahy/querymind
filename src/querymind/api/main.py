@@ -9,7 +9,8 @@ loads settings (failing fast if .env is wrong), sets up JSON logging and creates
 that every request shares.
 
 Every error becomes the same small JSON shape, `{"error": code, "message": text}`, with a
-fitting HTTP status. Stack traces and raw driver messages never reach the client (§9).
+fitting HTTP status. Stack traces and raw driver or LLM-vendor messages never reach the
+client (§9).
 """
 
 import logging
@@ -25,21 +26,29 @@ from querymind.agent.pipeline import Pipeline
 from querymind.api.deps import AnswersQuestions
 from querymind.api.routes import router
 from querymind.config import get_settings
-from querymind.db.errors import QueryExecutionError, QueryTimeoutError
-from querymind.llm import LLMOutputError, LLMProviderError, create_llm_provider
+from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
+from querymind.llm import LLMError, LLMOutputError, LLMProviderError, create_llm_provider
 from querymind.logging_setup import configure_logging
 from querymind.safety.errors import UnsafeSqlError
 
 logger = logging.getLogger(__name__)
 
 # Our exceptions → (HTTP status, stable error code). The message is the exception's own text,
-# which each of them words for end users.
+# which our safety and database errors word for end users.
 _ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     UnsafeSqlError: (422, "unsafe_sql"),
     QueryTimeoutError: (504, "query_timeout"),
     QueryExecutionError: (502, "query_failed"),
+    DatabaseUnavailableError: (503, "db_unavailable"),
     LLMProviderError: (502, "llm_unavailable"),
     LLMOutputError: (502, "llm_bad_output"),
+}
+
+# LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a
+# fixed message instead and the details go to the server log only.
+_LLM_MESSAGES: dict[type[Exception], str] = {
+    LLMProviderError: "The AI provider did not respond (network, rate limit or outage).",
+    LLMOutputError: "The AI model declined or answered in the wrong format. Try rewording it.",
 }
 
 
@@ -81,7 +90,13 @@ async def _handle_known_error(request: Request, exc: Exception) -> JSONResponse:
     status, code = next(
         value for error_type, value in _ERROR_MAP.items() if isinstance(exc, error_type)
     )
-    message = exc.reason if isinstance(exc, UnsafeSqlError) else str(exc)
+    if isinstance(exc, UnsafeSqlError):
+        message = exc.reason
+    elif isinstance(exc, LLMError):
+        logger.warning("llm error", extra={"error_code": code, "detail": str(exc)})
+        message = next(text for kind, text in _LLM_MESSAGES.items() if isinstance(exc, kind))
+    else:
+        message = str(exc)
     return _error(status, code, message)
 
 

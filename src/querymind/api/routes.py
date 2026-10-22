@@ -14,6 +14,7 @@ router = APIRouter()
 _ERRORS: dict[int | str, dict[str, Any]] = {
     422: {"model": ErrorResponse, "description": "Invalid question, or unsafe generated SQL"},
     502: {"model": ErrorResponse, "description": "The LLM or the database failed"},
+    503: {"model": ErrorResponse, "description": "The database is not reachable"},
     504: {"model": ErrorResponse, "description": "The query took too long"},
 }
 

@@ -36,6 +36,8 @@ def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         asked.append(question)
         if question == "break it":
             raise ApiError("unsafe_sql", "Only SELECT queries are allowed.", status=422)
+        if question == "db down":
+            raise ApiError("db_unavailable", "Could not connect to the database.", status=503)
         return ANSWER
 
     monkeypatch.setattr(QueryMindClient, "ask", ask)
@@ -84,6 +86,12 @@ def test_api_errors_are_shown_plainly(fake_api: list[str]) -> None:
     assert app.error[0].value == "I couldn't answer that safely."
     assert any(c.value == "Only SELECT queries are allowed." for c in app.caption)
     assert not app.exception
+
+
+def test_database_down_has_its_own_title(fake_api: list[str]) -> None:
+    app = run_app()
+    app.chat_input[0].set_value("db down").run()
+    assert app.error[0].value == "The database isn't reachable right now."
 
 
 def test_conversation_is_kept_between_questions(fake_api: list[str]) -> None:

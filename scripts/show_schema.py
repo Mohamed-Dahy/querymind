@@ -11,6 +11,7 @@ import psycopg
 
 from querymind.config import ConfigError, get_settings
 from querymind.db.connection import connect_readonly
+from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.schema import (
     SCHEMA_TOKEN_BUDGET,
     describe_schema,
@@ -25,6 +26,10 @@ def main() -> int:
             schema = introspect_schema(conn)
     except (ConfigError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except DatabaseUnavailableError as exc:
+        print(f"Error: {exc.__cause__}", file=sys.stderr)
+        print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
 
     text = describe_schema(schema)

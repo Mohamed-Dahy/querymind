@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from querymind import __version__
 from querymind.agent.schemas import AnswerSummary, AskResult
 from querymind.api.main import create_app
-from querymind.db.errors import QueryExecutionError, QueryTimeoutError
+from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMOutputError, LLMProviderError
 from querymind.logging_setup import JsonFormatter
@@ -99,10 +99,12 @@ def test_invalid_requests_get_a_clean_422(body: dict[str, object], message: str)
          "query_timeout", "The query took longer than 10 s and was stopped."),
         (QueryExecutionError("The database could not run the query: x", detail="x"), 502,
          "query_failed", "The database could not run the query: x"),
+        (DatabaseUnavailableError("Could not connect to the database. Please try again later."),
+         503, "db_unavailable", "Could not connect to the database. Please try again later."),
         (LLMProviderError("groq request failed: rate limited"), 502, "llm_unavailable",
-         "groq request failed: rate limited"),
+         "The AI provider did not respond (network, rate limit or outage)."),
         (LLMOutputError("groq output did not match the schema"), 502, "llm_bad_output",
-         "groq output did not match the schema"),
+         "The AI model declined or answered in the wrong format. Try rewording it."),
     ],
 )  # fmt: skip
 def test_known_errors_map_to_clean_responses(
@@ -112,6 +114,15 @@ def test_known_errors_map_to_clean_responses(
         response = client.post("/ask", json={"question": "anything"})
     assert response.status_code == status
     assert response.json() == {"error": code, "message": message}
+
+
+def test_llm_vendor_details_stay_in_the_server_log(caplog: pytest.LogCaptureFixture) -> None:
+    raw = "groq request failed: Error code: 400 - {'error': {'code': 'json_validate_failed'}}"
+    with caplog.at_level(logging.WARNING), client_for(FakePipeline(LLMOutputError(raw))) as client:
+        response = client.post("/ask", json={"question": "anything"})
+    assert response.json()["error"] == "llm_bad_output"
+    assert "json_validate_failed" not in response.text
+    assert any(getattr(r, "detail", None) == raw for r in caplog.records)  # kept for debugging
 
 
 def test_unexpected_errors_never_leak_details(caplog: pytest.LogCaptureFixture) -> None:

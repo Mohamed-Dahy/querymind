@@ -6,7 +6,7 @@ error handling and logging all live here, once.
 
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from langchain_core.exceptions import OutputParserException
@@ -31,6 +31,7 @@ class LangChainProvider(LLMProvider):
         chat_model: BaseChatModel,
         provider_errors: tuple[type[Exception], ...],
         structured_output_options: Mapping[str, Any] | None = None,
+        is_output_error: Callable[[Exception], bool] | None = None,
     ) -> None:
         """
         Args:
@@ -40,11 +41,15 @@ class LangChainProvider(LLMProvider):
                 they are re-raised as `LLMProviderError`.
             structured_output_options: extra arguments for LangChain's `with_structured_output`,
                 e.g. `{"method": "json_schema", "strict": True}`. Empty = LangChain's default.
+            is_output_error: picks out the provider errors that mean "the model answered, but
+                not in the requested format" (e.g. it refused in plain text); they are re-raised
+                as `LLMOutputError` instead, because retrying won't help.
         """
         self.name = name
         self._chat_model = chat_model
         self._provider_errors = provider_errors
         self._structured_output_options = dict(structured_output_options or {})
+        self._is_output_error = is_output_error or (lambda _exc: False)
 
     def generate_text(self, prompt: str, *, system: str | None = None) -> str:
         message = self._invoke(self._chat_model, prompt, system, kind="text")
@@ -87,6 +92,8 @@ class LangChainProvider(LLMProvider):
         try:
             return runnable.invoke(messages)
         except self._provider_errors as exc:
+            if self._is_output_error(exc):
+                raise LLMOutputError(f"{self.name} output did not match the schema: {exc}") from exc
             raise LLMProviderError(f"{self.name} request failed: {exc}") from exc
         except (OutputParserException, ValidationError) as exc:
             raise LLMOutputError(f"{self.name} output did not match the schema: {exc}") from exc

@@ -5,6 +5,10 @@ class QueryError(Exception):
     """A validated query could not be run. The message is safe to show the user."""
 
 
+class DatabaseUnavailableError(QueryError):
+    """No connection could be opened (database down, wrong host/port or password)."""
+
+
 class QueryTimeoutError(QueryError):
     """The query ran longer than the statement timeout and Postgres cancelled it."""
 
