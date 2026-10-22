@@ -29,9 +29,9 @@ def draft(sql: str) -> SqlDraft:
     return SqlDraft(sql=sql, explanation="Test query.", tables_used=[])
 
 
-def ask(pipeline: Pipeline, question: str, **options: bool) -> AskResult:
+def ask(pipeline: Pipeline, question: str, *, summarize_answer: bool = True) -> AskResult:
     """Ask, and check the reply is an answer (not a clarifying question or a refusal)."""
-    reply = pipeline.ask(question, **options)
+    reply = pipeline.ask(question, summarize_answer=summarize_answer)
     assert isinstance(reply, AskResult), reply
     return reply
 

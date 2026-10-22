@@ -1,6 +1,7 @@
 """The HTTP API with a fake pipeline: routes, response shape, and clean errors. No DB, no LLM."""
 
 import logging
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,15 +40,17 @@ RESULT = AskResult(
 
 
 class FakePipeline:
-    """Returns `reply` (RESULT by default), or raises `error`. Records the questions asked."""
+    """Returns `reply` (RESULT by default), or raises `error`. Records what was asked."""
 
     def __init__(self, error: Exception | None = None, reply: AgentReply = RESULT) -> None:
         self.error = error
         self.reply = reply
         self.questions: list[str] = []
+        self.conversation_ids: list[str | None] = []
 
-    def ask(self, question: str) -> AgentReply:
+    def ask(self, question: str, *, conversation_id: str | None = None) -> AgentReply:
         self.questions.append(question)
+        self.conversation_ids.append(conversation_id)
         if self.error is not None:
             raise self.error
         return self.reply
@@ -64,7 +67,10 @@ def test_ask_returns_answer_sql_and_rows() -> None:
     with client_for(pipeline) as client:
         response = client.post("/ask", json={"question": "  How many customers are there?  "})
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    # No id sent: the API starts a conversation, and tells the pipeline and the client its id.
+    assert pipeline.conversation_ids == [body.pop("conversation_id")]
+    assert body == {
         "kind": "answer",
         "question": "How many customers are there?",
         "answer": "There are 91 customers.",
@@ -88,7 +94,9 @@ def test_warnings_are_sent_without_the_llm_hint() -> None:
         message="Some rows appear more than once.",
         detail="2 of the 4 rows are exact duplicates... use DISTINCT.",
     )
-    response = AskResponse.from_result(RESULT.model_copy(update={"warnings": (warning,)}))
+    response = AskResponse.from_result(
+        RESULT.model_copy(update={"warnings": (warning,)}), conversation_id=uuid4()
+    )
     assert [w.model_dump() for w in response.warnings] == [
         {"code": "duplicate_rows", "message": "Some rows appear more than once."}
     ]
@@ -109,6 +117,10 @@ def test_health() -> None:
         ({"question": "x" * 1001}, "question: String should have at most 1000 characters"),
         ({}, "question: Field required"),
         ({"question": 42}, "question: Input should be a valid string"),
+        (
+            {"question": "And in 1997?", "conversation_id": "not-an-id"},
+            "conversation_id: Input should be a valid UUID, invalid character: found `n` at 0",
+        ),
     ],
 )
 def test_invalid_requests_get_a_clean_422(body: dict[str, object], message: str) -> None:
@@ -195,7 +207,9 @@ def test_a_clarifying_question_is_a_200_with_its_options() -> None:
     with client_for(FakePipeline(reply=reply)) as client:
         response = client.post("/ask", json={"question": "Best customers?"})
     assert response.status_code == 200  # not an error: the agent is asking back
-    assert response.json() == {
+    body = response.json()
+    UUID(body.pop("conversation_id"))  # every kind of reply carries the conversation
+    assert body == {
         "kind": "clarification",
         "question": "Best customers?",
         "clarifying_question": "Best by what?",
@@ -208,8 +222,30 @@ def test_a_refusal_is_a_200_with_its_message() -> None:
     with client_for(FakePipeline(reply=reply)) as client:
         response = client.post("/ask", json={"question": "Delete all orders"})
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    UUID(body.pop("conversation_id"))
+    assert body == {
         "kind": "refusal",
         "question": "Delete all orders",
         "message": "I can only read data.",
     }
+
+
+def test_a_follow_up_continues_the_same_conversation() -> None:
+    pipeline = FakePipeline()
+    conversation = str(uuid4())
+    with client_for(pipeline) as client:
+        response = client.post(
+            "/ask", json={"question": "Only for 1997", "conversation_id": conversation}
+        )
+    assert response.status_code == 200
+    assert response.json()["conversation_id"] == conversation
+    assert pipeline.conversation_ids == [conversation]
+
+
+def test_each_new_conversation_gets_its_own_id() -> None:
+    pipeline = FakePipeline()
+    with client_for(pipeline) as client:
+        first = client.post("/ask", json={"question": "q1"}).json()["conversation_id"]
+        second = client.post("/ask", json={"question": "q2"}).json()["conversation_id"]
+    assert first != second

@@ -57,3 +57,66 @@ def test_sql_error_end_to_end(settings: Settings) -> None:
         "error": "query_failed",
         "message": 'The database could not run the query: column "no_such_column" does not exist',
     }
+
+
+REVENUE = "sum(d.unit_price * d.quantity * (1 - d.discount))"
+FOUR_TURNS = [
+    (
+        "Top 5 customers by revenue",
+        f"SELECT c.company_name, {REVENUE} AS revenue FROM customers AS c "
+        "JOIN orders AS o ON o.customer_id = c.customer_id "
+        "JOIN order_details AS d ON d.order_id = o.order_id "
+        "GROUP BY c.company_name ORDER BY revenue DESC LIMIT 5",
+    ),
+    (
+        "Only for 1997",
+        f"SELECT c.company_name, {REVENUE} AS revenue FROM customers AS c "
+        "JOIN orders AS o ON o.customer_id = c.customer_id "
+        "JOIN order_details AS d ON d.order_id = o.order_id "
+        "WHERE extract(year FROM o.order_date) = 1997 "
+        "GROUP BY c.company_name ORDER BY revenue DESC LIMIT 5",
+    ),
+    (
+        "Break that down by country",
+        f"SELECT c.country, {REVENUE} AS revenue FROM customers AS c "
+        "JOIN orders AS o ON o.customer_id = c.customer_id "
+        "JOIN order_details AS d ON d.order_id = o.order_id "
+        "WHERE extract(year FROM o.order_date) = 1997 "
+        "GROUP BY c.country ORDER BY revenue DESC",
+    ),
+    (
+        "Show the top one's orders",
+        "SELECT o.order_id, o.order_date FROM orders AS o "
+        "JOIN customers AS c ON c.customer_id = o.customer_id "
+        "WHERE c.country = 'USA' AND extract(year FROM o.order_date) = 1997 "
+        "ORDER BY o.order_date",
+    ),
+]
+
+
+def test_a_four_turn_conversation(settings: Settings) -> None:
+    # Each turn: the LLM's SQL, then its summary (no numbers, so it passes the grounding check).
+    responses: list[FakeResponse] = []
+    for _, sql in FOUR_TURNS:
+        responses += [draft(sql), "Here is what the data shows."]
+    fake = FakeLLMProvider(responses)
+    pipeline = Pipeline(llm=fake, settings=settings)
+
+    conversation = None
+    sent_sql = []
+    with TestClient(create_app(pipeline=pipeline)) as client:
+        for question, _ in FOUR_TURNS:
+            body = {"question": question, "conversation_id": conversation}
+            response = client.post("/ask", json=body)
+            assert response.status_code == 200, response.json()
+            reply = response.json()
+            assert reply["kind"] == "answer" and reply["row_count"] > 0
+            conversation = conversation or reply["conversation_id"]
+            assert reply["conversation_id"] == conversation  # one conversation throughout
+            sent_sql.append(reply["sql"])
+
+    sql_prompts = [call.prompt for call in fake.calls if call.schema is SqlDraft]
+    assert "<history>" not in sql_prompts[0]
+    last = sql_prompts[3]
+    for question, sql in zip([q for q, _ in FOUR_TURNS[:3]], sent_sql[:3], strict=True):
+        assert f"Question: {question}\nSQL: {sql}" in last  # every earlier turn, in order

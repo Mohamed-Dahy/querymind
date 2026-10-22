@@ -3,10 +3,13 @@
     client = QueryMindClient("http://127.0.0.1:8000")
     response = client.ask("How many customers are there?")
     response.answer, response.sql, response.rows
+    client.ask("And in Germany?", conversation_id=response.conversation_id)  # a follow-up
 
 Every failure becomes an `ApiError` with a stable `code` and a message for people, whether the
 API answered with an error, timed out, or isn't running at all.
 """
+
+from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -53,9 +56,18 @@ class QueryMindClient:
         self._http = httpx.Client(base_url=base_url, timeout=timeout_seconds, transport=transport)
         self.base_url = base_url
 
-    def ask(self, question: str) -> AskResponse | ClarificationResponse | RefusalResponse:
-        """Ask a question: an answer, a question back, or a refusal. Raises ApiError on failure."""
-        response = self._request("POST", "/ask", json={"question": question})
+    def ask(
+        self, question: str, *, conversation_id: UUID | None = None
+    ) -> AskResponse | ClarificationResponse | RefusalResponse:
+        """Ask a question: an answer, a question back, or a refusal. Raises ApiError on failure.
+
+        Pass the `conversation_id` of an earlier reply to follow up on it.
+        """
+        body = {
+            "question": question,
+            "conversation_id": str(conversation_id) if conversation_id else None,
+        }
+        response = self._request("POST", "/ask", json=body)
         try:
             # `kind` in the body says which of the three it is (a "discriminated union").
             return _ASK_REPLY.validate_json(response.content)
@@ -67,7 +79,7 @@ class QueryMindClient:
         return self._parse(self._request("GET", "/health"), HealthResponse)
 
     def _request(
-        self, method: str, path: str, *, json: dict[str, str] | None = None
+        self, method: str, path: str, *, json: dict[str, str | None] | None = None
     ) -> httpx.Response:
         try:
             response = self._http.request(method, path, json=json)

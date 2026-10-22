@@ -1,17 +1,18 @@
 """The agent as a LangGraph graph: nodes (steps) joined by edges (what runs next).
 
-    graph = build_graph()
+    graph = build_graph(checkpointer=InMemorySaver())
     final = graph.invoke(
-        {"question": ..., "schema_text": ..., "table_names": [...]},
+        new_turn(question=..., schema_text=..., table_names=[...]),
+        {"configurable": {"thread_id": conversation_id}},
         context=AgentContext(llm=llm, settings=settings, connect=connect_readonly),
     )
 
-    START → generate_sql ─┬─ refuses / asks back ─► END (no SQL runs)
+    START → generate_sql ─┬─ refuses / asks back ─► remember (no SQL runs)
                           └─► run_sql ─┬─ ran ──────────────────► check_result
                          ▲     ├─ failed, tries left ───► repair_sql
                          │     ├─ failed, result kept ──► summarize
-                         │     └─ failed, no result ────► END
-                         │   check_result ─┬─ looks fine ──► summarize → END
+                         │     └─ failed, no result ────► remember
+                         │   check_result ─┬─ looks fine ──► summarize → remember → END
                          │                 └─ looks wrong ─► repair_sql
                          └── repair_sql (every repaired query is validated again)
 
@@ -30,19 +31,25 @@ then ends before any SQL, and `Pipeline.ask` returns a ClarificationRequest or a
 If every try fails and no result exists, the run ends and `Pipeline.ask` raises the last
 error. LLM errors and an unreachable database end the run at once (the caller retries those).
 
+Conversations (2.6): every way of ending passes through `remember`, which adds this turn to
+`history` (question, SQL, result shape; no rows). With a checkpointer, LangGraph saves the
+state per `thread_id`, so the next turn of that conversation starts from it: the LLM sees the
+history and can build on the earlier SQL ("now only for 1997").
+
 Print the current diagram with `uv run python scripts/show_graph.py`.
 """
 
 import logging
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 
 from querymind.agent.sanity import RETRY_CODES, check_result
-from querymind.agent.schemas import AnswerSummary, SqlAttempt
+from querymind.agent.schemas import AnswerSummary, SqlAttempt, Turn
 from querymind.agent.sql_generator import generate_sql, repair_sql
-from querymind.agent.state import AgentContext, AgentState
+from querymind.agent.state import AgentContext, AgentState, require
 from querymind.agent.summarizer import fallback_answer, summarize
 from querymind.db.errors import QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import execute_query
@@ -57,39 +64,49 @@ type AgentGraph = CompiledStateGraph[AgentState, AgentContext, AgentState, Agent
 FIXABLE_ERRORS = (UnsafeSqlError, QueryExecutionError, QueryTimeoutError)
 
 
-def build_graph() -> AgentGraph:
-    """Wire the nodes together. Build it once and reuse it: a compiled graph is thread-safe."""
+def build_graph(*, checkpointer: BaseCheckpointSaver[str] | None = None) -> AgentGraph:
+    """Wire the nodes together. Build it once and reuse it: a compiled graph is thread-safe.
+
+    With a `checkpointer`, every run must name its conversation (`thread_id`), and its final
+    state is saved for the next turn. Without one, each run starts from nothing.
+    """
     graph = StateGraph(AgentState, context_schema=AgentContext)
     graph.add_node("generate_sql", _generate_sql)
     graph.add_node("run_sql", _run_sql)
     graph.add_node("check_result", _check_result)
     graph.add_node("repair_sql", _repair_sql)
     graph.add_node("summarize", _summarize)
+    graph.add_node("remember", _remember)
     graph.add_edge(START, "generate_sql")
     # A draft can be a refusal or a clarifying question instead of SQL (2.4): then stop.
-    graph.add_conditional_edges("generate_sql", _after_generate, ["run_sql", END])
+    graph.add_conditional_edges("generate_sql", _after_generate, ["run_sql", "remember"])
     # Conditional edges: the function looks at the state and names the next node.
     graph.add_conditional_edges(
-        "run_sql", _after_run, ["check_result", "repair_sql", "summarize", END]
+        "run_sql", _after_run, ["check_result", "repair_sql", "summarize", "remember"]
     )
     graph.add_conditional_edges("check_result", _after_check, ["repair_sql", "summarize"])
     # The loop: a repaired query goes back to run_sql, so it is validated again.
-    graph.add_conditional_edges("repair_sql", _after_repair, ["run_sql", "summarize", END])
-    graph.add_edge("summarize", END)
-    return graph.compile()
+    graph.add_conditional_edges("repair_sql", _after_repair, ["run_sql", "summarize", "remember"])
+    graph.add_edge("summarize", "remember")
+    # Every turn, however it ended, is written to the history before the run stops (2.6).
+    graph.add_edge("remember", END)
+    return graph.compile(checkpointer=checkpointer)
 
 
 def _generate_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
-    """Question + schema → the LLM's SQL draft (not trusted yet)."""
+    """Question + schema + the conversation so far → the LLM's SQL draft (not trusted yet)."""
     draft = generate_sql(
-        runtime.context.llm, schema_text=state["schema_text"], question=state["question"]
+        runtime.context.llm,
+        schema_text=state["schema_text"],
+        question=state["question"],
+        history=state.get("history", []),
     )
     return {"draft": draft}
 
 
 def _after_generate(state: AgentState) -> str:
     """SQL to run, or stop: Pipeline.ask returns the refusal or the clarifying question."""
-    return "run_sql" if state["draft"].wants_sql else END
+    return "run_sql" if require(state.get("draft"), "draft").wants_sql else "remember"
 
 
 def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
@@ -103,7 +120,7 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
     A success replaces `sql`, `explanation` and `result` together.
     """
     settings = runtime.context.settings
-    draft = state["draft"]
+    draft = require(state.get("draft"), "draft")
     sql = draft.sql
     try:
         query = validate_sql(sql, allowed_tables=state["table_names"], max_rows=settings.max_rows)
@@ -136,20 +153,20 @@ def _after_run(state: AgentState, runtime: Runtime[AgentContext]) -> str:
         return "check_result"
     if _tries_left(state, runtime):
         return "repair_sql"
-    if "result" in state:  # the repair of a suspicious result failed: answer the first one
+    if state.get("result") is not None:  # the repair of a suspicious result failed: answer it
         return "summarize"
-    return END  # nothing ran: Pipeline.ask raises the last attempt's error
+    return "remember"  # nothing ran: Pipeline.ask raises the last attempt's error
 
 
 def _check_result(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
     """Look for signs the result is wrong. Empty or duplicated rows get one repair."""
-    warnings = check_result(state["result"])
+    warnings = check_result(require(state.get("result"), "result"))
     retryable = [w for w in warnings if w.code in RETRY_CODES]
     already_retried = any(a.error_kind == "suspicious" for a in state.get("attempts", []))
     # The query that just ran isn't an attempt yet: it would become one, so count it.
     if retryable and not already_retried and _tries_left(state, runtime, pending=1):
         suspicious = SqlAttempt(
-            sql=state["sql"],
+            sql=require(state.get("sql"), "sql"),
             error_kind="suspicious",
             message=retryable[0].message,
             detail=" ".join(w.detail for w in retryable),
@@ -170,6 +187,7 @@ def _repair_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState
         schema_text=state["schema_text"],
         question=state["question"],
         failed=state["attempts"],
+        history=state.get("history", []),
     )
     return {"draft": draft}
 
@@ -179,19 +197,49 @@ def _after_repair(state: AgentState) -> str:
 
     With an earlier (suspicious) result in hand, answer it rather than dropping it.
     """
-    if state["draft"].wants_sql:
+    if require(state.get("draft"), "draft").wants_sql:
         return "run_sql"
-    return "summarize" if "result" in state else END
+    return "summarize" if state.get("result") is not None else "remember"
 
 
 def _summarize(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
     """Rows → a plain-language answer, checked against the data (or the templated answer)."""
-    result = state["result"]
+    result = require(state.get("result"), "result")
     if runtime.context.summarize_answer:
         answer = summarize(runtime.context.llm, question=state["question"], result=result)
     else:
         answer = AnswerSummary(text=fallback_answer(result), from_llm=False)
     return {"answer": answer}
+
+
+def _remember(state: AgentState) -> AgentState:
+    """Add this turn to the conversation history (2.6); the reducer keeps the last few."""
+    return {"history": [turn_from(state)]}
+
+
+def turn_from(state: AgentState) -> Turn:
+    """What the next turns need to know about this one, in the order Pipeline.ask replies.
+
+    An answer keeps its SQL and the result's shape, never its rows (§8.5).
+    """
+    question = state["question"]
+    result = state.get("result")
+    if result is not None:
+        return Turn(
+            question=question,
+            kind="answer",
+            sql=state.get("sql"),
+            columns=result.columns,
+            row_count=result.row_count,
+        )
+    draft = state.get("draft")
+    if draft is not None and draft.refusal is not None:
+        return Turn(question=question, kind="refusal", reply=draft.refusal)
+    if draft is not None and draft.clarification is not None:
+        asked = draft.clarification
+        reply = f"{asked.question} Options: {'; '.join(asked.options)}"
+        return Turn(question=question, kind="clarification", reply=reply)
+    return Turn(question=question, kind="failed")
 
 
 def _tries_left(state: AgentState, runtime: Runtime[AgentContext], *, pending: int = 0) -> bool:

@@ -1,6 +1,7 @@
 """The HTTP endpoints: POST /ask and GET /health."""
 
 from typing import Annotated, Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends
 
@@ -36,10 +37,15 @@ def ask(
 
     Or, with `kind` = "clarification", a question back with options (the question was
     ambiguous), or with `kind` = "refusal", why QueryMind won't do it (e.g. change data).
+
+    Every reply has a `conversation_id`: send it with the next question to follow up on this
+    one ("now only for 1997"). Without one, a new conversation starts.
     """
     # A plain `def` (not `async def`): the pipeline blocks on the database and the LLM, so
     # FastAPI runs it in a worker thread and the server stays free for other requests.
-    return reply_from(pipeline.ask(request.question))
+    conversation_id = request.conversation_id or uuid4()
+    reply = pipeline.ask(request.question, conversation_id=str(conversation_id))
+    return reply_from(reply, conversation_id=conversation_id)
 
 
 @router.get("/health", response_model=HealthResponse, tags=["ops"])

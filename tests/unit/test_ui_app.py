@@ -5,6 +5,7 @@ and shows what got drawn (markdown, tables, errors, the SQL expander).
 """
 
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -19,9 +20,11 @@ from querymind.api.schemas import (
 from querymind.client import ApiError, QueryMindClient
 
 APP = str(Path(__file__).parents[2] / "ui" / "app.py")
+CONVERSATION = UUID("6f1c2a4e-8b7d-4c3e-9a2f-1d5e7b9c0a12")
 
 ANSWER = AskResponse(
     question="Top products?",
+    conversation_id=CONVERSATION,
     answer="Côte de Blaye is the most expensive at 263.5.",
     answer_from_llm=True,
     sql="SELECT product_name, unit_price FROM products ORDER BY unit_price DESC LIMIT 2",
@@ -38,15 +41,24 @@ ANSWER = AskResponse(
 DOUBLED = ResultWarning(code="duplicate_rows", message="Some rows appear more than once.")
 
 
+class Asked(list[str]):
+    """The questions the UI sent, and the conversation id it sent with each."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.conversation_ids: list[UUID | None] = []
+
+
 @pytest.fixture
-def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Replace the client's HTTP calls. Returns the list of questions the UI sent."""
-    asked: list[str] = []
+def fake_api(monkeypatch: pytest.MonkeyPatch) -> Asked:
+    """Replace the client's HTTP calls. Returns the questions the UI sent."""
+    asked = Asked()
 
     def ask(
-        self: QueryMindClient, question: str
+        self: QueryMindClient, question: str, *, conversation_id: UUID | None = None
     ) -> AskResponse | ClarificationResponse | RefusalResponse:
         asked.append(question)
+        asked.conversation_ids.append(conversation_id)
         if question == "break it":
             raise ApiError("unsafe_sql", "Only SELECT queries are allowed.", status=422)
         if question == "db down":
@@ -54,11 +66,14 @@ def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         if question == "Best customers?":
             return ClarificationResponse(
                 question=question,
+                conversation_id=CONVERSATION,
                 clarifying_question="Best by what?",
                 options=["by total revenue", "by number of orders"],
             )
         if question == "Delete all orders":
-            return RefusalResponse(question=question, message="I can only read data.")
+            return RefusalResponse(
+                question=question, conversation_id=CONVERSATION, message="I can only read data."
+            )
         if question == "unsure":
             return ANSWER.model_copy(
                 update={
@@ -138,6 +153,24 @@ def test_conversation_is_kept_between_questions(fake_api: list[str]) -> None:
     app.chat_input[0].set_value("break it").run()
     assert len(app.chat_message) == 4  # 2 questions + 2 replies
     assert len(app.dataframe) == 1  # the first answer's table is still drawn
+
+
+def test_a_follow_up_sends_the_conversation_id(fake_api: Asked) -> None:
+    app = run_app()
+    app.chat_input[0].set_value("Top products?").run()
+    app.chat_input[0].set_value("Only the first one").run()
+    # The first question starts a conversation; the follow-up continues it.
+    assert fake_api.conversation_ids == [None, CONVERSATION]
+
+
+def test_new_conversation_forgets_the_screen_and_the_id(fake_api: Asked) -> None:
+    app = run_app()
+    app.chat_input[0].set_value("Top products?").run()
+    [new] = [b for b in app.sidebar.button if b.label == "New conversation"]
+    new.click().run()
+    assert len(app.chat_message) == 0
+    app.chat_input[0].set_value("Top products?").run()
+    assert fake_api.conversation_ids == [None, None]  # not read as a follow-up
 
 
 def test_api_down_is_shown_in_the_sidebar(monkeypatch: pytest.MonkeyPatch) -> None:

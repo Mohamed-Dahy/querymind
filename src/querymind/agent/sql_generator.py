@@ -12,14 +12,18 @@ from collections.abc import Sequence
 
 from querymind.agent.prompts.sql_generation import SYSTEM_PROMPT, build_user_prompt
 from querymind.agent.prompts.sql_repair import build_repair_prompt
-from querymind.agent.schemas import SqlAttempt, SqlDraft
+from querymind.agent.schemas import SqlAttempt, SqlDraft, Turn
 from querymind.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 
 
-def generate_sql(llm: LLMProvider, *, schema_text: str, question: str) -> SqlDraft:
+def generate_sql(
+    llm: LLMProvider, *, schema_text: str, question: str, history: Sequence[Turn] = ()
+) -> SqlDraft:
     """Ask the LLM for a SQL query that answers `question` on the described schema.
+
+    `history` holds the earlier turns of the conversation, so follow-ups can build on them.
 
     Raises:
         ValueError: the question is empty.
@@ -30,7 +34,7 @@ def generate_sql(llm: LLMProvider, *, schema_text: str, question: str) -> SqlDra
         raise ValueError("question is empty")
 
     draft = llm.generate_structured(
-        build_user_prompt(schema_text=schema_text, question=question),
+        build_user_prompt(schema_text=schema_text, question=question, history=history),
         SqlDraft,
         system=SYSTEM_PROMPT,
     )
@@ -42,7 +46,12 @@ def generate_sql(llm: LLMProvider, *, schema_text: str, question: str) -> SqlDra
 
 
 def repair_sql(
-    llm: LLMProvider, *, schema_text: str, question: str, failed: Sequence[SqlAttempt]
+    llm: LLMProvider,
+    *,
+    schema_text: str,
+    question: str,
+    failed: Sequence[SqlAttempt],
+    history: Sequence[Turn] = (),
 ) -> SqlDraft:
     """Ask the LLM for a fixed query, showing it every failed attempt and its error.
 
@@ -53,7 +62,9 @@ def repair_sql(
     if not failed:
         raise ValueError("nothing to repair: no failed attempt")
     draft = llm.generate_structured(
-        build_repair_prompt(schema_text=schema_text, question=question.strip(), failed=failed),
+        build_repair_prompt(
+            schema_text=schema_text, question=question.strip(), failed=failed, history=history
+        ),
         SqlDraft,
         system=SYSTEM_PROMPT,
     )

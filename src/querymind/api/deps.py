@@ -12,9 +12,10 @@ from querymind.agent.schemas import AgentReply
 
 
 class AnswersQuestions(Protocol):
-    """Anything with `ask(question) -> AgentReply`: the real Pipeline, or a test fake."""
+    """Anything with `ask(question, conversation_id=...) -> AgentReply`: the real Pipeline,
+    or a test fake."""
 
-    def ask(self, question: str) -> AgentReply: ...
+    def ask(self, question: str, *, conversation_id: str | None = None) -> AgentReply: ...
 
 
 def get_pipeline(request: Request) -> AnswersQuestions:

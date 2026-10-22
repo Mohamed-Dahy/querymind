@@ -14,8 +14,9 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > reads the database's error and fixes its own SQL; when a result looks wrong (no rows, duplicated rows), it
 > checks again and warns you. When a question is ambiguous ("best customers": by revenue or by orders?) it asks
 > back, and it politely refuses requests to change data. Every answer comes with a **confidence level** (High /
-> Medium / Low) and the reasons behind it. On a 30-question test set with known answers it gets **30/30** right
-> (29/30 before self-correction). Next: follow-up questions, then larger databases.
+> Medium / Low) and the reasons behind it. Follow-up questions work too: "Top 5 customers by revenue", then
+> "only for 1997", then "break that down by country". On a 30-question test set with known answers it gets
+> **30/30** right (29/30 before self-correction). Next: a semantic layer and larger databases.
 
 ---
 
@@ -32,18 +33,22 @@ reasonable meanings) or refuse (the user asks to change data); then no SQL runs.
 again before it runs. A result that looks wrong (no rows, duplicated rows) gets one
 more try, and any warning that's left is shown with the answer.
 
+Each turn of a conversation is remembered (the question, its SQL and the shape of its result, never the rows),
+so the next question can build on it. Only the last 5 turns are kept.
+
 ```mermaid
 graph TD;
     start([Start]) --> generate_sql;
     generate_sql["generate_sql<br/>LLM writes SQL"] --> run_sql;
     run_sql["run_sql<br/>validate, then run read-only"] -. ran .-> check_result;
     run_sql -. failed, tries left .-> repair_sql;
-    run_sql -. failed, no tries left .-> done([End]);
-    generate_sql -. asks back or refuses .-> done;
+    run_sql -. failed, no tries left .-> remember;
+    generate_sql -. asks back or refuses .-> remember;
     check_result["check_result<br/>does the result look right?"] -. looks fine .-> summarize;
     check_result -. looks wrong .-> repair_sql;
     repair_sql["repair_sql<br/>LLM fixes it, given the error"] --> run_sql;
-    summarize["summarize<br/>answer, checked against the data"] --> done;
+    summarize["summarize<br/>answer, checked against the data"] --> remember;
+    remember["remember<br/>save this turn for follow-ups"] --> done([End]);
 ```
 
 The answer is checked too: every number in it must appear in the query result, or a plain sentence built from

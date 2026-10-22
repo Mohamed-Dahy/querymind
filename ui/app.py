@@ -7,6 +7,7 @@ the LLM directly. So the UI can't skip the safety checks, and it can be deployed
 """
 
 from typing import Literal
+from uuid import UUID
 
 import streamlit as st
 
@@ -48,7 +49,10 @@ def get_client() -> QueryMindClient:
 def main() -> None:
     st.set_page_config(page_title="QueryMind", page_icon="🔎", layout="wide")
     st.title("🔎 QueryMind")
-    st.caption("Ask questions about the Northwind database in plain language.")
+    st.caption(
+        "Ask questions about the Northwind database in plain language, then follow up "
+        '("now only for 1997").'
+    )
 
     client = get_client()
     question = render_sidebar(client)
@@ -64,7 +68,11 @@ def main() -> None:
     history: list[tuple[str, Reply]] = st.session_state.setdefault("history", [])
     if question:
         with st.spinner("Thinking: writing SQL, checking it, running it…"):
-            history.append((question, ask(client, question)))
+            reply = ask(client, question, st.session_state.get("conversation_id"))
+        history.append((question, reply))
+        if not isinstance(reply, ApiError):
+            # The API remembers this conversation: send its id back, so follow-ups work.
+            st.session_state["conversation_id"] = reply.conversation_id
 
     for index, (asked, outcome) in enumerate(history):
         with st.chat_message("user"):
@@ -96,14 +104,16 @@ def render_sidebar(client: QueryMindClient) -> str | None:
             if st.button(example, width="stretch"):
                 clicked = example
 
-        if st.button("Clear conversation", type="secondary"):
+        if st.button("New conversation", type="secondary"):
+            # Forget the id too, or the next question would still be read as a follow-up.
             st.session_state["history"] = []
+            st.session_state.pop("conversation_id", None)
         return clicked
 
 
-def ask(client: QueryMindClient, question: str) -> Reply:
+def ask(client: QueryMindClient, question: str, conversation_id: UUID | None) -> Reply:
     try:
-        return client.ask(question)
+        return client.ask(question, conversation_id=conversation_id)
     except ApiError as exc:
         return exc
 

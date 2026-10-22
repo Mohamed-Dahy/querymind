@@ -3,6 +3,7 @@
     uv run python scripts/ask.py "How many orders did each country place?"
     uv run python scripts/ask.py                     # the 10 sample questions below
     uv run python scripts/ask.py --provider gemini   # the other provider
+    uv run python scripts/ask.py --conversation "Top 5 customers by revenue" "Only for 1997"
 
 question → SQL (LLM) → validator → executor (as analyst_ro) → plain-language answer (LLM, grounded).
 """
@@ -10,6 +11,7 @@ question → SQL (LLM) → validator → executor (as analyst_ro) → plain-lang
 import argparse
 import sys
 import textwrap
+import uuid
 
 from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest
@@ -38,6 +40,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Ask questions about the database.")
     parser.add_argument("questions", nargs="*", help="questions to ask (default: 10 samples)")
     parser.add_argument("--provider", choices=["groq", "gemini"], help="override LLM_PROVIDER")
+    parser.add_argument(
+        "--conversation",
+        action="store_true",
+        help="ask the questions as one conversation, so later ones can follow up",
+    )
     args = parser.parse_args()
     # The Windows console (cp1252) cannot print some characters LLMs like to use, such as the
     # narrow no-break space (U+202F). Print "?" for those instead of crashing.
@@ -52,11 +59,12 @@ def main() -> int:
         settings = settings.model_copy(update={"llm_provider": args.provider})
     pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
 
+    conversation_id = str(uuid.uuid4()) if args.conversation else None
     failures = 0
     for number, question in enumerate(args.questions or SAMPLE_QUESTIONS, start=1):
         print(f"[{number}] {question}")
         try:
-            print_reply(pipeline.ask(question))
+            print_reply(pipeline.ask(question, conversation_id=conversation_id))
         except UnsafeSqlError as exc:
             failures += 1
             print(f"    REJECTED: {exc.reason}\n")

@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from uuid import UUID
 
 import httpx
 import pytest
@@ -9,9 +10,11 @@ import pytest
 from querymind.api.schemas import AskResponse, ClarificationResponse, RefusalResponse
 from querymind.client import ApiError, ClientSettings, QueryMindClient
 
+CONVERSATION = "6f1c2a4e-8b7d-4c3e-9a2f-1d5e7b9c0a12"
 ANSWER = {
     "kind": "answer",
     "question": "How many customers?",
+    "conversation_id": CONVERSATION,
     "answer": "There are 91 customers.",
     "answer_from_llm": True,
     "sql": "SELECT count(*) FROM customers LIMIT 1001",
@@ -42,7 +45,22 @@ def test_ask_posts_the_question_and_parses_the_answer() -> None:
     assert response.rows == [[91]]
     [request] = seen
     assert (request.method, request.url.path) == ("POST", "/ask")
-    assert json.loads(request.content) == {"question": "How many customers?"}
+    assert json.loads(request.content) == {
+        "question": "How many customers?",
+        "conversation_id": None,  # a new conversation: the API picks the id
+    }
+    assert response.conversation_id == UUID(CONVERSATION)
+
+
+def test_a_follow_up_sends_the_conversation_id() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=ANSWER)
+
+    client_for(handler).ask("And in Germany?", conversation_id=UUID(CONVERSATION))
+    assert json.loads(seen[0].content)["conversation_id"] == CONVERSATION
 
 
 def test_health() -> None:
@@ -117,6 +135,7 @@ def test_a_clarification_is_parsed_by_its_kind() -> None:
     body = {
         "kind": "clarification",
         "question": "Best customers?",
+        "conversation_id": CONVERSATION,
         "clarifying_question": "Best by what?",
         "options": ["by total revenue", "by number of orders"],
     }
@@ -126,9 +145,18 @@ def test_a_clarification_is_parsed_by_its_kind() -> None:
 
 
 def test_a_refusal_is_parsed_by_its_kind() -> None:
-    body = {"kind": "refusal", "question": "Delete orders", "message": "I can only read data."}
+    body = {
+        "kind": "refusal",
+        "question": "Delete orders",
+        "conversation_id": CONVERSATION,
+        "message": "I can only read data.",
+    }
     response = client_for(lambda _: httpx.Response(200, json=body)).ask("Delete orders")
-    assert response == RefusalResponse(question="Delete orders", message="I can only read data.")
+    assert response == RefusalResponse(
+        question="Delete orders",
+        conversation_id=UUID(CONVERSATION),
+        message="I can only read data.",
+    )
 
 
 def test_an_unknown_kind_is_a_bad_response() -> None:

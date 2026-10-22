@@ -1,6 +1,7 @@
 """Request and response bodies of the HTTP API (they also define the OpenAPI docs at /docs)."""
 
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -15,6 +16,11 @@ class AskRequest(BaseModel):
         max_length=1000,
         description="A question about the data, in plain language",
         examples=["Which 5 products are the most expensive?"],
+    )
+    conversation_id: UUID | None = Field(
+        default=None,
+        description="Continue this conversation (from an earlier reply), so follow-ups like "
+        '"now only for 1997" work. Leave it out to start a new one.',
     )
 
 
@@ -32,6 +38,7 @@ class AskResponse(BaseModel):
 
     kind: Literal["answer"] = "answer"
     question: str
+    conversation_id: UUID = Field(description="Send it with the next question to follow up")
     answer: str = Field(description="Plain-language answer")
     answer_from_llm: bool = Field(
         description="False if the LLM's answer was replaced by a safe templated one"
@@ -52,9 +59,10 @@ class AskResponse(BaseModel):
     )
 
     @classmethod
-    def from_result(cls, result: AskResult) -> "AskResponse":
+    def from_result(cls, result: AskResult, *, conversation_id: UUID) -> "AskResponse":
         return cls(
             question=result.question,
+            conversation_id=conversation_id,
             answer=result.answer.text,
             answer_from_llm=result.answer.from_llm,
             sql=result.sql,
@@ -75,13 +83,17 @@ class ClarificationResponse(BaseModel):
 
     kind: Literal["clarification"] = "clarification"
     question: str
+    conversation_id: UUID = Field(description="Send it with the next question to follow up")
     clarifying_question: str = Field(examples=['How would you define "best" customers?'])
     options: list[str] = Field(examples=[["by total revenue", "by number of orders"]])
 
     @classmethod
-    def from_request(cls, request: ClarificationRequest) -> "ClarificationResponse":
+    def from_request(
+        cls, request: ClarificationRequest, *, conversation_id: UUID
+    ) -> "ClarificationResponse":
         return cls(
             question=request.question,
+            conversation_id=conversation_id,
             clarifying_question=request.clarification.question,
             options=request.clarification.options,
         )
@@ -92,6 +104,7 @@ class RefusalResponse(BaseModel):
 
     kind: Literal["refusal"] = "refusal"
     question: str
+    conversation_id: UUID = Field(description="Send it with the next question to follow up")
     message: str = Field(examples=["I can only read data, not change it."])
 
 
@@ -101,13 +114,17 @@ AskReply = Annotated[
 ]
 
 
-def reply_from(reply: AgentReply) -> AskResponse | ClarificationResponse | RefusalResponse:
-    """The agent's reply as the matching API body."""
+def reply_from(
+    reply: AgentReply, *, conversation_id: UUID
+) -> AskResponse | ClarificationResponse | RefusalResponse:
+    """The agent's reply as the matching API body, with the conversation to continue."""
     if isinstance(reply, AskResult):
-        return AskResponse.from_result(reply)
+        return AskResponse.from_result(reply, conversation_id=conversation_id)
     if isinstance(reply, ClarificationRequest):
-        return ClarificationResponse.from_request(reply)
-    return RefusalResponse(question=reply.question, message=reply.message)
+        return ClarificationResponse.from_request(reply, conversation_id=conversation_id)
+    return RefusalResponse(
+        question=reply.question, conversation_id=conversation_id, message=reply.message
+    )
 
 
 class ErrorResponse(BaseModel):

@@ -162,3 +162,23 @@ class Refusal(BaseModel):
 
 # What Pipeline.ask can reply: an answer, a question back, or a polite no.
 type AgentReply = AskResult | ClarificationRequest | Refusal
+
+
+TurnKind = Literal["answer", "clarification", "refusal", "failed"]
+
+
+class Turn(BaseModel):
+    """One earlier question of a conversation, as the LLM sees it in the next prompts (2.6).
+
+    Only the question and what QueryMind did with it: the SQL and the shape of its result,
+    never the rows (§8.5). That's enough to change the previous query ("now only for 1997").
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    question: str
+    kind: TurnKind
+    sql: str | None = None  # the validated SQL whose result was answered
+    columns: list[str] = []
+    row_count: int | None = None
+    reply: str | None = None  # the question asked back (+ options), or the refusal
