@@ -16,7 +16,9 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > back, and it politely refuses requests to change data. Every answer comes with a **confidence level** (High /
 > Medium / Low) and the reasons behind it. Follow-up questions work too: "Top 5 customers by revenue", then
 > "only for 1997", then "break that down by country". On a 30-question test set with known answers it gets
-> **30/30** right (29/30 before self-correction). Next: a semantic layer and larger databases.
+> **30/30** right (29/30 before self-correction). A **semantic layer** teaches it the company's own terms ("key
+> accounts", "active customers", "turnover"): on 13 such questions it goes from 5/13 to 13/13. Next: larger
+> databases, with retrieval of only the relevant tables.
 
 ---
 
@@ -32,6 +34,10 @@ Before writing SQL, the LLM may instead ask a clarifying question with options (
 reasonable meanings) or refuse (the user asks to change data); then no SQL runs. Every fixed query is checked
 again before it runs. A result that looks wrong (no rows, duplicated rows) gets one
 more try, and any warning that's left is shown with the answer.
+
+Next to the schema, the LLM gets the company's **business definitions** from a reviewed YAML file (the semantic
+layer): exact SQL for metrics like revenue or "key account", other names for tables ("clients" = customers) and
+the preferred joins. Each one is checked against the database and run in the tests.
 
 Each turn of a conversation is remembered (the question, its SQL and the shape of its result, never the rows),
 so the next question can build on it. Only the last 5 turns are kept.

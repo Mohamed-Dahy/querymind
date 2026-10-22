@@ -7,6 +7,7 @@ import pytest
 from evals.golden_set import GOLDEN_DIR, GoldenSetError, load_golden_set
 
 NORTHWIND = GOLDEN_DIR / "northwind.yaml"
+BUSINESS = GOLDEN_DIR / "northwind_business.yaml"
 
 
 def test_northwind_has_30_questions_across_tiers() -> None:
@@ -20,6 +21,16 @@ def test_northwind_has_30_questions_across_tiers() -> None:
 def test_northwind_covers_every_skill() -> None:
     tags = {tag for q in load_golden_set(NORTHWIND).questions for tag in q.tags}
     assert tags >= {"filter", "join", "group_by", "date_range", "top_n", "window", "cte"}
+
+
+def test_business_questions_all_need_a_definition() -> None:
+    business = load_golden_set(BUSINESS)
+    assert business.database == "northwind"
+    assert len(business.questions) == 13
+    assert all("business_term" in q.tags for q in business.questions)
+    # The two files are scored separately, but their ids must not collide in reports.
+    golden_ids = {q.id for q in load_golden_set(NORTHWIND).questions}
+    assert golden_ids.isdisjoint(q.id for q in business.questions)
 
 
 def test_ranking_and_time_series_questions_are_ordered() -> None:

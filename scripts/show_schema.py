@@ -3,6 +3,7 @@
     uv run python scripts/show_schema.py
 
 Connects as the read-only role, like the agent does. Needs the database up and seeded.
+Includes the business definitions of the semantic layer (SEMANTIC_LAYER_PATH), as the agent does.
 """
 
 import sys
@@ -12,19 +13,24 @@ import psycopg
 from querymind.config import ConfigError, get_settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError
-from querymind.db.schema import (
-    SCHEMA_TOKEN_BUDGET,
-    describe_schema,
-    estimate_tokens,
-    introspect_schema,
-)
+from querymind.db.schema import SCHEMA_TOKEN_BUDGET, estimate_tokens, introspect_schema
+from querymind.semantic.loader import SemanticLayerError, check_against, load_semantic_layer
+from querymind.semantic.render import schema_prompt_text
 
 
 def main() -> int:
     try:
-        with connect_readonly(get_settings()) as conn:
+        settings = get_settings()
+        layer = (
+            load_semantic_layer(settings.semantic_layer_path)
+            if settings.semantic_layer_path
+            else None
+        )
+        with connect_readonly(settings) as conn:
             schema = introspect_schema(conn)
-    except (ConfigError, psycopg.Error) as exc:
+        if layer is not None:
+            check_against(layer, schema)
+    except (ConfigError, SemanticLayerError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except DatabaseUnavailableError as exc:
@@ -32,7 +38,7 @@ def main() -> int:
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
 
-    text = describe_schema(schema)
+    text = schema_prompt_text(schema, layer)
     print(text)
     print(
         f"\n--- {len(schema.tables)} tables, {len(text)} chars, "

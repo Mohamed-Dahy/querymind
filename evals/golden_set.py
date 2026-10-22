@@ -29,6 +29,7 @@ Tag = Literal[
     "window",
     "cte",
     "set_logic",
+    "business_term",  # needs a definition from the semantic layer (3.1)
 ]
 
 

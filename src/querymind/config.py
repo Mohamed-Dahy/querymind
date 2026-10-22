@@ -8,10 +8,11 @@ Usage:
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 
 from psycopg.conninfo import make_conninfo
-from pydantic import Field, SecretStr, ValidationError, model_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -62,6 +63,16 @@ class Settings(BaseSettings):
     max_rows: int = Field(default=1000, gt=0, le=100_000)
     # How many SQL queries the agent may try per question: the first + repairs after an error.
     max_sql_attempts: int = Field(default=3, ge=1, le=5)
+
+    # --- Semantic layer (3.1) ---
+    # Business definitions shown to the LLM (metrics, synonyms, joins). Relative to where the app
+    # is started (the repo root). Empty = none.
+    semantic_layer_path: Path | None = Path("semantic_layer/northwind.yaml")
+
+    @field_validator("semantic_layer_path", mode="before")
+    @classmethod
+    def _empty_path_is_none(cls, value: object) -> object:
+        return None if value == "" else value
 
     @model_validator(mode="after")
     def _active_provider_is_configured(self) -> Self:

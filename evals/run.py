@@ -5,6 +5,8 @@
     uv run python -m evals.run --suite golden --ids e01_customer_count m07_revenue_1997
     uv run python -m evals.run --suite golden --report docs/eval-reports/phase1-baseline.md
     uv run python -m evals.run --suite golden --max-attempts 1     # no self-correction (ablation)
+    uv run python -m evals.run --suite business                     # questions in business terms
+    uv run python -m evals.run --suite business --no-semantic-layer # same, without definitions
 
 For each question: QueryMind writes and runs its own SQL (the real pipeline, real LLM), the
 reference SQL runs too, and the two RESULTS are compared (evals/compare.py). The score is the
@@ -37,7 +39,10 @@ from querymind.llm import LLMError, LLMProviderError, create_llm_provider
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
 
-SUITES = {"golden": GOLDEN_DIR / "northwind.yaml"}
+SUITES = {
+    "golden": GOLDEN_DIR / "northwind.yaml",
+    "business": GOLDEN_DIR / "northwind_business.yaml",  # needs the semantic layer (3.1)
+}
 TIERS = ("easy", "medium", "hard")
 CONFIDENCE_LEVELS = ("high", "medium", "low")
 
@@ -357,6 +362,11 @@ def main() -> int:
     parser.add_argument(
         "--max-attempts", type=int, help="override MAX_SQL_ATTEMPTS (1 = no self-correction)"
     )
+    parser.add_argument(
+        "--no-semantic-layer",
+        action="store_true",
+        help="leave the business definitions out of the prompt (ablation)",
+    )
     parser.add_argument("--report", type=Path, help="write a markdown report to this file")
     args = parser.parse_args()
     sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
@@ -369,6 +379,8 @@ def main() -> int:
             settings = settings.model_copy(update={"llm_provider": args.provider})
         if args.max_attempts:
             settings = settings.model_copy(update={"max_sql_attempts": args.max_attempts})
+        if args.no_semantic_layer:
+            settings = settings.model_copy(update={"semantic_layer_path": None})
         model, _ = settings.llm_credentials()
         references = run_references(items)
     except (ConfigError, psycopg.Error) as exc:
@@ -387,7 +399,8 @@ def main() -> int:
 
     print(
         f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}, "
-        f"max {settings.max_sql_attempts} SQL attempts\n"
+        f"max {settings.max_sql_attempts} SQL attempts, "
+        f"semantic layer: {settings.semantic_layer_path or 'off'}\n"
     )
     outcomes = evaluate(
         items,
@@ -421,6 +434,7 @@ def main() -> int:
             "Code": _git_commit(),
             "Max rows / timeout": f"{settings.max_rows} / {settings.query_timeout_seconds} s",
             "Max SQL attempts": str(settings.max_sql_attempts),
+            "Semantic layer": str(settings.semantic_layer_path or "off"),
         }
         title = f"QueryMind eval: {args.suite} ({golden.database})"
         args.report.parent.mkdir(parents=True, exist_ok=True)

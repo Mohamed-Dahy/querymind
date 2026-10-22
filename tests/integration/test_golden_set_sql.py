@@ -19,7 +19,9 @@ from querymind.safety.sql_validator import validate_sql
 pytestmark = pytest.mark.integration
 
 GOLDEN = load_golden_set(GOLDEN_DIR / "northwind.yaml")
-BY_ID = {q.id: q for q in GOLDEN.questions}
+BUSINESS = load_golden_set(GOLDEN_DIR / "northwind_business.yaml")  # business terms (3.1)
+ALL_QUESTIONS = GOLDEN.questions + BUSINESS.questions
+BY_ID = {q.id: q for q in ALL_QUESTIONS}
 
 
 @pytest.fixture(scope="module")
@@ -34,7 +36,7 @@ def run(conn: psycopg.Connection, item: GoldenQuestion, tables: frozenset[str]) 
     return execute_query(conn, query, timeout_seconds=10)
 
 
-@pytest.mark.parametrize("item", GOLDEN.questions, ids=lambda q: q.id)
+@pytest.mark.parametrize("item", ALL_QUESTIONS, ids=lambda q: q.id)
 def test_reference_sql_passes_validation_and_runs(
     ro_conn: psycopg.Connection, allowed_tables: frozenset[str], item: GoldenQuestion
 ) -> None:
@@ -43,7 +45,7 @@ def test_reference_sql_passes_validation_and_runs(
     assert not result.truncated, "the whole answer must fit under the row limit"
 
 
-@pytest.mark.parametrize("item", [q for q in GOLDEN.questions if q.ordered], ids=lambda q: q.id)
+@pytest.mark.parametrize("item", [q for q in ALL_QUESTIONS if q.ordered], ids=lambda q: q.id)
 def test_ordered_questions_sort_their_result(item: GoldenQuestion) -> None:
     tree = sqlglot.parse_one(item.sql, read="postgres")
     assert tree.args.get("order") is not None, "ordered: true needs an ORDER BY on the outer query"
@@ -56,6 +58,11 @@ def test_ordered_questions_sort_their_result(item: GoldenQuestion) -> None:
         ("e07_orders_1997", [[408]]),
         ("m04_busiest_employee", [["Margaret", "Peacock", 156]]),
         ("m08_late_shipments", [[37]]),
+        # Business terms (3.1), by the company rules in semantic_layer/northwind.yaml
+        ("b01_key_account_count", [[7]]),
+        ("b03_late_shipments_1997", [[22]]),
+        ("b06_active_customers", [[71]]),
+        ("b04_carrier_most_late", [["United Package", 16]]),
     ],
 )
 def test_known_northwind_facts(
@@ -81,6 +88,10 @@ def test_top_n_answers_have_no_ties_at_the_cutoff(
         ("e06_top5_expensive", 5, "unit_price"),
         ("h01_top5_products_revenue", 5, "revenue"),
         ("h02_top3_customers_revenue", 3, "revenue"),
+        ("b04_carrier_most_late", 1, "count"),
+        ("b08_top_clients_turnover_1997", 3, "turnover"),
+        ("b12_reps_for_key_accounts", 3, "key_account_orders"),
+        ("b13_active_customers_by_country", 3, "active_customers"),
     ]:
         sql = BY_ID[question_id].sql.replace(f"LIMIT {n}", f"LIMIT {n + 1}")
         if value_column == "unit_price":  # e06 only returns names; fetch the prices to compare
@@ -90,10 +101,10 @@ def test_top_n_answers_have_no_ties_at_the_cutoff(
         assert rows[n - 1][-1] != rows[n][-1], question_id
 
 
-@pytest.mark.parametrize("item", GOLDEN.questions, ids=lambda q: q.id)
+@pytest.mark.parametrize("item", ALL_QUESTIONS, ids=lambda q: q.id)
 def test_right_answers_raise_no_sanity_warnings(
     ro_conn: psycopg.Connection, allowed_tables: frozenset[str], item: GoldenQuestion
 ) -> None:
-    # The sanity check (2.3) must not cry wolf: these 30 results are known to be right.
+    # The sanity check (2.3) must not cry wolf: these results are known to be right.
     warnings = check_result(run(ro_conn, item, allowed_tables))
     assert [w.code for w in warnings] == []

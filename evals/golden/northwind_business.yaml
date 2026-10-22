@@ -1,0 +1,156 @@
+# Business-terms questions for Northwind (Phase 3.1): the questions a manager would ask, in the
+# company's own words. Each needs a definition from semantic_layer/northwind.yaml, several of
+# them company rules an LLM can't know (key account = 30,000+ revenue, active customer = an
+# order on or after 1998-03-01, restock rule). Measured with and without the semantic layer:
+#
+#   uv run python -m evals.run --suite business
+#   uv run python -m evals.run --suite business --no-semantic-layer
+#
+# Same rules as northwind.yaml: the question says what to return, no ties at a top-N cut-off,
+# ordered: true only when the order is part of the answer. Revenue / turnover / sales =
+# unit_price * quantity * (1 - discount).
+
+database: northwind
+version: 1
+
+questions:
+  - id: b01_key_account_count
+    tier: easy
+    tags: [business_term, aggregation]
+    question: How many key accounts do we have?
+    sql: >-
+      SELECT count(*) FROM customers
+      WHERE customer_id IN (
+        SELECT o.customer_id FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id
+        GROUP BY o.customer_id HAVING sum(d.unit_price * d.quantity * (1 - d.discount)) >= 30000)
+
+  - id: b02_german_key_accounts
+    tier: medium
+    tags: [business_term, filter, subquery]
+    question: List the company names of our key accounts in Germany.
+    sql: >-
+      SELECT company_name FROM customers
+      WHERE country = 'Germany' AND customer_id IN (
+        SELECT o.customer_id FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id
+        GROUP BY o.customer_id HAVING sum(d.unit_price * d.quantity * (1 - d.discount)) >= 30000)
+
+  - id: b03_late_shipments_1997
+    tier: easy
+    tags: [business_term, filter, date_range]
+    question: How many late shipments were there for orders placed in 1997?
+    sql: >-
+      SELECT count(*) FROM orders
+      WHERE shipped_date > required_date
+        AND order_date >= DATE '1997-01-01' AND order_date < DATE '1998-01-01'
+
+  - id: b04_carrier_most_late
+    tier: medium
+    tags: [business_term, join, top_n]
+    question: >-
+      Which carrier had the most late shipments? Return the carrier's name and its number of
+      late shipments.
+    sql: >-
+      SELECT s.company_name, count(*) FROM orders AS o
+      JOIN shippers AS s ON s.shipper_id = o.ship_via
+      WHERE o.shipped_date > o.required_date
+      GROUP BY s.company_name ORDER BY count(*) DESC LIMIT 1
+
+  - id: b05_aov_1997
+    tier: medium
+    tags: [business_term, aggregation, date_range]
+    question: What was our average order value in 1997?
+    sql: >-
+      SELECT sum(d.unit_price * d.quantity * (1 - d.discount)) / count(DISTINCT d.order_id)
+      FROM order_details AS d JOIN orders AS o ON o.order_id = d.order_id
+      WHERE o.order_date >= DATE '1997-01-01' AND o.order_date < DATE '1998-01-01'
+
+  - id: b06_active_customers
+    tier: easy
+    tags: [business_term, aggregation]
+    question: How many active customers do we have?
+    sql: >-
+      SELECT count(*) FROM customers
+      WHERE customer_id IN (SELECT customer_id FROM orders WHERE order_date >= DATE '1998-03-01')
+
+  - id: b07_needs_restock
+    tier: easy
+    tags: [business_term, filter]
+    question: Which products need restocking? Return their names.
+    sql: >-
+      SELECT product_name FROM products
+      WHERE discontinued = 0 AND units_in_stock + units_on_order <= reorder_level
+
+  - id: b08_top_clients_turnover_1997
+    tier: medium
+    tags: [business_term, join, top_n, date_range]
+    ordered: true
+    question: >-
+      Who were our top 3 clients by turnover in 1997? Return the company name and the turnover,
+      highest first.
+    sql: >-
+      SELECT c.company_name, sum(d.unit_price * d.quantity * (1 - d.discount)) AS turnover
+      FROM customers AS c
+      JOIN orders AS o ON o.customer_id = c.customer_id
+      JOIN order_details AS d ON d.order_id = o.order_id
+      WHERE o.order_date >= DATE '1997-01-01' AND o.order_date < DATE '1998-01-01'
+      GROUP BY c.company_name ORDER BY turnover DESC LIMIT 3
+
+  - id: b09_retired_per_product_line
+    tier: medium
+    tags: [business_term, join, group_by]
+    question: >-
+      How many retired products does each product line have? Return the product line's name and
+      the number, only for product lines that have any.
+    sql: >-
+      SELECT c.category_name, count(*) FROM categories AS c
+      JOIN products AS p ON p.category_id = c.category_id
+      WHERE p.discontinued = 1 GROUP BY c.category_name
+
+  - id: b10_open_orders_per_carrier
+    tier: medium
+    tags: [business_term, join, group_by]
+    question: How many open orders does each carrier have? Return the carrier's name and the number.
+    sql: >-
+      SELECT s.company_name, count(*) FROM orders AS o
+      JOIN shippers AS s ON s.shipper_id = o.ship_via
+      WHERE o.shipped_date IS NULL GROUP BY s.company_name
+
+  - id: b11_key_account_turnover
+    tier: hard
+    tags: [business_term, subquery, aggregation]
+    question: What is the total turnover from our key accounts?
+    sql: >-
+      SELECT sum(d.unit_price * d.quantity * (1 - d.discount))
+      FROM order_details AS d JOIN orders AS o ON o.order_id = d.order_id
+      WHERE o.customer_id IN (
+        SELECT o2.customer_id FROM orders AS o2
+        JOIN order_details AS d2 ON d2.order_id = o2.order_id
+        GROUP BY o2.customer_id HAVING sum(d2.unit_price * d2.quantity * (1 - d2.discount)) >= 30000)
+
+  - id: b12_reps_for_key_accounts
+    tier: hard
+    tags: [business_term, join, subquery, top_n]
+    ordered: true
+    question: >-
+      Which 3 sales reps handled the most orders for key accounts? Return each rep's first name,
+      last name and number of such orders, most first.
+    sql: >-
+      SELECT e.first_name, e.last_name, count(*) AS key_account_orders
+      FROM employees AS e JOIN orders AS o ON o.employee_id = e.employee_id
+      WHERE o.customer_id IN (
+        SELECT o2.customer_id FROM orders AS o2
+        JOIN order_details AS d2 ON d2.order_id = o2.order_id
+        GROUP BY o2.customer_id HAVING sum(d2.unit_price * d2.quantity * (1 - d2.discount)) >= 30000)
+      GROUP BY e.first_name, e.last_name ORDER BY key_account_orders DESC LIMIT 3
+
+  - id: b13_active_customers_by_country
+    tier: medium
+    tags: [business_term, group_by, top_n]
+    ordered: true
+    question: >-
+      Which 3 countries have the most active customers? Return the country and the number of
+      active customers, most first.
+    sql: >-
+      SELECT country, count(*) AS active_customers FROM customers
+      WHERE customer_id IN (SELECT customer_id FROM orders WHERE order_date >= DATE '1998-03-01')
+      GROUP BY country ORDER BY active_customers DESC LIMIT 3

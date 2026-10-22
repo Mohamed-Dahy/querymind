@@ -1,0 +1,155 @@
+# Semantic layer for Northwind: what the company's words mean in this database.
+#
+# Hand-written and reviewed by a person. QueryMind shows it to the LLM next to the schema, so
+# "key accounts", "turnover" or "late shipments" are computed the company's way, not guessed.
+#
+# - tables:  descriptions, other names (synonyms), column notes, PII flags (masked in Phase 5.4)
+# - metrics: exact SQL definitions. kind "measure" = an aggregate over `table`;
+#            kind "condition" = a true/false test on rows of `table`.
+#            Each one is run against the database in tests/integration/test_semantic_layer_db.py.
+# - joins:   preferred join paths, especially the non-obvious ones
+#
+# Company rules below (not standard Northwind facts, so an LLM can't know them):
+#   key account = 30,000 or more revenue over all orders; active customer = an order on or
+#   after 1998-03-01 (the current reporting period); restock = stock + on order at or below the
+#   reorder level.
+
+database: northwind
+version: 1
+
+tables:
+  customers:
+    description: Companies that buy from us.
+    synonyms: [clients, accounts, buyers]
+    columns:
+      company_name: {description: "The customer's name; use it when listing customers."}
+      contact_name: {pii: true}
+      contact_title: {pii: true}
+      address: {pii: true}
+      postal_code: {pii: true}
+      phone: {pii: true}
+      fax: {pii: true}
+  employees:
+    description: Our staff; the sales representatives who handle orders.
+    synonyms: [staff, sales reps, salespeople, reps]
+    columns:
+      reports_to: {description: "The employee's manager (another employee_id)."}
+      birth_date: {pii: true}
+      address: {pii: true}
+      postal_code: {pii: true}
+      home_phone: {pii: true}
+      photo: {pii: true}
+      notes: {pii: true}
+  shippers:
+    description: Delivery companies that ship our orders.
+    synonyms: [carriers, couriers, delivery companies]
+    columns:
+      phone: {pii: true}
+  suppliers:
+    description: Companies we buy products from.
+    synonyms: [vendors]
+    columns:
+      contact_name: {pii: true}
+      contact_title: {pii: true}
+      address: {pii: true}
+      postal_code: {pii: true}
+      phone: {pii: true}
+      fax: {pii: true}
+  products:
+    synonyms: [items, SKUs, goods]
+    columns:
+      discontinued: {description: "1 = no longer sold (a retired product), 0 = still sold."}
+      units_on_order: {description: "Units ordered from the supplier but not yet received."}
+  categories:
+    synonyms: [product lines, product categories]
+  orders:
+    synonyms: [purchases, sales orders]
+    columns:
+      required_date: {description: "The date the customer needs the order by."}
+      shipped_date: {description: "NULL while the order hasn't shipped yet."}
+      ship_via: {description: "The shipper that delivered the order.", synonyms: [carrier]}
+      freight: {description: "Shipping cost charged for the order.", synonyms: [shipping cost]}
+  order_details:
+    description: One line per product in an order; the source of all sales amounts.
+    synonyms: [order lines, line items]
+
+metrics:
+  revenue:
+    kind: measure
+    table: order_details
+    description: Sales after discount.
+    synonyms: [sales, turnover, income, sales amount]
+    sql: sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount))
+
+  average_order_value:
+    kind: measure
+    table: order_details
+    description: Revenue divided by the number of distinct orders.
+    synonyms: [AOV, average basket, average order size]
+    sql: >-
+      sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount))
+      / count(DISTINCT order_details.order_id)
+
+  late_shipment:
+    kind: condition
+    table: orders
+    description: An order shipped after the date the customer needed it.
+    synonyms: [late order, late delivery, shipped late]
+    sql: orders.shipped_date > orders.required_date
+
+  open_order:
+    kind: condition
+    table: orders
+    description: An order that hasn't shipped yet.
+    synonyms: [unshipped order, pending order, backlog]
+    sql: orders.shipped_date IS NULL
+
+  key_account:
+    kind: condition
+    table: customers
+    description: A customer with 30,000 or more revenue over all their orders (company rule).
+    synonyms: [key accounts, key clients, top-tier customers]
+    sql: >-
+      customers.customer_id IN (
+        SELECT o.customer_id FROM orders AS o
+        JOIN order_details AS d ON d.order_id = o.order_id
+        GROUP BY o.customer_id
+        HAVING sum(d.unit_price * d.quantity * (1 - d.discount)) >= 30000)
+
+  active_customer:
+    kind: condition
+    table: customers
+    description: >-
+      A customer with at least one order on or after 1998-03-01, the current reporting period
+      (company rule).
+    synonyms: [active customers, active clients]
+    sql: >-
+      customers.customer_id IN (
+        SELECT o.customer_id FROM orders AS o WHERE o.order_date >= DATE '1998-03-01')
+
+  needs_restock:
+    kind: condition
+    table: products
+    description: >-
+      A product still sold whose stock plus units on order is at or below its reorder level
+      (company rule).
+    synonyms: [restock, reorder needed, running low]
+    sql: >-
+      products.discontinued = 0
+      AND products.units_in_stock + products.units_on_order <= products.reorder_level
+
+  retired_product:
+    kind: condition
+    table: products
+    description: A product we no longer sell.
+    synonyms: [retired products, discontinued products]
+    sql: products.discontinued = 1
+
+joins:
+  - {left: orders.customer_id, right: customers.customer_id}
+  - {left: order_details.order_id, right: orders.order_id}
+  - {left: order_details.product_id, right: products.product_id}
+  - {left: products.category_id, right: categories.category_id}
+  - {left: products.supplier_id, right: suppliers.supplier_id}
+  - {left: orders.employee_id, right: employees.employee_id, note: the sales rep who handled the order}
+  - {left: orders.ship_via, right: shippers.shipper_id, note: the shipper (carrier) of the order}
