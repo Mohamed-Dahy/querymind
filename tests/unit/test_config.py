@@ -47,6 +47,7 @@ def test_limits_have_safe_defaults(valid_env: pytest.MonkeyPatch) -> None:
     settings = load_settings(env_file=None)
     assert settings.query_timeout_seconds == 10
     assert settings.max_rows == 1000
+    assert settings.max_sql_attempts == 3  # the first try + up to 2 repairs
 
 
 def test_missing_required_variables_fail_with_their_names(clean_env: pytest.MonkeyPatch) -> None:

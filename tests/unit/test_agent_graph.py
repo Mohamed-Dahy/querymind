@@ -1,8 +1,10 @@
-"""The agent graph's wiring with a fake LLM and a stubbed executor: no DB, no network.
+"""The agent graph with a fake LLM and a stubbed executor: no DB, no network.
 
-The real DB + graph path is covered by tests/integration/test_pipeline.py.
+Wiring (2.1) and the self-correction loop (2.2). The real DB + graph path is covered by
+tests/integration/test_pipeline.py.
 """
 
+from collections import deque
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -12,12 +14,13 @@ from pydantic import BaseModel, SecretStr
 
 from querymind.agent import graph as graph_module
 from querymind.agent.graph import build_graph
-from querymind.agent.schemas import AnswerSummary, SqlDraft
+from querymind.agent.schemas import AnswerSummary, SqlAttempt, SqlDraft
 from querymind.agent.state import AgentContext, AgentState
 from querymind.config import Settings
+from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult
+from querymind.llm import LLMOutputError, LLMProviderError
 from querymind.llm.fake import FakeLLMProvider
-from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import ValidatedQuery
 
 RESULT = QueryResult(columns=["n"], rows=[[91]], row_count=1, truncated=False, duration_ms=2)
@@ -26,9 +29,10 @@ START: AgentState = {
     "schema_text": "Table customers (customer_id text PK, ...)",
     "table_names": ["customers", "orders"],
 }
+ROUND_ERROR = "function round(double precision, integer) does not exist"
 
 
-def settings() -> Settings:
+def settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "postgres_host": "127.0.0.1",
         "postgres_port": 5433,
@@ -39,91 +43,122 @@ def settings() -> Settings:
         "analyst_ro_password": SecretStr("x"),
         "groq_api_key": SecretStr("gsk_test"),
         "max_rows": 1000,
+        "max_sql_attempts": 3,
     }
-    return Settings.model_validate(values)
+    return Settings.model_validate(values | overrides)
+
+
+class StubExecutor:
+    """Stands in for execute_query: records each query; answers RESULT or a queued error."""
+
+    def __init__(self) -> None:
+        self.queries: list[ValidatedQuery] = []
+        self.errors: deque[Exception] = deque()
+
+    def __call__(
+        self, conn: psycopg.Connection, query: ValidatedQuery, *, timeout_seconds: int
+    ) -> QueryResult:
+        self.queries.append(query)
+        if self.errors:
+            raise self.errors.popleft()
+        return RESULT
 
 
 @pytest.fixture
-def executed(monkeypatch: pytest.MonkeyPatch) -> list[ValidatedQuery]:
-    """Stub the executor: record each query it gets and return RESULT."""
-    queries: list[ValidatedQuery] = []
-
-    def fake_execute(
-        conn: psycopg.Connection, query: ValidatedQuery, *, timeout_seconds: int
-    ) -> QueryResult:
-        queries.append(query)
-        return RESULT
-
-    monkeypatch.setattr(graph_module, "execute_query", fake_execute)
-    return queries
+def executor(monkeypatch: pytest.MonkeyPatch) -> StubExecutor:
+    stub = StubExecutor()
+    monkeypatch.setattr(graph_module, "execute_query", stub)
+    return stub
 
 
-def context(llm: FakeLLMProvider, connect: MagicMock, **options: Any) -> AgentContext:
-    return AgentContext(llm=llm, settings=settings(), connect=connect, **options)
+def context(llm: FakeLLMProvider, connect: MagicMock | None = None, **options: Any) -> AgentContext:
+    attempts = options.pop("max_sql_attempts", 3)
+    return AgentContext(
+        llm=llm,
+        settings=settings(max_sql_attempts=attempts),
+        connect=connect or MagicMock(),
+        **options,
+    )
 
 
 def draft(sql: str) -> SqlDraft:
     return SqlDraft(sql=sql, explanation="Counts the customers.", tables_used=["customers"])
 
 
+GOOD = draft("SELECT count(*) AS n FROM customers")
+
+
 def answering_llm() -> FakeLLMProvider:
     """A fake LLM that writes a count query, then summarizes it."""
-    return FakeLLMProvider([draft("SELECT count(*) AS n FROM customers"), "There are 91."])
+    return FakeLLMProvider([GOOD, "There are 91."])
 
 
-def test_nodes_run_in_order_and_fill_the_state(executed: list[ValidatedQuery]) -> None:
-    ctx = context(answering_llm(), MagicMock())
+def db_error(detail: str = ROUND_ERROR) -> QueryExecutionError:
+    return QueryExecutionError(f"The database could not run the query: {detail}", detail=detail)
+
+
+# --- Wiring (2.1) ----------------------------------------------------------------------------
+
+
+def test_nodes_run_in_order_and_fill_the_state(executor: StubExecutor) -> None:
     steps = [
         next(iter(update))  # "updates" mode yields {node name: fields it returned}
-        for update in build_graph().stream(START, context=ctx, stream_mode="updates")
+        for update in build_graph().stream(
+            START, context=context(answering_llm()), stream_mode="updates"
+        )
     ]
     assert steps == ["generate_sql", "run_sql", "summarize"]
 
-    final = build_graph().invoke(START, context=context(answering_llm(), MagicMock()))
+    final = build_graph().invoke(START, context=context(answering_llm()))
     assert final["sql"] == "SELECT COUNT(*) AS n FROM customers LIMIT 1001"  # the validated SQL
     assert final["explanation"] == "Counts the customers."
     assert final["result"] == RESULT
     assert final["answer"] == AnswerSummary(text="There are 91.", from_llm=True)
+    assert final.get("attempts", []) == []  # right first time
 
 
-def test_only_validated_sql_reaches_the_executor(executed: list[ValidatedQuery]) -> None:
-    build_graph().invoke(START, context=context(answering_llm(), MagicMock()))
-    (query,) = executed
+def test_only_validated_sql_reaches_the_executor(executor: StubExecutor) -> None:
+    build_graph().invoke(START, context=context(answering_llm()))
+    (query,) = executor.queries
     assert isinstance(query, ValidatedQuery)
     assert query.sql.endswith("LIMIT 1001")
 
 
-def test_unsafe_sql_stops_before_any_connection(executed: list[ValidatedQuery]) -> None:
+def test_unsafe_sql_stops_before_any_connection(executor: StubExecutor) -> None:
     llm = FakeLLMProvider([draft("DELETE FROM customers")])
     connect = MagicMock()
-    with pytest.raises(UnsafeSqlError, match="Only SELECT"):
-        build_graph().invoke(START, context=context(llm, connect))
+    final = build_graph().invoke(START, context=context(llm, connect, max_sql_attempts=1))
     connect.assert_not_called()  # validation comes first: no connection is even opened
-    assert executed == []
+    assert executor.queries == []
+    assert "result" not in final  # gave up (1 attempt allowed): Pipeline.ask raises
+    assert final["attempts"][0].error_kind == "unsafe"
     assert len(llm.calls) == 1  # and no summary call
 
 
-def test_the_connection_is_closed_after_running(executed: list[ValidatedQuery]) -> None:
+def test_the_connection_is_closed_after_running(executor: StubExecutor) -> None:
     connect = MagicMock()
     build_graph().invoke(START, context=context(answering_llm(), connect))
     connect.assert_called_once()
     connect.return_value.__exit__.assert_called_once()  # the `with` block closed it
 
 
-def test_summary_can_be_skipped(executed: list[ValidatedQuery]) -> None:
-    llm = FakeLLMProvider([draft("SELECT count(*) AS n FROM customers")])
-    final = build_graph().invoke(START, context=context(llm, MagicMock(), summarize_answer=False))
+def test_summary_can_be_skipped(executor: StubExecutor) -> None:
+    llm = FakeLLMProvider([GOOD])
+    final = build_graph().invoke(START, context=context(llm, summarize_answer=False))
     assert final["answer"] == AnswerSummary(text="n: 91", from_llm=False)
     assert len(llm.calls) == 1  # only the SQL call
 
 
-def test_state_holds_only_saveable_values(executed: list[ValidatedQuery]) -> None:
+def test_state_holds_only_saveable_values(executor: StubExecutor) -> None:
     # Phase 2.6 saves the state between turns. A connection can't be saved, and a reloaded
     # ValidatedQuery would carry the validator's stamp without having been validated.
-    final = build_graph().invoke(START, context=context(answering_llm(), MagicMock()))
+    executor.errors.append(db_error())  # so the state also holds an attempt
+    llm = FakeLLMProvider([GOOD, GOOD, "There are 91."])
+    final = build_graph().invoke(START, context=context(llm))
     for key, value in final.items():
         assert isinstance(value, str | list | BaseModel), key
         assert not isinstance(value, ValidatedQuery), key
+    assert all(isinstance(a, SqlAttempt) for a in final["attempts"])
 
 
 def test_diagram_shows_the_nodes_and_edges() -> None:
@@ -131,7 +166,99 @@ def test_diagram_shows_the_nodes_and_edges() -> None:
     for edge in [
         "__start__ --> generate_sql",
         "generate_sql --> run_sql",
-        "run_sql --> summarize",
+        "run_sql -.-> summarize",  # dotted = a conditional edge (one of these is taken)
+        "run_sql -.-> repair_sql",
+        "run_sql -.-> __end__",
+        "repair_sql --> run_sql",  # the self-correction loop
         "summarize --> __end__",
     ]:
         assert edge in mermaid
+
+
+# --- Self-correction (2.2) -------------------------------------------------------------------
+
+
+def test_database_error_is_sent_back_and_fixed(executor: StubExecutor) -> None:
+    executor.errors.append(db_error())
+    llm = FakeLLMProvider([draft("SELECT freight AS n FROM orders"), GOOD, "91."])
+    final = build_graph().invoke(START, context=context(llm))
+
+    assert final["result"] == RESULT
+    (attempt,) = final["attempts"]
+    assert attempt.error_kind == "db_error"
+    assert attempt.detail == ROUND_ERROR
+    # The SQL recorded is the one that really ran: validated, with its LIMIT.
+    assert attempt.sql == "SELECT freight AS n FROM orders LIMIT 1001"
+    # Calls: generate, repair, summary. The repair prompt shows the failed SQL and the error.
+    generate_call, repair_call, _summary = llm.calls
+    assert "earlier queries" not in generate_call.prompt
+    assert attempt.sql in repair_call.prompt
+    assert f"PostgreSQL returned an error: {ROUND_ERROR}" in repair_call.prompt
+    assert "Table customers" in repair_call.prompt  # the schema is still there
+
+
+def test_unsafe_sql_is_sent_back_with_the_reason(executor: StubExecutor) -> None:
+    llm = FakeLLMProvider([draft("DELETE FROM customers"), GOOD, "91."])
+    final = build_graph().invoke(START, context=context(llm))
+    assert final["result"] == RESULT
+    assert executor.queries[0].sql.startswith("SELECT COUNT(*)")  # only the fixed one ran
+    repair_prompt = llm.calls[1].prompt
+    assert "The safety check rejected it:" in repair_prompt
+    assert "DELETE FROM customers" in repair_prompt
+
+
+def test_timeout_asks_for_a_simpler_query(executor: StubExecutor) -> None:
+    executor.errors.append(QueryTimeoutError("The query took longer than 10 s and was stopped."))
+    llm = FakeLLMProvider([GOOD, GOOD, "91."])
+    final = build_graph().invoke(START, context=context(llm))
+    assert final["attempts"][0].error_kind == "timeout"
+    assert "Write a simpler, faster query" in llm.calls[1].prompt
+
+
+def test_a_repaired_query_is_validated_again(executor: StubExecutor) -> None:
+    # The repair is a new draft: it gets no free pass. Here it's unsafe, so it never runs.
+    executor.errors.append(db_error())
+    llm = FakeLLMProvider([GOOD, draft("DROP TABLE customers"), GOOD, "91."])
+    final = build_graph().invoke(START, context=context(llm))
+    assert [a.error_kind for a in final["attempts"]] == ["db_error", "unsafe"]
+    assert len(executor.queries) == 2  # the first and the third; the DROP never reached it
+    # The third prompt lists both failures, in order.
+    third = llm.calls[2].prompt
+    assert third.index("Attempt 1:") < third.index("Attempt 2:")
+
+
+def test_gives_up_after_max_attempts(executor: StubExecutor) -> None:
+    executor.errors.extend([db_error(), db_error(), db_error()])
+    llm = FakeLLMProvider([GOOD, GOOD, GOOD])
+    final = build_graph().invoke(START, context=context(llm))
+    assert "result" not in final
+    assert len(final["attempts"]) == 3
+    assert len(llm.calls) == 3  # generate + 2 repairs, and no summary
+
+
+def test_one_attempt_means_no_repair(executor: StubExecutor) -> None:
+    executor.errors.append(db_error())
+    llm = FakeLLMProvider([GOOD])
+    final = build_graph().invoke(START, context=context(llm, max_sql_attempts=1))
+    assert len(final["attempts"]) == 1
+    assert len(llm.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "error", [LLMProviderError("429 rate limited"), LLMOutputError("not the schema")]
+)
+def test_llm_errors_are_not_retried_by_the_loop(executor: StubExecutor, error: Exception) -> None:
+    # A failing LLM isn't fixed by asking it again right away: the run ends (the eval backs off).
+    executor.errors.append(db_error())
+    llm = FakeLLMProvider([GOOD, error])
+    with pytest.raises(type(error)):
+        build_graph().invoke(START, context=context(llm))
+    assert len(llm.calls) == 2
+
+
+def test_database_down_is_not_retried_by_the_loop(executor: StubExecutor) -> None:
+    connect = MagicMock(side_effect=DatabaseUnavailableError("Could not connect to the database."))
+    llm = FakeLLMProvider([GOOD])
+    with pytest.raises(DatabaseUnavailableError):
+        build_graph().invoke(START, context=context(llm, connect))
+    assert len(llm.calls) == 1  # no repair: different SQL won't bring the database back

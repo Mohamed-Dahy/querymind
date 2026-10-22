@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     # --- Query limits ---
     query_timeout_seconds: int = Field(default=10, gt=0, le=300)
     max_rows: int = Field(default=1000, gt=0, le=100_000)
+    # How many SQL queries the agent may try per question: the first + repairs after an error.
+    max_sql_attempts: int = Field(default=3, ge=1, le=5)
 
     @model_validator(mode="after")
     def _active_provider_is_configured(self) -> Self:

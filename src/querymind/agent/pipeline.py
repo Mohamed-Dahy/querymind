@@ -8,8 +8,8 @@ One object per app (the API keeps one): it reads the schema once and reuses it, 
 agent graph once (agent/graph.py), and runs the graph for each question. The API, the eval
 runner and scripts/ask.py only see `ask()`, so the graph can grow without changing them.
 
-Every question writes one structured "ask" log line with the outcome (CLAUDE.md §8.7; the real
-audit table arrives in Phase 5).
+Every question writes one structured "ask" log line with the outcome and every SQL attempt
+(CLAUDE.md §8.7; the real audit table arrives in Phase 5).
 """
 
 import logging
@@ -21,12 +21,14 @@ from typing import cast
 import psycopg
 
 from querymind.agent.graph import build_graph
-from querymind.agent.schemas import AskResult
+from querymind.agent.schemas import AskResult, SqlAttempt
 from querymind.agent.state import AgentContext, AgentState
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
+from querymind.db.errors import QueryExecutionError, QueryTimeoutError
 from querymind.db.schema import SchemaInfo, describe_schema, introspect_schema
 from querymind.llm import LLMProvider
+from querymind.safety.errors import UnsafeSqlError
 
 audit_logger = logging.getLogger("querymind.audit")
 
@@ -58,9 +60,9 @@ class Pipeline:
         Raises:
             ValueError: the question is empty.
             LLMProviderError / LLMOutputError: the LLM could not write the SQL.
-            UnsafeSqlError: the SQL failed validation.
-            DatabaseUnavailableError / QueryTimeoutError / QueryExecutionError: the database
-                could not run it.
+            UnsafeSqlError / QueryExecutionError / QueryTimeoutError: every SQL attempt failed
+                (up to `settings.max_sql_attempts`); the error is the last attempt's.
+            DatabaseUnavailableError: the database could not be reached.
         """
         started = time.perf_counter()
         state: AgentState = {"question": question}
@@ -81,19 +83,19 @@ class Pipeline:
             # one means that if a node fails, we still know the SQL it was given (for the audit).
             for snapshot in self._graph.stream(start, context=context, stream_mode="values"):
                 state = cast(AgentState, snapshot)  # LangGraph types this loosely as dict
+            if "result" not in state:  # the graph gave up: every SQL attempt failed
+                raise _error_from(state["attempts"][-1])
         except Exception as exc:
-            self._audit(question, state.get("sql"), outcome=type(exc).__name__, started=started)
+            self._audit(question, state, outcome=type(exc).__name__, started=started)
             raise
-        result = state["result"]
-        self._audit(
-            question, state["sql"], outcome="ok", started=started, row_count=result.row_count
-        )
+        self._audit(question, state, outcome="ok", started=started)
         return AskResult(
             question=question,
             sql=state["sql"],
             explanation=state["explanation"],
-            result=result,
+            result=state["result"],
             answer=state["answer"],
+            failed_attempts=tuple(state.get("attempts", [])),
         )
 
     def _schema_info(self) -> tuple[SchemaInfo, str]:
@@ -108,23 +110,29 @@ class Pipeline:
                 self._schema = (schema, describe_schema(schema))
             return self._schema
 
-    def _audit(
-        self,
-        question: str,
-        sql: str | None,
-        *,
-        outcome: str,
-        started: float,
-        row_count: int | None = None,
-    ) -> None:
+    def _audit(self, question: str, state: AgentState, *, outcome: str, started: float) -> None:
+        failed = state.get("attempts", [])
+        result = state.get("result")
         audit_logger.info(
             "ask",
             extra={
                 "question": question,
-                "sql": sql,
+                "sql": state.get("sql"),  # the last SQL tried (validated, if it got that far)
                 "outcome": outcome,
-                "row_count": row_count,
+                "row_count": result.row_count if result else None,
+                # Queries tried, the working one included, and why each failed one failed.
+                "sql_attempts": len(failed) + (1 if result else 0),
+                "attempt_errors": [f"{a.error_kind}: {a.detail}" for a in failed],
                 "provider": self._llm.name,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )
+
+
+def _error_from(attempt: SqlAttempt) -> Exception:
+    """The exception for a failed attempt, so the API maps it exactly as before (422/502/504)."""
+    if attempt.error_kind == "unsafe":
+        return UnsafeSqlError(attempt.message)
+    if attempt.error_kind == "db_error":
+        return QueryExecutionError(attempt.message, detail=attempt.detail)
+    return QueryTimeoutError(attempt.message)

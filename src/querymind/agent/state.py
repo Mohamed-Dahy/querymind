@@ -13,13 +13,14 @@ a reloaded `ValidatedQuery` would skip the validator's guarantee (§8.2). The st
 SQL as text; `run_sql` validates it right before running it.
 """
 
+import operator
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import psycopg
 
-from querymind.agent.schemas import AnswerSummary
+from querymind.agent.schemas import AnswerSummary, SqlAttempt
 from querymind.config import Settings
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProvider
@@ -35,6 +36,9 @@ class AgentState(TypedDict, total=False):
     # Filled in by the nodes.
     sql: str  # the LLM's draft, then the validated SQL that ran (with its LIMIT)
     explanation: str
+    # Failed tries, oldest first. `operator.add` is a *reducer*: a node returns only its new
+    # attempt ({"attempts": [one]}) and LangGraph appends it, instead of replacing the list.
+    attempts: Annotated[list[SqlAttempt], operator.add]
     result: QueryResult
     answer: AnswerSummary
 

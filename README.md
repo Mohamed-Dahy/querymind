@@ -10,8 +10,9 @@ the SQL that produced it, and a result table (charts are on the roadmap).
 QueryMind is built to **assist** data teams, not replace them. It handles routine questions so analysts
 can focus on deeper work, and it always shows its SQL so every answer can be checked.
 
-> 🚧 **Status: first working version.** Ask questions through a chat UI or an HTTP API. On a 30-question
-> test set with known answers it gets **29/30** right. Next: self-correcting agent, then larger databases.
+> 🚧 **Status: working agent.** Ask questions through a chat UI or an HTTP API. When a query fails, the agent
+> reads the database's error and fixes its own SQL. On a 30-question test set with known answers it gets
+> **30/30** right (29/30 before self-correction). Next: sanity checks and clarifying questions, then larger databases.
 
 ---
 
@@ -21,15 +22,19 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 Question → LLM writes SQL → safety check → run on a read-only DB user → plain-language answer + table + SQL
 ```
 
-The steps run as a [LangGraph](https://langchain-ai.github.io/langgraph/) agent graph, so the next features
-(fixing its own SQL errors, asking clarifying questions) are new arrows in the graph:
+The steps run as a [LangGraph](https://langchain-ai.github.io/langgraph/) agent graph. When a query is unsafe,
+fails in the database or runs too long, the error goes back to the LLM, which writes a fixed query (up to 3 tries).
+Every fixed query is checked again before it runs.
 
 ```mermaid
 graph TD;
     start([Start]) --> generate_sql;
     generate_sql["generate_sql<br/>LLM writes SQL"] --> run_sql;
-    run_sql["run_sql<br/>validate, then run read-only"] --> summarize;
-    summarize["summarize<br/>answer, checked against the data"] --> done([End]);
+    run_sql["run_sql<br/>validate, then run read-only"] -. worked .-> summarize;
+    run_sql -. failed, tries left .-> repair_sql;
+    run_sql -. failed, no tries left .-> done([End]);
+    repair_sql["repair_sql<br/>LLM fixes it, given the error"] --> run_sql;
+    summarize["summarize<br/>answer, checked against the data"] --> done;
 ```
 
 The answer is checked too: every number in it must appear in the query result, or a plain sentence built from
@@ -99,6 +104,7 @@ uv run python scripts/ask.py "How many orders were placed in 1997?"   # or strai
 
 ```bash
 uv run python -m evals.run --suite golden   # 30 questions with known answers (uses real LLM calls)
+uv run python -m evals.run --suite golden --max-attempts 1   # the same, with self-correction off
 ```
 
 ### Run the checks

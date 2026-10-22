@@ -4,6 +4,8 @@ The `Field(description=...)` texts are sent to the LLM as part of the JSON schem
 work like extra instructions for each field.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from querymind.db.executor import QueryResult
@@ -35,6 +37,17 @@ class AnswerSummary(BaseModel):
     from_llm: bool
 
 
+class SqlAttempt(BaseModel):
+    """One SQL try that failed: shown to the LLM so it can fix it, and kept for the audit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sql: str  # the validated SQL if it passed the validator, else the LLM's draft
+    error_kind: Literal["unsafe", "db_error", "timeout"]
+    message: str  # for people: what the API would show
+    detail: str  # for the LLM: the validator's reason, or Postgres's own short message
+
+
 class AskResult(BaseModel):
     """Everything one question produced: what ran, what came back, and the answer."""
 
@@ -45,3 +58,10 @@ class AskResult(BaseModel):
     explanation: str
     result: QueryResult
     answer: AnswerSummary
+    # The tries that failed before the one that worked (empty = right first time).
+    failed_attempts: tuple[SqlAttempt, ...] = ()
+
+    @property
+    def sql_attempts(self) -> int:
+        """How many SQL queries it took, the successful one included."""
+        return len(self.failed_attempts) + 1

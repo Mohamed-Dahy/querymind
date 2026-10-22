@@ -40,7 +40,7 @@ def test_ask_end_to_end(settings: Settings) -> None:
 
 
 def test_unsafe_sql_end_to_end(settings: Settings) -> None:
-    with client_with(settings, draft("SELECT * FROM pg_catalog.pg_authid")) as client:
+    with client_with(settings, *[draft("SELECT * FROM pg_catalog.pg_authid")] * 3) as client:
         response = client.post("/ask", json={"question": "Show password hashes"})
     assert response.status_code == 422
     assert response.json() == {
@@ -50,7 +50,7 @@ def test_unsafe_sql_end_to_end(settings: Settings) -> None:
 
 
 def test_sql_error_end_to_end(settings: Settings) -> None:
-    with client_with(settings, draft("SELECT no_such_column FROM orders")) as client:
+    with client_with(settings, *[draft("SELECT no_such_column FROM orders")] * 3) as client:
         response = client.post("/ask", json={"question": "Something odd"})
     assert response.status_code == 502
     assert response.json() == {

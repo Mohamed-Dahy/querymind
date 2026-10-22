@@ -1,11 +1,14 @@
-"""generate_sql builds the right prompt and returns the LLM's draft. Uses FakeLLMProvider."""
+"""generate_sql / repair_sql build the right prompt and return the LLM's draft. FakeLLMProvider."""
+
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
 
 from querymind.agent.prompts.sql_generation import SYSTEM_PROMPT, build_user_prompt
-from querymind.agent.schemas import SqlDraft
-from querymind.agent.sql_generator import generate_sql
+from querymind.agent.prompts.sql_repair import ERROR_HINTS
+from querymind.agent.schemas import SqlAttempt, SqlDraft
+from querymind.agent.sql_generator import generate_sql, repair_sql
 from querymind.llm import LLMOutputError, LLMProviderError
 from querymind.llm.fake import FakeLLMProvider
 
@@ -78,3 +81,48 @@ def test_sql_draft_rejects_empty_sql() -> None:
     # A real provider turns this ValidationError into LLMOutputError.
     with pytest.raises(ValidationError):
         SqlDraft(sql="   ", explanation="nothing", tables_used=[])
+
+
+# --- repair_sql (2.2) ------------------------------------------------------------------------
+
+FAILED = [
+    SqlAttempt(
+        sql="SELECT ship_cntry FROM orders LIMIT 1001",
+        error_kind="db_error",
+        message='The database could not run the query: column "ship_cntry" does not exist',
+        detail='column "ship_cntry" does not exist',
+    ),
+    SqlAttempt(
+        sql="DELETE FROM orders",
+        error_kind="unsafe",
+        message="Only SELECT queries are allowed.",
+        detail="Only SELECT queries are allowed.",
+    ),
+]
+
+
+def test_repair_shows_every_failed_attempt_with_its_error() -> None:
+    fake = FakeLLMProvider([DRAFT])
+    assert repair_sql(fake, schema_text=SCHEMA_TEXT, question="Orders?", failed=FAILED) == DRAFT
+
+    [call] = fake.calls
+    assert call.system == SYSTEM_PROMPT  # same rules as the first try
+    assert call.prompt.startswith(build_user_prompt(schema_text=SCHEMA_TEXT, question="Orders?"))
+    assert (
+        "Attempt 1:\n<sql>\nSELECT ship_cntry FROM orders LIMIT 1001\n</sql>\n"
+        '<error>\nPostgreSQL returned an error: column "ship_cntry" does not exist\n</error>'
+    ) in call.prompt
+    assert "Attempt 2:" in call.prompt
+    assert "The safety check rejected it: Only SELECT queries are allowed." in call.prompt
+
+
+def test_repair_needs_a_failed_attempt() -> None:
+    fake = FakeLLMProvider()
+    with pytest.raises(ValueError, match="nothing to repair"):
+        repair_sql(fake, schema_text=SCHEMA_TEXT, question="Orders?", failed=[])
+    assert fake.calls == []
+
+
+def test_every_error_kind_has_a_hint() -> None:
+    # A new error kind without a hint would crash the repair prompt with a KeyError.
+    assert set(ERROR_HINTS) == set(get_args(SqlAttempt.model_fields["error_kind"].annotation))

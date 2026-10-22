@@ -4,6 +4,7 @@
     uv run python -m evals.run --suite golden --limit 5             # a quick check
     uv run python -m evals.run --suite golden --ids e01_customer_count m07_revenue_1997
     uv run python -m evals.run --suite golden --report docs/eval-reports/phase1-baseline.md
+    uv run python -m evals.run --suite golden --max-attempts 1     # no self-correction (ablation)
 
 For each question: QueryMind writes and runs its own SQL (the real pipeline, real LLM), the
 reference SQL runs too, and the two RESULTS are compared (evals/compare.py). The score is the
@@ -54,10 +55,19 @@ class Outcome:
     error: str | None  # the exception type, if the pipeline failed instead of answering
     sql: str | None  # the SQL QueryMind ran (None if it never got that far)
     seconds: float
-    attempts: int
+    provider_attempts: int  # calls to ask() for this question (> 1 after a rate-limit retry)
+    sql_attempts: int  # SQL queries the agent tried (> 1 = it corrected itself); 0 = none
     # False = no verdict: the LLM provider stayed unavailable (e.g. a daily rate limit), so the
     # agent never got to answer. Left out of the accuracy, and listed for a rerun instead.
     scored: bool = True
+
+
+@dataclass(frozen=True)
+class AuditedAsk:
+    """What the pipeline's last audit line said: the last SQL tried, and how many queries."""
+
+    sql: str | None = None
+    sql_attempts: int = 0
 
 
 def evaluate_question(
@@ -68,14 +78,14 @@ def evaluate_question(
     retries: int = 2,
     backoff_seconds: float = 30.0,
     sleep: Callable[[float], None] = time.sleep,
-    failed_sql: Callable[[], str | None] = lambda: None,
+    last_audit: Callable[[], AuditedAsk] = AuditedAsk,
 ) -> Outcome:
     """Ask one golden question and compare QueryMind's result with the reference result.
 
     An LLMProviderError (usually a rate limit) or a database that can't be reached is retried
     after a pause; if it never works, the question is *not scored*: an outage says nothing about
     the agent's accuracy. Every other failure (unsafe SQL, a query error, unusable LLM output)
-    counts as a wrong answer.
+    counts as a wrong answer. `last_audit` tells what a failed question tried (see AuditCapture).
     """
     started = time.perf_counter()
     for attempt in range(1, retries + 2):
@@ -85,9 +95,9 @@ def evaluate_question(
             if attempt <= retries:
                 sleep(backoff_seconds * attempt)
                 continue
-            return _failed(item, exc, started, attempt, failed_sql(), scored=False)
+            return _failed(item, exc, started, attempt, last_audit(), scored=False)
         except (UnsafeSqlError, QueryError, LLMError, ValueError) as exc:
-            return _failed(item, exc, started, attempt, failed_sql())
+            return _failed(item, exc, started, attempt, last_audit())
 
         comparison = compare_results(
             expected=reference(item), actual=answer.result, ordered=item.ordered
@@ -100,7 +110,8 @@ def evaluate_question(
             error=None,
             sql=answer.sql,
             seconds=time.perf_counter() - started,
-            attempts=attempt,
+            provider_attempts=attempt,
+            sql_attempts=answer.sql_attempts,
         )
     raise AssertionError("unreachable: the loop always returns")
 
@@ -110,7 +121,7 @@ def _failed(
     exc: Exception,
     started: float,
     attempt: int,
-    sql: str | None,
+    audited: AuditedAsk,
     *,
     scored: bool = True,
 ) -> Outcome:
@@ -121,9 +132,10 @@ def _failed(
         strict=False,
         reason=message,
         error=type(exc).__name__,
-        sql=sql,
+        sql=audited.sql,
         seconds=time.perf_counter() - started,
-        attempts=attempt,
+        provider_attempts=attempt,
+        sql_attempts=audited.sql_attempts,
         scored=scored,
     )
 
@@ -138,7 +150,7 @@ def evaluate(
     backoff_seconds: float = 30.0,
     on_outcome: Callable[[int, Outcome], None] = lambda _number, _outcome: None,
     sleep: Callable[[float], None] = time.sleep,
-    failed_sql: Callable[[], str | None] = lambda: None,
+    last_audit: Callable[[], AuditedAsk] = AuditedAsk,
 ) -> list[Outcome]:
     """Run every question in order. `delay_seconds` spaces calls out to respect rate limits."""
     outcomes = []
@@ -152,7 +164,7 @@ def evaluate(
             retries=retries,
             backoff_seconds=backoff_seconds,
             sleep=sleep,
-            failed_sql=failed_sql,
+            last_audit=last_audit,
         )
         outcomes.append(outcome)
         on_outcome(number, outcome)
@@ -180,6 +192,7 @@ class Summary:
     by_tag: dict[str, Score]
     errors: dict[str, int]  # exception type → how many scored questions failed with it
     not_scored: list[str]  # ids of questions with no verdict (LLM or database unavailable)
+    corrected: list[str]  # ids that passed only after the agent fixed its own SQL
     seconds: float
 
 
@@ -196,6 +209,7 @@ def summarize_outcomes(outcomes: Sequence[Outcome]) -> Summary:
         by_tag={tag: score(o for o in outcomes if tag in o.item.tags) for tag in tags},
         errors=dict(Counter(o.error for o in outcomes if o.error and o.scored)),
         not_scored=[o.item.id for o in outcomes if not o.scored],
+        corrected=[o.item.id for o in outcomes if o.passed and o.sql_attempts > 1],
         seconds=sum(o.seconds for o in outcomes),
     )
 
@@ -213,6 +227,7 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
         "|---|---|",
         f"| **Execution accuracy** (extra columns allowed) | **{summary.accuracy}** |",
         f"| Strict (exactly the asked-for columns) | {summary.strict} |",
+        f"| Passed after self-correction (SQL retried) | {len(summary.corrected)} |",
         f"| Not scored (LLM or database unavailable) | {len(summary.not_scored)} |",
         f"| Total time | {summary.seconds:.0f} s |",
         "",
@@ -249,15 +264,18 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
     lines += [
         "## All questions",
         "",
-        "| Question | Tier | Result | Time | Why |",
-        "|---|---|---|---|---|",
+        "| Question | Tier | Result | SQL tries | Time | Why |",
+        "|---|---|---|---|---|---|",
     ]
     for o in outcomes:
         result = _status(o)
         if o.passed and not o.strict:
             result += " (extra columns)"
         why = o.reason.replace("|", "\\|").replace("\n", " ")
-        lines.append(f"| `{o.item.id}` | {o.item.tier} | {result} | {o.seconds:.1f} s | {why} |")
+        lines.append(
+            f"| `{o.item.id}` | {o.item.tier} | {result} | {o.sql_attempts or '-'} "
+            f"| {o.seconds:.1f} s | {why} |"
+        )
 
     failures = [o for o in outcomes if o.scored and not o.passed]
     if failures:
@@ -292,6 +310,9 @@ def main() -> int:
     parser.add_argument(
         "--backoff", type=float, default=60.0, help="seconds to wait before retry 1 (x2, x3...)"
     )
+    parser.add_argument(
+        "--max-attempts", type=int, help="override MAX_SQL_ATTEMPTS (1 = no self-correction)"
+    )
     parser.add_argument("--report", type=Path, help="write a markdown report to this file")
     args = parser.parse_args()
     sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
@@ -302,6 +323,8 @@ def main() -> int:
         settings = get_settings()
         if args.provider:
             settings = settings.model_copy(update={"llm_provider": args.provider})
+        if args.max_attempts:
+            settings = settings.model_copy(update={"max_sql_attempts": args.max_attempts})
         model, _ = settings.llm_credentials()
         references = run_references(items)
     except (ConfigError, psycopg.Error) as exc:
@@ -312,17 +335,20 @@ def main() -> int:
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
     pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
-    capture = AuditSqlCapture.attach()
+    capture = AuditCapture.attach()
 
     def ask(question: str) -> AskResult:
-        capture.last_sql = None
+        capture.last = AuditedAsk()
         return pipeline.ask(question, summarize_answer=False)
 
-    print(f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}\n")
+    print(
+        f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}, "
+        f"max {settings.max_sql_attempts} SQL attempts\n"
+    )
     outcomes = evaluate(
         items,
         ask=ask,
-        failed_sql=lambda: capture.last_sql,
+        last_audit=lambda: capture.last,
         reference=lambda item: references[item.id],
         delay_seconds=args.delay,
         retries=args.retries,
@@ -332,6 +358,8 @@ def main() -> int:
 
     summary = summarize_outcomes(outcomes)
     print(f"\nExecution accuracy: {summary.accuracy}   strict: {summary.strict}")
+    if summary.corrected:
+        print(f"Passed after self-correction: {', '.join(summary.corrected)}")
     print("  " + "   ".join(f"{tier}: {score}" for tier, score in summary.by_tier.items()))
     if summary.not_scored:
         print()
@@ -345,6 +373,7 @@ def main() -> int:
             "LLM": f"{settings.llm_provider} / {model}",
             "Code": _git_commit(),
             "Max rows / timeout": f"{settings.max_rows} / {settings.query_timeout_seconds} s",
+            "Max SQL attempts": str(settings.max_sql_attempts),
         }
         title = f"QueryMind eval: {args.suite} ({golden.database})"
         args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -353,23 +382,25 @@ def main() -> int:
     return 0
 
 
-class AuditSqlCapture(logging.Handler):
-    """Remembers the SQL from the pipeline's last audit line.
+class AuditCapture(logging.Handler):
+    """Remembers the pipeline's last audit line: the SQL tried and the number of queries.
 
     When a question fails (unsafe SQL, a database error), the pipeline raises, so the runner
     never sees the SQL. But the audit line always records it, so the report can still show
-    exactly what QueryMind tried.
+    exactly what QueryMind tried, and how many times.
     """
 
     def __init__(self) -> None:
         super().__init__(logging.INFO)
-        self.last_sql: str | None = None
+        self.last = AuditedAsk()
 
     def emit(self, record: logging.LogRecord) -> None:
-        self.last_sql = getattr(record, "sql", None)
+        self.last = AuditedAsk(
+            sql=getattr(record, "sql", None), sql_attempts=getattr(record, "sql_attempts", 0)
+        )
 
     @classmethod
-    def attach(cls) -> "AuditSqlCapture":
+    def attach(cls) -> "AuditCapture":
         handler = cls()
         audit = logging.getLogger("querymind.audit")
         audit.addHandler(handler)
@@ -394,10 +425,15 @@ def run_references(items: Sequence[GoldenQuestion]) -> dict[str, QueryResult]:
 def _progress_line(number: int, total: int, outcome: Outcome) -> str:
     status = f"{_status(outcome):5}"
     detail = "" if outcome.passed else f"  {outcome.error or ''} {outcome.reason}".rstrip()
-    retried = f" (attempt {outcome.attempts})" if outcome.attempts > 1 else ""
+    notes = []
+    if outcome.sql_attempts > 1:
+        notes.append(f"{outcome.sql_attempts} SQL tries")
+    if outcome.provider_attempts > 1:
+        notes.append(f"provider attempt {outcome.provider_attempts}")
+    noted = f" ({', '.join(notes)})" if notes else ""
     return (
         f"[{number:2}/{total}] {status} {outcome.item.id:30} "
-        f"{outcome.seconds:5.1f}s{retried}{detail[:120]}"
+        f"{outcome.seconds:5.1f}s{noted}{detail[:120]}"
     )
 
 

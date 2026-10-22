@@ -63,18 +63,55 @@ def test_invented_number_in_the_answer_is_replaced(settings: Settings) -> None:
 
 
 def test_unsafe_sql_is_rejected_before_it_runs(settings: Settings) -> None:
-    pipeline, fake = make_pipeline(settings, draft("DELETE FROM orders"))
+    # The LLM insists on DELETE: each repair is rejected too, then the last error is raised.
+    pipeline, fake = make_pipeline(settings, *[draft("DELETE FROM orders")] * 3)
     with pytest.raises(UnsafeSqlError, match="Only SELECT"):
         pipeline.ask("Delete all orders")
-    assert len(fake.calls) == 1  # no summary call either
+    assert len(fake.calls) == settings.max_sql_attempts  # generate + 2 repairs, no summary
     with connect_readonly(settings) as conn:
         assert conn.execute("SELECT count(*) FROM orders").fetchone() == (830,)
 
 
 def test_database_errors_propagate_cleanly(settings: Settings) -> None:
-    pipeline, _ = make_pipeline(settings, draft("SELECT no_such_column FROM orders"))
+    pipeline, _ = make_pipeline(settings, *[draft("SELECT no_such_column FROM orders")] * 3)
     with pytest.raises(QueryExecutionError, match="does not exist"):
         pipeline.ask("Something odd")
+
+
+def test_a_real_postgres_error_is_fixed_by_a_repair(
+    settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Phase 1's one golden miss (h07) was this kind of error: Postgres's round(x, 2) needs a
+    # numeric, and freight is `real`. (sqlglot adds the cast itself only when it can see the
+    # type, e.g. after ::float8; it can't see column types.)
+    bad = "SELECT round(sum(freight), 2) AS total_freight FROM orders"
+    good = "SELECT round(sum(freight)::numeric, 2) AS total_freight FROM orders"
+    pipeline, fake = make_pipeline(settings, draft(bad), draft(good), "Total freight: 64942.70.")
+    with caplog.at_level(logging.INFO, logger="querymind.audit"):
+        result = pipeline.ask("What is the total freight?")
+
+    assert result.result.rows == [[64942.7]]
+    assert result.sql_attempts == 2
+    (failed,) = result.failed_attempts
+    assert failed.detail == "function round(real, integer) does not exist"
+    assert failed.detail in fake.calls[1].prompt  # Postgres's own words reached the LLM
+    (audit,) = [r for r in caplog.records if r.name == "querymind.audit"]
+    assert audit.sql_attempts == 2  # type: ignore[attr-defined]
+    assert audit.attempt_errors == [f"db_error: {failed.detail}"]  # type: ignore[attr-defined]
+
+
+def test_audit_keeps_the_validated_sql_when_the_database_fails(
+    settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    pipeline, _ = make_pipeline(settings, *[draft("SELECT no_such_column FROM orders")] * 3)
+    with (
+        caplog.at_level(logging.INFO, logger="querymind.audit"),
+        pytest.raises(QueryExecutionError),
+    ):
+        pipeline.ask("Something odd")
+    (audit,) = [r for r in caplog.records if r.name == "querymind.audit"]
+    assert audit.sql == f"SELECT no_such_column FROM orders LIMIT {settings.max_rows + 1}"  # type: ignore[attr-defined]
+    assert audit.sql_attempts == 3  # type: ignore[attr-defined]
 
 
 def test_schema_is_read_once(settings: Settings) -> None:
@@ -105,7 +142,7 @@ def test_every_question_is_audit_logged(
         settings,
         draft("SELECT count(*) AS n FROM products"),
         "There are 77 products.",
-        draft("DROP TABLE products"),
+        *[draft("DROP TABLE products")] * 3,
     )
     with caplog.at_level(logging.INFO, logger="querymind.audit"):
         pipeline.ask("How many products?")

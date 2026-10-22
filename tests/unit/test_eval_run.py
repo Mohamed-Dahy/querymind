@@ -5,13 +5,14 @@ from collections.abc import Callable, Sequence
 
 from evals.golden_set import GoldenQuestion
 from evals.run import (
-    AuditSqlCapture,
+    AuditCapture,
+    AuditedAsk,
     build_report,
     evaluate,
     evaluate_question,
     summarize_outcomes,
 )
-from querymind.agent.schemas import AnswerSummary, AskResult
+from querymind.agent.schemas import AnswerSummary, AskResult, SqlAttempt
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProviderError
@@ -36,13 +37,22 @@ def question(qid: str, tier: str = "easy", tags: tuple[str, ...] = ()) -> Golden
     )
 
 
-def answer(rows: list[list[object]]) -> AskResult:
+FIXED = SqlAttempt(
+    sql="SELECT round(n, 2) FROM t LIMIT 1001",
+    error_kind="db_error",
+    message="The database could not run the query: function round(real, integer) does not exist",
+    detail="function round(real, integer) does not exist",
+)
+
+
+def answer(rows: list[list[object]], *, retried: bool = False) -> AskResult:
     return AskResult(
         question="q",
         sql="SELECT n FROM t LIMIT 1001",
         explanation="",
         result=result(rows),
         answer=AnswerSummary(text="", from_llm=False),
+        failed_attempts=(FIXED,) if retried else (),
     )
 
 
@@ -54,12 +64,14 @@ def reference(item: GoldenQuestion) -> QueryResult:
 
 
 def asker(replies: dict[str, list[object]]) -> Callable[[str], AskResult]:
-    """Answer each question with the next queued reply: rows, or an exception to raise."""
+    """Answer each question with the next queued reply: rows, an AskResult, or an exception."""
 
     def ask(text: str) -> AskResult:
         reply = replies[text.removeprefix("question ").removesuffix("?")].pop(0)
         if isinstance(reply, Exception):
             raise reply
+        if isinstance(reply, AskResult):
+            return reply
         return answer(reply)  # type: ignore[arg-type]
 
     return ask
@@ -90,18 +102,34 @@ def test_pipeline_errors_count_as_wrong() -> None:
 def test_failed_questions_keep_the_sql_that_was_tried() -> None:
     ask = asker({"q1": [UnsafeSqlError("Only SELECT queries are allowed.")]})
     outcome = evaluate_question(
-        question("q1"), ask=ask, reference=reference, failed_sql=lambda: "DELETE FROM orders"
+        question("q1"),
+        ask=ask,
+        reference=reference,
+        last_audit=lambda: AuditedAsk(sql="DELETE FROM orders", sql_attempts=3),
     )
-    assert outcome.sql == "DELETE FROM orders"
+    assert (outcome.sql, outcome.sql_attempts) == ("DELETE FROM orders", 3)
 
 
-def test_audit_capture_reads_the_sql_field() -> None:
-    capture = AuditSqlCapture.attach()
+def test_audit_capture_reads_the_sql_and_attempts() -> None:
+    capture = AuditCapture.attach()
     try:
-        logging.getLogger("querymind.audit").info("ask", extra={"sql": "SELECT 1", "outcome": "x"})
-        assert capture.last_sql == "SELECT 1"
+        logging.getLogger("querymind.audit").info(
+            "ask", extra={"sql": "SELECT 1", "outcome": "x", "sql_attempts": 2}
+        )
+        assert capture.last == AuditedAsk(sql="SELECT 1", sql_attempts=2)
     finally:
         logging.getLogger("querymind.audit").removeHandler(capture)
+
+
+def test_self_corrected_answers_are_counted() -> None:
+    ask = asker({"q1": [answer([[91]], retried=True)], "q2": [[[408]]]})
+    outcomes = evaluate([question("q1"), question("q2")], ask=ask, reference=reference)
+    assert [o.sql_attempts for o in outcomes] == [2, 1]
+    summary = summarize_outcomes(outcomes)
+    assert summary.corrected == ["q1"]
+    report = build_report(outcomes, title="t", meta={})
+    assert "| Passed after self-correction (SQL retried) | 1 |" in report
+    assert "| `q1` | easy | PASS | 2 |" in report  # the SQL tries column
 
 
 def test_rate_limits_are_retried_not_scored() -> None:
@@ -112,7 +140,7 @@ def test_rate_limits_are_retried_not_scored() -> None:
         sleep=pauses.append,
     )  # fmt: skip
     assert outcome.passed is True
-    assert outcome.attempts == 2
+    assert outcome.provider_attempts == 2
     assert pauses == [10]
 
 
@@ -121,7 +149,11 @@ def test_rate_limits_give_up_after_the_retries() -> None:
     outcome = evaluate_question(
         question("q1"), ask=asker({"q1": errors}), reference=reference, retries=2, sleep=no_sleep
     )
-    assert (outcome.passed, outcome.error, outcome.attempts) == (False, "LLMProviderError", 3)
+    assert (outcome.passed, outcome.error, outcome.provider_attempts) == (
+        False,
+        "LLMProviderError",
+        3,
+    )
     assert outcome.scored is False  # no verdict: the agent never got to answer
 
 
@@ -130,7 +162,7 @@ def test_database_down_is_not_scored() -> None:
     outcome = evaluate_question(
         question("q1"), ask=asker({"q1": errors}), reference=reference, retries=2, sleep=no_sleep
     )
-    assert (outcome.scored, outcome.attempts) == (False, 3)  # an outage, not a wrong answer
+    assert (outcome.scored, outcome.provider_attempts) == (False, 3)  # an outage, not wrong
 
 
 def test_unscored_questions_are_left_out_of_the_accuracy() -> None:
@@ -145,7 +177,7 @@ def test_unscored_questions_are_left_out_of_the_accuracy() -> None:
     report = build_report(outcomes, title="t", meta={})
     assert "| Not scored (LLM or database unavailable) | 1 |" in report
     assert "--ids q2" in report
-    assert "| `q2` | easy | SKIP |" in report
+    assert "| `q2` | easy | SKIP | - |" in report
     assert "## Failures in detail" not in report
 
 
@@ -192,6 +224,6 @@ def test_report_shows_scores_and_failures() -> None:
     assert report.startswith("# Test eval\n")
     assert "- **LLM:** fake" in report
     assert "| **Execution accuracy** (extra columns allowed) | **1/2 (50.0%)** |" in report
-    assert "| `q2` | easy | FAIL |" in report
+    assert "| `q2` | easy | FAIL | 1 |" in report
     assert "### `q2` (easy): wrong result" in report
     assert "```sql\nSELECT n FROM t LIMIT 1001\n```" in report  # QueryMind's SQL
