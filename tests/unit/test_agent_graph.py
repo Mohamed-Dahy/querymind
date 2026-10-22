@@ -48,7 +48,9 @@ def settings(**overrides: Any) -> Settings:
         "postgres_admin_password": SecretStr("x"),
         "analyst_ro_user": "analyst_ro",
         "analyst_ro_password": SecretStr("x"),
+        "llm_provider": "groq",
         "groq_api_key": SecretStr("gsk_test"),
+        "groq_model": "openai/gpt-oss-120b",
         "max_rows": 1000,
         "max_sql_attempts": 3,
     }

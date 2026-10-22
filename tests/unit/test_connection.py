@@ -23,7 +23,9 @@ def settings() -> Settings:
         "postgres_admin_password": SecretStr("x"),
         "analyst_ro_user": "analyst_ro",
         "analyst_ro_password": SecretStr("x"),
+        "llm_provider": "groq",
         "groq_api_key": SecretStr("gsk_test"),
+        "groq_model": "openai/gpt-oss-120b",
     }
     return Settings.model_validate(values)
 
