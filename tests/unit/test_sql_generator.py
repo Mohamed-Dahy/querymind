@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from querymind.agent.prompts.sql_generation import SYSTEM_PROMPT, build_user_prompt
 from querymind.agent.prompts.sql_repair import ERROR_HINTS
-from querymind.agent.schemas import SqlAttempt, SqlDraft
+from querymind.agent.schemas import Clarification, SqlAttempt, SqlDraft
 from querymind.agent.sql_generator import generate_sql, repair_sql
 from querymind.llm import LLMOutputError, LLMProviderError
 from querymind.llm.fake import FakeLLMProvider
@@ -79,8 +79,26 @@ def test_sql_draft_strips_whitespace() -> None:
 
 def test_sql_draft_rejects_empty_sql() -> None:
     # A real provider turns this ValidationError into LLMOutputError.
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="no clarification or refusal"):
         SqlDraft(sql="   ", explanation="nothing", tables_used=[])
+
+
+def test_no_sql_is_fine_when_asking_back_or_refusing() -> None:
+    asks = SqlDraft(
+        sql="",
+        explanation="",
+        tables_used=[],
+        clarification=Clarification(question="Best by what?", options=["revenue", "orders"]),
+    )
+    refuses = SqlDraft(sql="", explanation="", tables_used=[], refusal="I only read data.")
+    assert not asks.wants_sql and not refuses.wants_sql
+    assert SqlDraft(sql="SELECT 1", explanation="", tables_used=[]).wants_sql
+
+
+def test_clarification_options_are_cleaned() -> None:
+    options = [" by revenue ", "", "by orders", "by revenue", "a", "b", "c"]
+    clarification = Clarification(question="Which?", options=options)
+    assert clarification.options == ["by revenue", "by orders", "a", "b"]  # max 4, no repeats
 
 
 # --- repair_sql (2.2) ------------------------------------------------------------------------

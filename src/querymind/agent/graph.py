@@ -6,13 +6,14 @@
         context=AgentContext(llm=llm, settings=settings, connect=connect_readonly),
     )
 
-    START → generate_sql → run_sql ─┬─ ran ──────────────────► check_result
-                              ▲     ├─ failed, tries left ───► repair_sql
-                              │     ├─ failed, result kept ──► summarize
-                              │     └─ failed, no result ────► END
-                              │   check_result ─┬─ looks fine ──► summarize → END
-                              │                 └─ looks wrong ─► repair_sql
-                              └── repair_sql (every repaired query is validated again)
+    START → generate_sql ─┬─ refuses / asks back ─► END (no SQL runs)
+                          └─► run_sql ─┬─ ran ──────────────────► check_result
+                         ▲     ├─ failed, tries left ───► repair_sql
+                         │     ├─ failed, result kept ──► summarize
+                         │     └─ failed, no result ────► END
+                         │   check_result ─┬─ looks fine ──► summarize → END
+                         │                 └─ looks wrong ─► repair_sql
+                         └── repair_sql (every repaired query is validated again)
 
 Self-correction (2.2): when the SQL is unsafe, the database rejects it, or it times out,
 `run_sql` records the failed attempt instead of raising, and the graph sends the error back
@@ -21,6 +22,10 @@ to the LLM (`repair_sql`), up to `settings.max_sql_attempts` queries in total.
 Sanity check (2.3): a query that runs can still be wrong. `check_result` looks for warning
 signs (agent/sanity.py). An empty result or duplicate rows get one repair; if it doesn't
 produce a better result, the first result is answered with its warnings shown.
+
+Clarify or refuse (2.4): the LLM's draft can instead hold a clarifying question (several
+reasonable meanings, e.g. "best customers") or a refusal (a request to change data). The run
+then ends before any SQL, and `Pipeline.ask` returns a ClarificationRequest or a Refusal.
 
 If every try fails and no result exists, the run ends and `Pipeline.ask` raises the last
 error. LLM errors and an unreachable database end the run at once (the caller retries those).
@@ -61,13 +66,15 @@ def build_graph() -> AgentGraph:
     graph.add_node("repair_sql", _repair_sql)
     graph.add_node("summarize", _summarize)
     graph.add_edge(START, "generate_sql")
-    graph.add_edge("generate_sql", "run_sql")
+    # A draft can be a refusal or a clarifying question instead of SQL (2.4): then stop.
+    graph.add_conditional_edges("generate_sql", _after_generate, ["run_sql", END])
     # Conditional edges: the function looks at the state and names the next node.
     graph.add_conditional_edges(
         "run_sql", _after_run, ["check_result", "repair_sql", "summarize", END]
     )
     graph.add_conditional_edges("check_result", _after_check, ["repair_sql", "summarize"])
-    graph.add_edge("repair_sql", "run_sql")  # the loop: a repaired query is validated again
+    # The loop: a repaired query goes back to run_sql, so it is validated again.
+    graph.add_conditional_edges("repair_sql", _after_repair, ["run_sql", "summarize", END])
     graph.add_edge("summarize", END)
     return graph.compile()
 
@@ -78,6 +85,11 @@ def _generate_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentSta
         runtime.context.llm, schema_text=state["schema_text"], question=state["question"]
     )
     return {"draft": draft}
+
+
+def _after_generate(state: AgentState) -> str:
+    """SQL to run, or stop: Pipeline.ask returns the refusal or the clarifying question."""
+    return "run_sql" if state["draft"].wants_sql else END
 
 
 def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
@@ -154,6 +166,16 @@ def _repair_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState
         failed=state["attempts"],
     )
     return {"draft": draft}
+
+
+def _after_repair(state: AgentState) -> str:
+    """Run the repaired query; or, if the LLM now asks or refuses instead, stop there.
+
+    With an earlier (suspicious) result in hand, answer it rather than dropping it.
+    """
+    if state["draft"].wants_sql:
+        return "run_sql"
+    return "summarize" if "result" in state else END
 
 
 def _summarize(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:

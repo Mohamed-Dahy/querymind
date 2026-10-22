@@ -9,10 +9,16 @@ API answered with an error, timed out, or isn't running at all.
 """
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from querymind.api.schemas import AskResponse, HealthResponse
+from querymind.api.schemas import (
+    AskReply,
+    AskResponse,
+    ClarificationResponse,
+    HealthResponse,
+    RefusalResponse,
+)
 
 
 class ClientSettings(BaseSettings):
@@ -47,10 +53,14 @@ class QueryMindClient:
         self._http = httpx.Client(base_url=base_url, timeout=timeout_seconds, transport=transport)
         self.base_url = base_url
 
-    def ask(self, question: str) -> AskResponse:
-        """Ask a question. Raises ApiError on any failure."""
+    def ask(self, question: str) -> AskResponse | ClarificationResponse | RefusalResponse:
+        """Ask a question: an answer, a question back, or a refusal. Raises ApiError on failure."""
         response = self._request("POST", "/ask", json={"question": question})
-        return self._parse(response, AskResponse)
+        try:
+            # `kind` in the body says which of the three it is (a "discriminated union").
+            return _ASK_REPLY.validate_json(response.content)
+        except ValidationError as exc:
+            raise ApiError("bad_response", "The API sent an unexpected response.") from exc
 
     def health(self) -> HealthResponse:
         """Check the API is up. Raises ApiError if it isn't."""
@@ -77,6 +87,11 @@ class QueryMindClient:
             return model.model_validate_json(response.content)
         except ValidationError as exc:
             raise ApiError("bad_response", "The API sent an unexpected response.") from exc
+
+
+_ASK_REPLY: TypeAdapter[AskResponse | ClarificationResponse | RefusalResponse] = TypeAdapter(
+    AskReply
+)
 
 
 def _error_from(response: httpx.Response) -> ApiError:

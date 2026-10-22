@@ -8,13 +8,13 @@ from typing import Protocol
 
 from fastapi import Request
 
-from querymind.agent.schemas import AskResult
+from querymind.agent.schemas import AgentReply
 
 
 class AnswersQuestions(Protocol):
-    """Anything with `ask(question) -> AskResult`: the real Pipeline, or a test fake."""
+    """Anything with `ask(question) -> AgentReply`: the real Pipeline, or a test fake."""
 
-    def ask(self, question: str) -> AskResult: ...
+    def ask(self, question: str) -> AgentReply: ...
 
 
 def get_pipeline(request: Request) -> AnswersQuestions:

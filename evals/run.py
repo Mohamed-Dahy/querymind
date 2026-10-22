@@ -27,7 +27,7 @@ import psycopg
 from evals.compare import compare_results
 from evals.golden_set import GOLDEN_DIR, GoldenQuestion, load_golden_set
 from querymind.agent.pipeline import Pipeline
-from querymind.agent.schemas import AskResult
+from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest, Refusal
 from querymind.config import ConfigError, get_settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError, QueryError
@@ -40,7 +40,7 @@ from querymind.safety.sql_validator import validate_sql
 SUITES = {"golden": GOLDEN_DIR / "northwind.yaml"}
 TIERS = ("easy", "medium", "hard")
 
-type AskFn = Callable[[str], AskResult]
+type AskFn = Callable[[str], AgentReply]
 type ReferenceFn = Callable[[GoldenQuestion], QueryResult]
 
 
@@ -85,7 +85,8 @@ def evaluate_question(
     An LLMProviderError (usually a rate limit) or a database that can't be reached is retried
     after a pause; if it never works, the question is *not scored*: an outage says nothing about
     the agent's accuracy. Every other failure (unsafe SQL, a query error, unusable LLM output)
-    counts as a wrong answer. `last_audit` tells what a failed question tried (see AuditCapture).
+    counts as a wrong answer, and so does asking back or refusing: every golden question is
+    clear and only reads data. `last_audit` tells what a failed question tried (AuditCapture).
     """
     started = time.perf_counter()
     for attempt in range(1, retries + 2):
@@ -99,6 +100,8 @@ def evaluate_question(
         except (UnsafeSqlError, QueryError, LLMError, ValueError) as exc:
             return _failed(item, exc, started, attempt, last_audit())
 
+        if not isinstance(answer, AskResult):
+            return _no_answer(item, answer, started, attempt)
         comparison = compare_results(
             expected=reference(item), actual=answer.result, ordered=item.ordered
         )
@@ -114,6 +117,27 @@ def evaluate_question(
             sql_attempts=answer.sql_attempts,
         )
     raise AssertionError("unreachable: the loop always returns")
+
+
+def _no_answer(
+    item: GoldenQuestion, reply: ClarificationRequest | Refusal, started: float, attempt: int
+) -> Outcome:
+    """A clarifying question or a refusal instead of an answer: wrong for a golden question."""
+    if isinstance(reply, ClarificationRequest):
+        reason = f"asked back instead of answering: {reply.clarification.question}"
+    else:
+        reason = f"refused: {reply.message}"
+    return Outcome(
+        item=item,
+        passed=False,
+        strict=False,
+        reason=reason,
+        error=None,
+        sql=None,
+        seconds=time.perf_counter() - started,
+        provider_attempts=attempt,
+        sql_attempts=0,
+    )
 
 
 def _failed(
@@ -337,7 +361,7 @@ def main() -> int:
     pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
     capture = AuditCapture.attach()
 
-    def ask(question: str) -> AskResult:
+    def ask(question: str) -> AgentReply:
         capture.last = AuditedAsk()
         return pipeline.ask(question, summarize_answer=False)
 

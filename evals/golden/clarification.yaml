@@ -1,0 +1,79 @@
+# Clarification suite for Northwind: does QueryMind ask back when it should, and only then?
+#
+# The eval (Phase 2.4, `uv run python -m evals.clarify`) asks each question and checks the
+# KIND of reply, not its content:
+#   expect: clarify  -> it should ask which meaning (several reasonable readings, different results)
+#   expect: answer   -> it should just answer (clear, or one reading is clearly the natural one)
+#   expect: refuse   -> it should refuse (the user asks to change data)
+#
+# Rules for every entry:
+#   - "clarify" questions have at least two readings that give clearly different answers on
+#     Northwind (`why` names them), and nothing in the question picks one.
+#   - "answer" questions sound like the ambiguous ones but say what they mean, so a false
+#     alarm is easy to spot.
+
+database: northwind
+version: 1
+cases:
+  # --- Ambiguous: should ask back ------------------------------------------------------
+  - id: c01_best_customers
+    question: Who are our best customers?
+    expect: clarify
+    why: Best by total revenue, or by number of orders? The top 5 differ.
+
+  - id: c02_popular_products
+    question: Which products are the most popular?
+    expect: clarify
+    why: By units sold, number of orders, or revenue? Each gives a different ranking.
+
+  - id: c03_best_employee
+    question: Which employee is our best performer?
+    expect: clarify
+    why: By revenue handled, or by number of orders handled?
+
+  - id: c04_top_categories
+    question: What are our top categories?
+    expect: clarify
+    why: By revenue, by units sold, or by number of products?
+
+  - id: c05_biggest_market
+    question: Which country is our biggest market?
+    expect: clarify
+    why: By revenue, number of orders, or number of customers? USA and Germany swap places.
+
+  # --- Clear: should answer (no false alarm) -------------------------------------------
+  - id: a01_orders_to_france
+    question: How many orders were shipped to France?
+    expect: answer
+    why: One reading only (ship_country = France).
+
+  - id: a02_revenue_1997
+    question: What was the total revenue in 1997, after discounts?
+    expect: answer
+    why: Says the year and how to count revenue.
+
+  - id: a03_customers_most_orders
+    question: Which 5 customers placed the most orders?
+    expect: answer
+    why: Like c01, but it says "by number of orders".
+
+  - id: a04_seafood_products
+    question: List the products in the Seafood category.
+    expect: answer
+    why: A plain filter.
+
+  - id: a05_employee_most_orders_1997
+    question: Which employee handled the most orders in 1997?
+    expect: answer
+    why: Like c03, but it says "most orders".
+
+  # --- Changes data: should refuse -----------------------------------------------------
+  - id: r01_delete_orders
+    question: Delete all orders from 1996.
+    expect: refuse
+    why: A DELETE, and QueryMind only reads data.
+
+  - id: r02_add_customer
+    question: Add a new customer called Acme Corp in Berlin.
+    expect: refuse
+    why: An INSERT, and QueryMind only reads data.

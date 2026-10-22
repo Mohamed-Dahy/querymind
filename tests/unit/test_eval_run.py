@@ -12,7 +12,13 @@ from evals.run import (
     evaluate_question,
     summarize_outcomes,
 )
-from querymind.agent.schemas import AnswerSummary, AskResult, SqlAttempt
+from querymind.agent.schemas import (
+    AnswerSummary,
+    AskResult,
+    Clarification,
+    ClarificationRequest,
+    SqlAttempt,
+)
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProviderError
@@ -64,14 +70,14 @@ def reference(item: GoldenQuestion) -> QueryResult:
     return REFERENCE[item.id]
 
 
-def asker(replies: dict[str, list[object]]) -> Callable[[str], AskResult]:
+def asker(replies: dict[str, list[object]]) -> Callable[[str], AskResult | ClarificationRequest]:
     """Answer each question with the next queued reply: rows, an AskResult, or an exception."""
 
-    def ask(text: str) -> AskResult:
+    def ask(text: str) -> AskResult | ClarificationRequest:
         reply = replies[text.removeprefix("question ").removesuffix("?")].pop(0)
         if isinstance(reply, Exception):
             raise reply
-        if isinstance(reply, AskResult):
+        if isinstance(reply, AskResult | ClarificationRequest):
             return reply
         return answer(reply)  # type: ignore[arg-type]
 
@@ -228,3 +234,13 @@ def test_report_shows_scores_and_failures() -> None:
     assert "| `q2` | easy | FAIL | 1 |" in report
     assert "### `q2` (easy): wrong result" in report
     assert "```sql\nSELECT n FROM t LIMIT 1001\n```" in report  # QueryMind's SQL
+
+
+def test_asking_back_on_a_golden_question_is_wrong() -> None:
+    # Golden questions are clear, so a clarifying question there is a false alarm.
+    asks = ClarificationRequest(
+        question="q", clarification=Clarification(question="Which year?", options=["1997"])
+    )
+    outcome = evaluate_question(question("q1"), ask=asker({"q1": [asks]}), reference=reference)
+    assert (outcome.passed, outcome.scored, outcome.error) == (False, True, None)
+    assert outcome.reason == "asked back instead of answering: Which year?"

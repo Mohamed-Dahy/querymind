@@ -6,7 +6,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from querymind import __version__
-from querymind.agent.schemas import AnswerSummary, AskResult, SanityWarning
+from querymind.agent.schemas import (
+    AgentReply,
+    AnswerSummary,
+    AskResult,
+    Clarification,
+    ClarificationRequest,
+    Refusal,
+    SanityWarning,
+)
 from querymind.api.main import create_app
 from querymind.api.schemas import AskResponse
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
@@ -27,17 +35,18 @@ RESULT = AskResult(
 
 
 class FakePipeline:
-    """Returns RESULT, or raises `error` if one is given. Records the questions asked."""
+    """Returns `reply` (RESULT by default), or raises `error`. Records the questions asked."""
 
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(self, error: Exception | None = None, reply: AgentReply = RESULT) -> None:
         self.error = error
+        self.reply = reply
         self.questions: list[str] = []
 
-    def ask(self, question: str) -> AskResult:
+    def ask(self, question: str) -> AgentReply:
         self.questions.append(question)
         if self.error is not None:
             raise self.error
-        return RESULT
+        return self.reply
 
 
 def client_for(pipeline: FakePipeline) -> TestClient:
@@ -52,6 +61,7 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         response = client.post("/ask", json={"question": "  How many customers are there?  "})
     assert response.status_code == 200
     assert response.json() == {
+        "kind": "answer",
         "question": "How many customers are there?",
         "answer": "There are 91 customers.",
         "answer_from_llm": True,
@@ -169,3 +179,31 @@ def test_json_log_lines_include_extra_fields() -> None:
     assert '"message": "ask"' in line
     assert '"outcome": "ok"' in line
     assert '"logger": "querymind.audit"' in line
+
+
+def test_a_clarifying_question_is_a_200_with_its_options() -> None:
+    clarification = Clarification(
+        question="Best by what?", options=["by total revenue", "by number of orders"]
+    )
+    reply = ClarificationRequest(question="Best customers?", clarification=clarification)
+    with client_for(FakePipeline(reply=reply)) as client:
+        response = client.post("/ask", json={"question": "Best customers?"})
+    assert response.status_code == 200  # not an error: the agent is asking back
+    assert response.json() == {
+        "kind": "clarification",
+        "question": "Best customers?",
+        "clarifying_question": "Best by what?",
+        "options": ["by total revenue", "by number of orders"],
+    }
+
+
+def test_a_refusal_is_a_200_with_its_message() -> None:
+    reply = Refusal(question="Delete all orders", message="I can only read data.")
+    with client_for(FakePipeline(reply=reply)) as client:
+        response = client.post("/ask", json={"question": "Delete all orders"})
+    assert response.status_code == 200
+    assert response.json() == {
+        "kind": "refusal",
+        "question": "Delete all orders",
+        "message": "I can only read data.",
+    }

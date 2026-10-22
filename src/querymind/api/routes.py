@@ -6,7 +6,16 @@ from fastapi import APIRouter, Depends
 
 from querymind import __version__
 from querymind.api.deps import AnswersQuestions, get_pipeline
-from querymind.api.schemas import AskRequest, AskResponse, ErrorResponse, HealthResponse
+from querymind.api.schemas import (
+    AskReply,
+    AskRequest,
+    AskResponse,
+    ClarificationResponse,
+    ErrorResponse,
+    HealthResponse,
+    RefusalResponse,
+    reply_from,
+)
 
 router = APIRouter()
 
@@ -19,14 +28,18 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
 }
 
 
-@router.post("/ask", response_model=AskResponse, responses=_ERRORS, tags=["questions"])
+@router.post("/ask", response_model=AskReply, responses=_ERRORS, tags=["questions"])
 def ask(
     request: AskRequest, pipeline: Annotated[AnswersQuestions, Depends(get_pipeline)]
-) -> AskResponse:
-    """Answer a question about the data: the answer, the SQL that ran, and the rows."""
+) -> AskResponse | ClarificationResponse | RefusalResponse:
+    """Answer a question about the data: the answer, the SQL that ran, and the rows.
+
+    Or, with `kind` = "clarification", a question back with options (the question was
+    ambiguous), or with `kind` = "refusal", why QueryMind won't do it (e.g. change data).
+    """
     # A plain `def` (not `async def`): the pipeline blocks on the database and the LLM, so
     # FastAPI runs it in a worker thread and the server stays free for other requests.
-    return AskResponse.from_result(pipeline.ask(request.question))
+    return reply_from(pipeline.ask(request.question))
 
 
 @router.get("/health", response_model=HealthResponse, tags=["ops"])

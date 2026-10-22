@@ -8,7 +8,7 @@ the LLM directly. So the UI can't skip the safety checks, and it can be deployed
 
 import streamlit as st
 
-from querymind.api.schemas import AskResponse
+from querymind.api.schemas import AskResponse, ClarificationResponse, RefusalResponse
 from querymind.client import ApiError, ClientSettings, QueryMindClient
 
 EXAMPLE_QUESTIONS = [
@@ -18,6 +18,9 @@ EXAMPLE_QUESTIONS = [
     "How many orders did each country place?",
     "What is the total sales amount per category?",
 ]
+
+# Everything the API can send back for a question (or the error we got instead).
+type Reply = AskResponse | ClarificationResponse | RefusalResponse | ApiError
 
 # What to tell the user for each API error code (the API's own message is shown below it).
 ERROR_TITLES = {
@@ -47,21 +50,30 @@ def main() -> None:
 
     client = get_client()
     question = render_sidebar(client)
-    question = st.chat_input("Ask a question about the data") or question
+    # A clicked clarification option (see render_clarification) arrives as a "pending" question.
+    question = (
+        st.chat_input("Ask a question about the data")
+        or question
+        or st.session_state.pop("pending", None)
+    )
 
     # Streamlit re-runs this whole script on every interaction, so the conversation lives in
     # session_state (kept per browser tab) and is redrawn each time.
-    history: list[tuple[str, AskResponse | ApiError]] = st.session_state.setdefault("history", [])
+    history: list[tuple[str, Reply]] = st.session_state.setdefault("history", [])
     if question:
         with st.spinner("Thinking: writing SQL, checking it, running it…"):
             history.append((question, ask(client, question)))
 
-    for asked, outcome in history:
+    for index, (asked, outcome) in enumerate(history):
         with st.chat_message("user"):
             st.write(asked)
         with st.chat_message("assistant"):
             if isinstance(outcome, ApiError):
                 render_error(outcome)
+            elif isinstance(outcome, ClarificationResponse):
+                render_clarification(outcome, index)
+            elif isinstance(outcome, RefusalResponse):
+                st.info(outcome.message, icon=":material/block:")
             else:
                 render_answer(outcome)
 
@@ -87,7 +99,7 @@ def render_sidebar(client: QueryMindClient) -> str | None:
         return clicked
 
 
-def ask(client: QueryMindClient, question: str) -> AskResponse | ApiError:
+def ask(client: QueryMindClient, question: str) -> Reply:
     try:
         return client.ask(question)
     except ApiError as exc:
@@ -115,6 +127,18 @@ def render_answer(response: AskResponse) -> None:
     with st.expander("Show SQL"):
         st.code(response.sql, language="sql")
         st.caption(response.explanation)
+
+
+def render_clarification(response: ClarificationResponse, index: int) -> None:
+    """The question back, with one button per meaning. A click asks the question again with
+    that meaning added, e.g. "Who are our best customers? (by total revenue)"."""
+    st.markdown(response.clarifying_question)
+    for number, option in enumerate(response.options):
+        # Keys must be unique on the page: this answer's position + the option's.
+        if st.button(option, key=f"clarify-{index}-{number}"):
+            st.session_state["pending"] = f"{response.question} ({option})"
+            st.rerun()  # start over, so main() picks the pending question up
+    st.caption("Or type your question again with more detail.")
 
 
 def render_error(error: ApiError) -> None:

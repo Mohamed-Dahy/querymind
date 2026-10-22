@@ -12,8 +12,10 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 
 > 🚧 **Status: working agent.** Ask questions through a chat UI or an HTTP API. When a query fails, the agent
 > reads the database's error and fixes its own SQL; when a result looks wrong (no rows, duplicated rows), it
-> checks again and warns you. On a 30-question test set with known answers it gets **30/30** right (29/30 before
-> self-correction). Next: clarifying questions, then larger databases.
+> checks again and warns you. When a question is ambiguous ("best customers": by revenue or by orders?) it asks
+> back, and it politely refuses requests to change data. On a 30-question test set with known answers it gets
+> **30/30** right (29/30 before self-correction). Next: confidence levels and follow-up questions, then larger
+> databases.
 
 ---
 
@@ -25,7 +27,9 @@ Question → LLM writes SQL → safety check → run on a read-only DB user → 
 
 The steps run as a [LangGraph](https://langchain-ai.github.io/langgraph/) agent graph. When a query is unsafe,
 fails in the database or runs too long, the error goes back to the LLM, which writes a fixed query (up to 3 tries).
-Every fixed query is checked again before it runs. A result that looks wrong (no rows, duplicated rows) gets one
+Before writing SQL, the LLM may instead ask a clarifying question with options (the question has several
+reasonable meanings) or refuse (the user asks to change data); then no SQL runs. Every fixed query is checked
+again before it runs. A result that looks wrong (no rows, duplicated rows) gets one
 more try, and any warning that's left is shown with the answer.
 
 ```mermaid
@@ -35,6 +39,7 @@ graph TD;
     run_sql["run_sql<br/>validate, then run read-only"] -. ran .-> check_result;
     run_sql -. failed, tries left .-> repair_sql;
     run_sql -. failed, no tries left .-> done([End]);
+    generate_sql -. asks back or refuses .-> done;
     check_result["check_result<br/>does the result look right?"] -. looks fine .-> summarize;
     check_result -. looks wrong .-> repair_sql;
     repair_sql["repair_sql<br/>LLM fixes it, given the error"] --> run_sql;
@@ -109,6 +114,7 @@ uv run python scripts/ask.py "How many orders were placed in 1997?"   # or strai
 ```bash
 uv run python -m evals.run --suite golden   # 30 questions with known answers (uses real LLM calls)
 uv run python -m evals.run --suite golden --max-attempts 1   # the same, with self-correction off
+uv run python -m evals.clarify               # does it ask back only when a question is ambiguous?
 ```
 
 ### Run the checks

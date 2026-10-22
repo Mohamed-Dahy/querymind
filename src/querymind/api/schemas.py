@@ -1,8 +1,10 @@
 """Request and response bodies of the HTTP API (they also define the OpenAPI docs at /docs)."""
 
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from querymind.agent.schemas import AskResult
+from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest
 
 
 class AskRequest(BaseModel):
@@ -28,6 +30,7 @@ class ResultWarning(BaseModel):
 class AskResponse(BaseModel):
     """The answer, plus everything needed to check it: the SQL that ran and its rows."""
 
+    kind: Literal["answer"] = "answer"
     question: str
     answer: str = Field(description="Plain-language answer")
     answer_from_llm: bool = Field(
@@ -58,6 +61,46 @@ class AskResponse(BaseModel):
             # Only code + message: a warning's `detail` is a hint written for the LLM.
             warnings=[ResultWarning(code=w.code, message=w.message) for w in result.warnings],
         )
+
+
+class ClarificationResponse(BaseModel):
+    """The question had several reasonable meanings: pick one, then ask again. No SQL ran."""
+
+    kind: Literal["clarification"] = "clarification"
+    question: str
+    clarifying_question: str = Field(examples=['How would you define "best" customers?'])
+    options: list[str] = Field(examples=[["by total revenue", "by number of orders"]])
+
+    @classmethod
+    def from_request(cls, request: ClarificationRequest) -> "ClarificationResponse":
+        return cls(
+            question=request.question,
+            clarifying_question=request.clarification.question,
+            options=request.clarification.options,
+        )
+
+
+class RefusalResponse(BaseModel):
+    """QueryMind won't do this (e.g. change data). No SQL ran."""
+
+    kind: Literal["refusal"] = "refusal"
+    question: str
+    message: str = Field(examples=["I can only read data, not change it."])
+
+
+# The body of a successful POST /ask: `kind` tells which of the three it is.
+AskReply = Annotated[
+    AskResponse | ClarificationResponse | RefusalResponse, Field(discriminator="kind")
+]
+
+
+def reply_from(reply: AgentReply) -> AskResponse | ClarificationResponse | RefusalResponse:
+    """The agent's reply as the matching API body."""
+    if isinstance(reply, AskResult):
+        return AskResponse.from_result(reply)
+    if isinstance(reply, ClarificationRequest):
+        return ClarificationResponse.from_request(reply)
+    return RefusalResponse(question=reply.question, message=reply.message)
 
 
 class ErrorResponse(BaseModel):

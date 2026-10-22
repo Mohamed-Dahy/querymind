@@ -12,7 +12,7 @@ import sys
 import textwrap
 
 from querymind.agent.pipeline import Pipeline
-from querymind.agent.schemas import AskResult
+from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest
 from querymind.config import ConfigError, get_settings
 from querymind.db.errors import QueryError
 from querymind.llm import LLMError, create_llm_provider
@@ -56,7 +56,7 @@ def main() -> int:
     for number, question in enumerate(args.questions or SAMPLE_QUESTIONS, start=1):
         print(f"[{number}] {question}")
         try:
-            print_result(pipeline.ask(question))
+            print_reply(pipeline.ask(question))
         except UnsafeSqlError as exc:
             failures += 1
             print(f"    REJECTED: {exc.reason}\n")
@@ -64,6 +64,20 @@ def main() -> int:
             failures += 1
             print(f"    FAILED ({type(exc).__name__}): {exc}\n")
     return 1 if failures else 0
+
+
+def print_reply(reply: AgentReply) -> None:
+    """An answer, a clarifying question with its options, or a refusal."""
+    if isinstance(reply, AskResult):
+        print_result(reply)
+    elif isinstance(reply, ClarificationRequest):
+        print(f"    ASKS BACK: {reply.clarification.question}")
+        for option in reply.clarification.options:
+            print(f"      - {option}")
+        print()
+    else:
+        print(f"    REFUSES: {reply.message}")
+        print()
 
 
 def print_result(result: AskResult) -> None:

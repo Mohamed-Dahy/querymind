@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from querymind.api.schemas import AskResponse, HealthResponse, ResultWarning
+from querymind.api.schemas import (
+    AskResponse,
+    ClarificationResponse,
+    HealthResponse,
+    RefusalResponse,
+    ResultWarning,
+)
 from querymind.client import ApiError, QueryMindClient
 
 APP = str(Path(__file__).parents[2] / "ui" / "app.py")
@@ -35,12 +41,22 @@ def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Replace the client's HTTP calls. Returns the list of questions the UI sent."""
     asked: list[str] = []
 
-    def ask(self: QueryMindClient, question: str) -> AskResponse:
+    def ask(
+        self: QueryMindClient, question: str
+    ) -> AskResponse | ClarificationResponse | RefusalResponse:
         asked.append(question)
         if question == "break it":
             raise ApiError("unsafe_sql", "Only SELECT queries are allowed.", status=422)
         if question == "db down":
             raise ApiError("db_unavailable", "Could not connect to the database.", status=503)
+        if question == "Best customers?":
+            return ClarificationResponse(
+                question=question,
+                clarifying_question="Best by what?",
+                options=["by total revenue", "by number of orders"],
+            )
+        if question == "Delete all orders":
+            return RefusalResponse(question=question, message="I can only read data.")
         if question == "doubled":
             return ANSWER.model_copy(update={"warnings": [DOUBLED]})
         return ANSWER
@@ -122,3 +138,20 @@ def test_api_down_is_shown_in_the_sidebar(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(QueryMindClient, "health", down)
     app = run_app()
     assert "Is it running?" in app.sidebar.error[0].value
+
+
+def test_a_clarification_option_asks_again_with_that_meaning(fake_api: list[str]) -> None:
+    app = run_app()
+    app.chat_input[0].set_value("Best customers?").run()
+    assert any(m.value == "Best by what?" for m in app.markdown)
+    app.button(key="clarify-0-0").click().run()  # "by total revenue"
+    assert fake_api == ["Best customers?", "Best customers? (by total revenue)"]
+    assert len(app.chat_message) == 4  # question, options, clarified question, answer
+    assert not app.exception
+
+
+def test_a_refusal_is_shown_as_information(fake_api: list[str]) -> None:
+    app = run_app()
+    app.chat_input[0].set_value("Delete all orders").run()
+    assert [i.value for i in app.info] == ["I can only read data."]
+    assert not app.error  # a refusal is not an error

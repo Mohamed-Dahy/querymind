@@ -6,9 +6,11 @@ from collections.abc import Callable
 import httpx
 import pytest
 
+from querymind.api.schemas import AskResponse, ClarificationResponse, RefusalResponse
 from querymind.client import ApiError, ClientSettings, QueryMindClient
 
 ANSWER = {
+    "kind": "answer",
     "question": "How many customers?",
     "answer": "There are 91 customers.",
     "answer_from_llm": True,
@@ -33,6 +35,7 @@ def test_ask_posts_the_question_and_parses_the_answer() -> None:
         return httpx.Response(200, json=ANSWER)
 
     response = client_for(handler).ask("How many customers?")
+    assert isinstance(response, AskResponse)
     assert response.answer == "There are 91 customers."
     assert response.rows == [[91]]
     [request] = seen
@@ -106,3 +109,28 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("API_URL", "http://api.internal:9000")
     assert ClientSettings(_env_file=None).api_url == "http://api.internal:9000"
+
+
+def test_a_clarification_is_parsed_by_its_kind() -> None:
+    body = {
+        "kind": "clarification",
+        "question": "Best customers?",
+        "clarifying_question": "Best by what?",
+        "options": ["by total revenue", "by number of orders"],
+    }
+    response = client_for(lambda _: httpx.Response(200, json=body)).ask("Best customers?")
+    assert isinstance(response, ClarificationResponse)
+    assert response.options == ["by total revenue", "by number of orders"]
+
+
+def test_a_refusal_is_parsed_by_its_kind() -> None:
+    body = {"kind": "refusal", "question": "Delete orders", "message": "I can only read data."}
+    response = client_for(lambda _: httpx.Response(200, json=body)).ask("Delete orders")
+    assert response == RefusalResponse(question="Delete orders", message="I can only read data.")
+
+
+def test_an_unknown_kind_is_a_bad_response() -> None:
+    body = {"kind": "poem", "question": "?"}
+    with pytest.raises(ApiError) as info:
+        client_for(lambda _: httpx.Response(200, json=body)).ask("?")
+    assert info.value.code == "bad_response"

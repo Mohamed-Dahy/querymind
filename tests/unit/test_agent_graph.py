@@ -14,7 +14,7 @@ from pydantic import BaseModel, SecretStr
 
 from querymind.agent import graph as graph_module
 from querymind.agent.graph import build_graph
-from querymind.agent.schemas import AnswerSummary, SqlAttempt, SqlDraft
+from querymind.agent.schemas import AnswerSummary, Clarification, SqlAttempt, SqlDraft
 from querymind.agent.state import AgentContext, AgentState
 from querymind.config import Settings
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
@@ -175,14 +175,15 @@ def test_diagram_shows_the_nodes_and_edges() -> None:
     mermaid = build_graph().get_graph().draw_mermaid()
     for edge in [
         "__start__ --> generate_sql",
-        "generate_sql --> run_sql",
+        "generate_sql -.-> run_sql",
+        "generate_sql -.-> __end__",  # it refused or asked back: no SQL runs
         "run_sql -.-> check_result",  # dotted = a conditional edge (one of these is taken)
         "run_sql -.-> repair_sql",
         "run_sql -.-> summarize",
         "run_sql -.-> __end__",
         "check_result -.-> summarize",
         "check_result -.-> repair_sql",
-        "repair_sql --> run_sql",  # the self-correction loop
+        "repair_sql -.-> run_sql",  # the self-correction loop
         "summarize --> __end__",
     ]:
         assert edge in mermaid
@@ -340,3 +341,44 @@ def test_no_sanity_repair_without_tries_left(executor: StubExecutor) -> None:
     final = build_graph().invoke(START, context=context(llm, max_sql_attempts=1))
     assert [w.code for w in final["warnings"]] == ["empty"]
     assert len(llm.calls) == 1  # no repair: the one allowed query was used
+
+
+# --- Clarify or refuse (2.4) -----------------------------------------------------------------
+
+ASKS = SqlDraft(
+    sql="",
+    explanation="",
+    tables_used=[],
+    clarification=Clarification(question="Best by what?", options=["revenue", "orders"]),
+)
+REFUSES = SqlDraft(sql="", explanation="", tables_used=[], refusal="I can only read data.")
+
+
+@pytest.mark.parametrize("reply", [ASKS, REFUSES], ids=["clarification", "refusal"])
+def test_asking_back_or_refusing_runs_no_sql(executor: StubExecutor, reply: SqlDraft) -> None:
+    connect = MagicMock()
+    final = build_graph().invoke(START, context=context(FakeLLMProvider([reply]), connect))
+    assert final["draft"] == reply
+    assert "result" not in final
+    connect.assert_not_called()
+    assert executor.queries == []
+
+
+def test_a_refusal_wins_over_sql_in_the_same_draft(executor: StubExecutor) -> None:
+    both = SqlDraft(sql="SELECT 1", explanation="", tables_used=[], refusal="No.")
+    build_graph().invoke(START, context=context(FakeLLMProvider([both])))
+    assert executor.queries == []
+
+
+def test_a_repair_that_asks_back_ends_the_run(executor: StubExecutor) -> None:
+    executor.replies.append(db_error())
+    final = build_graph().invoke(START, context=context(FakeLLMProvider([GOOD, ASKS])))
+    assert final["draft"] == ASKS
+    assert "result" not in final  # Pipeline.ask returns the clarifying question
+
+
+def test_a_repair_that_asks_back_keeps_an_earlier_result(executor: StubExecutor) -> None:
+    executor.replies.append(EMPTY)  # suspicious → repair → the LLM asks back instead
+    final = build_graph().invoke(START, context=context(FakeLLMProvider([GOOD, ASKS])))
+    assert final["result"] == EMPTY  # answered with the result we have, and its warning
+    assert [w.code for w in final["warnings"]] == ["empty"]

@@ -21,7 +21,13 @@ from typing import cast
 import psycopg
 
 from querymind.agent.graph import build_graph
-from querymind.agent.schemas import AskResult, SqlAttempt
+from querymind.agent.schemas import (
+    AgentReply,
+    AskResult,
+    ClarificationRequest,
+    Refusal,
+    SqlAttempt,
+)
 from querymind.agent.state import AgentContext, AgentState
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
@@ -51,8 +57,8 @@ class Pipeline:
         self._schema: tuple[SchemaInfo, str] | None = None
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
 
-    def ask(self, question: str, *, summarize_answer: bool = True) -> AskResult:
-        """Answer one question.
+    def ask(self, question: str, *, summarize_answer: bool = True) -> AgentReply:
+        """Answer one question, or ask back when it's ambiguous, or refuse a change request.
 
         `summarize_answer=False` skips the second LLM call and uses the plain templated answer.
         The eval uses it: it scores the SQL's results, so the summary would only cost tokens.
@@ -83,11 +89,14 @@ class Pipeline:
             # one means that if a node fails, we still know the SQL it was given (for the audit).
             for snapshot in self._graph.stream(start, context=context, stream_mode="values"):
                 state = cast(AgentState, snapshot)  # LangGraph types this loosely as dict
-            if "result" not in state:  # the graph gave up: every SQL attempt failed
-                raise _error_from(state["attempts"][-1])
+            reply = _reply_without_result(question, state)
         except Exception as exc:
             self._audit(question, state, outcome=type(exc).__name__, started=started)
             raise
+        if reply is not None:
+            outcome = "refusal" if isinstance(reply, Refusal) else "clarification"
+            self._audit(question, state, outcome=outcome, started=started)
+            return reply
         self._audit(question, state, outcome="ok", started=started)
         return AskResult(
             question=question,
@@ -130,6 +139,23 @@ class Pipeline:
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )
+
+
+def _reply_without_result(
+    question: str, state: AgentState
+) -> Refusal | ClarificationRequest | None:
+    """When the run ended without a result: a refusal, a question back, or (raised) the error.
+
+    None means there is a result, so the caller builds the answer.
+    """
+    if "result" in state:
+        return None
+    draft = state["draft"]
+    if draft.refusal is not None:
+        return Refusal(question=question, message=draft.refusal)
+    if draft.clarification is not None:
+        return ClarificationRequest(question=question, clarification=draft.clarification)
+    raise _error_from(state["attempts"][-1])  # the graph gave up: every SQL attempt failed
 
 
 def _queries_run(state: AgentState) -> int:

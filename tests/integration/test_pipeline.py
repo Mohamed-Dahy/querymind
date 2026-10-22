@@ -9,7 +9,13 @@ import psycopg
 import pytest
 
 from querymind.agent.pipeline import Pipeline
-from querymind.agent.schemas import SqlDraft
+from querymind.agent.schemas import (
+    AskResult,
+    Clarification,
+    ClarificationRequest,
+    Refusal,
+    SqlDraft,
+)
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import QueryExecutionError
@@ -23,6 +29,13 @@ def draft(sql: str) -> SqlDraft:
     return SqlDraft(sql=sql, explanation="Test query.", tables_used=[])
 
 
+def ask(pipeline: Pipeline, question: str, **options: bool) -> AskResult:
+    """Ask, and check the reply is an answer (not a clarifying question or a refusal)."""
+    reply = pipeline.ask(question, **options)
+    assert isinstance(reply, AskResult), reply
+    return reply
+
+
 def make_pipeline(settings: Settings, *responses: object) -> tuple[Pipeline, FakeLLMProvider]:
     fake = FakeLLMProvider(responses)  # type: ignore[arg-type]
     return Pipeline(llm=fake, settings=settings), fake
@@ -34,7 +47,7 @@ def test_question_to_answer(settings: Settings) -> None:
         draft("SELECT count(*) AS customer_count FROM customers"),
         "There are 91 customers.",
     )
-    result = pipeline.ask("How many customers are there?")
+    result = ask(pipeline, "How many customers are there?")
 
     assert result.result.rows == [[91]]
     assert result.answer.text == "There are 91 customers."
@@ -57,7 +70,7 @@ def test_invented_number_in_the_answer_is_replaced(settings: Settings) -> None:
         draft("SELECT count(*) AS customer_count FROM customers"),
         "There are 97 customers.",
     )
-    result = pipeline.ask("How many customers are there?")
+    result = ask(pipeline, "How many customers are there?")
     assert result.answer.from_llm is False
     assert result.answer.text == "customer_count: 91"
 
@@ -88,7 +101,7 @@ def test_a_real_postgres_error_is_fixed_by_a_repair(
     good = "SELECT round(sum(freight)::numeric, 2) AS total_freight FROM orders"
     pipeline, fake = make_pipeline(settings, draft(bad), draft(good), "Total freight: 64942.70.")
     with caplog.at_level(logging.INFO, logger="querymind.audit"):
-        result = pipeline.ask("What is the total freight?")
+        result = ask(pipeline, "What is the total freight?")
 
     assert result.result.rows == [[64942.7]]
     assert result.sql_attempts == 2
@@ -105,7 +118,7 @@ def test_an_empty_result_is_retried_with_a_hint(settings: Settings) -> None:
     wrong = "SELECT company_name FROM customers WHERE country = 'germany'"
     right = "SELECT company_name FROM customers WHERE country ILIKE 'germany'"
     pipeline, fake = make_pipeline(settings, draft(wrong), draft(right), "There are 11.")
-    result = pipeline.ask("Which customers are in germany?")
+    result = ask(pipeline, "Which customers are in germany?")
 
     assert result.result.row_count == 11
     assert result.warnings == ()  # the repaired result looks fine
@@ -175,7 +188,37 @@ def test_every_question_is_audit_logged(
 def test_summary_can_be_skipped(settings: Settings) -> None:
     # The eval scores results only, so it skips the summary call (half the LLM tokens).
     pipeline, fake = make_pipeline(settings, draft("SELECT count(*) AS n FROM customers"))
-    result = pipeline.ask("How many customers?", summarize_answer=False)
+    result = ask(pipeline, "How many customers?", summarize_answer=False)
     assert result.answer.text == "n: 91"
     assert result.answer.from_llm is False
     assert len(fake.calls) == 1  # only the SQL call
+
+
+def test_an_ambiguous_question_gets_a_question_back(
+    settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    clarification = Clarification(
+        question="Best by what?", options=["by total revenue", "by number of orders"]
+    )
+    reply_draft = SqlDraft(sql="", explanation="", tables_used=[], clarification=clarification)
+    pipeline, fake = make_pipeline(settings, reply_draft)
+    with caplog.at_level(logging.INFO, logger="querymind.audit"):
+        reply = pipeline.ask("Who are our best customers?")
+    assert reply == ClarificationRequest(
+        question="Who are our best customers?", clarification=clarification
+    )
+    assert len(fake.calls) == 1  # no SQL ran, no summary
+    (audit,) = [r for r in caplog.records if r.name == "querymind.audit"]
+    assert audit.outcome == "clarification"  # type: ignore[attr-defined]
+
+
+def test_a_change_request_is_refused_politely(settings: Settings) -> None:
+    refusal = "I can only read data, not change it."
+    pipeline, _ = make_pipeline(
+        settings, SqlDraft(sql="", explanation="", tables_used=[], refusal=refusal)
+    )
+    assert pipeline.ask("Delete all orders") == Refusal(
+        question="Delete all orders", message=refusal
+    )
+    with connect_readonly(settings) as conn:
+        assert conn.execute("SELECT count(*) FROM orders").fetchone() == (830,)
