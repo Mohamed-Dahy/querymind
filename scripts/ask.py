@@ -84,6 +84,8 @@ def print_result(result: AskResult) -> None:
     """The answer first (what a user wants), then the SQL and the first rows as evidence."""
     source = "" if result.answer.from_llm else "  [fallback: the LLM answer was not used]"
     print(f"    answer: {result.answer.text}{source}")
+    reasons = f" ({' '.join(result.confidence.reasons)})" if result.confidence.reasons else ""
+    print(f"    confidence: {result.confidence.level}{reasons}")
     for warning in result.warnings:
         print(f"    WARNING ({warning.code}): {warning.message}")
     for number, attempt in enumerate(result.failed_attempts, start=1):

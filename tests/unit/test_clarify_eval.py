@@ -12,11 +12,14 @@ from querymind.agent.schemas import (
     AskResult,
     Clarification,
     ClarificationRequest,
+    Confidence,
     Refusal,
 )
 from querymind.db.errors import QueryExecutionError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProviderError
+
+HIGH = Confidence(level="high", reasons=(), points=0)
 
 SUITE = load_clarify_set()
 CASE = ClarifyCase(id="c01", question="Who are our best customers?", expect="clarify", why="x")
@@ -29,6 +32,7 @@ def answer() -> AskResult:
         explanation="",
         result=QueryResult(columns=["n"], rows=[[1]], row_count=1, truncated=False, duration_ms=1),
         answer=AnswerSummary(text="1", from_llm=False),
+        confidence=HIGH,
     )
 
 

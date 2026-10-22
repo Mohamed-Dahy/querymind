@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest
+from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest, ConfidenceLevel
 
 
 class AskRequest(BaseModel):
@@ -45,6 +45,11 @@ class AskResponse(BaseModel):
     warnings: list[ResultWarning] = Field(
         default=[], description="Signs the result may be wrong (empty, duplicated rows...)"
     )
+    confidence: ConfidenceLevel = Field(description="How sure QueryMind is: high, medium or low")
+    confidence_reasons: list[str] = Field(
+        description="Why it isn't high (empty when it is)",
+        examples=[["It needed 1 repair to get this result."]],
+    )
 
     @classmethod
     def from_result(cls, result: AskResult) -> "AskResponse":
@@ -60,6 +65,8 @@ class AskResponse(BaseModel):
             truncated=result.result.truncated,
             # Only code + message: a warning's `detail` is a hint written for the LLM.
             warnings=[ResultWarning(code=w.code, message=w.message) for w in result.warnings],
+            confidence=result.confidence.level,
+            confidence_reasons=list(result.confidence.reasons),
         )
 
 

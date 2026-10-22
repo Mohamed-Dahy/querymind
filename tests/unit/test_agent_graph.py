@@ -166,7 +166,7 @@ def test_state_holds_only_saveable_values(executor: StubExecutor) -> None:
     llm = FakeLLMProvider([GOOD, GOOD, "There are 91."])
     final = build_graph().invoke(START, context=context(llm))
     for key, value in final.items():
-        assert isinstance(value, str | bool | list | BaseModel), key
+        assert value is None or isinstance(value, str | bool | list | BaseModel), key
         assert not isinstance(value, ValidatedQuery), key
     assert all(isinstance(a, SqlAttempt) for a in final["attempts"])
 

@@ -6,6 +6,8 @@ A thin client: it only talks to the API over HTTP (querymind.client), never to t
 the LLM directly. So the UI can't skip the safety checks, and it can be deployed separately.
 """
 
+from typing import Literal
+
 import streamlit as st
 
 from querymind.api.schemas import AskResponse, ClarificationResponse, RefusalResponse
@@ -109,6 +111,7 @@ def ask(client: QueryMindClient, question: str) -> Reply:
 def render_answer(response: AskResponse) -> None:
     """The answer first, then the table, then the SQL as evidence."""
     st.markdown(response.answer)
+    render_confidence(response)
     for warning in response.warnings:
         st.warning(warning.message, icon=":material/warning:")
     if not response.answer_from_llm:
@@ -127,6 +130,25 @@ def render_answer(response: AskResponse) -> None:
     with st.expander("Show SQL"):
         st.code(response.sql, language="sql")
         st.caption(response.explanation)
+
+
+# Streamlit's own color names for the badge (a Literal type, so mypy checks the spelling).
+CONFIDENCE_COLORS: dict[str, Literal["green", "orange", "red"]] = {
+    "high": "green",
+    "medium": "orange",
+    "low": "red",
+}
+
+
+def render_confidence(response: AskResponse) -> None:
+    """A colored badge (High / Medium / Low), and why, when it isn't high."""
+    st.badge(
+        f"{response.confidence.title()} confidence",
+        color=CONFIDENCE_COLORS[response.confidence],
+        icon=":material/verified:" if response.confidence == "high" else ":material/info:",
+    )
+    if response.confidence_reasons:
+        st.caption(" ".join(response.confidence_reasons))
 
 
 def render_clarification(response: ClarificationResponse, index: int) -> None:

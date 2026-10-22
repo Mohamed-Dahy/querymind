@@ -30,6 +30,8 @@ ANSWER = AskResponse(
     rows=[["Côte de Blaye", 263.5], ["Thüringer Rostbratwurst", 123.79]],
     row_count=2,
     truncated=False,
+    confidence="high",
+    confidence_reasons=[],
 )
 
 
@@ -57,6 +59,13 @@ def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
             )
         if question == "Delete all orders":
             return RefusalResponse(question=question, message="I can only read data.")
+        if question == "unsure":
+            return ANSWER.model_copy(
+                update={
+                    "confidence": "medium",
+                    "confidence_reasons": ["It needed 1 repair to get this result."],
+                }
+            )
         if question == "doubled":
             return ANSWER.model_copy(update={"warnings": [DOUBLED]})
         return ANSWER
@@ -155,3 +164,12 @@ def test_a_refusal_is_shown_as_information(fake_api: list[str]) -> None:
     app.chat_input[0].set_value("Delete all orders").run()
     assert [i.value for i in app.info] == ["I can only read data."]
     assert not app.error  # a refusal is not an error
+
+
+def test_confidence_badge_and_reasons(fake_api: list[str]) -> None:
+    app = run_app()
+    app.chat_input[0].set_value("Top products?").run()
+    assert any("High confidence" in m.value for m in app.markdown)
+    app.chat_input[0].set_value("unsure").run()
+    assert any("Medium confidence" in m.value for m in app.markdown)
+    assert any(c.value == "It needed 1 repair to get this result." for c in app.caption)

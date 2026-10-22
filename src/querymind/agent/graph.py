@@ -121,7 +121,13 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
             },
         )
         return {"attempts": [attempt], "needs_repair": True}
-    return {"sql": sql, "explanation": draft.explanation, "result": result, "needs_repair": False}
+    return {
+        "sql": sql,
+        "explanation": draft.explanation,
+        "result": result,
+        "self_assessment": draft.self_assessment,
+        "needs_repair": False,
+    }
 
 
 def _after_run(state: AgentState, runtime: Runtime[AgentContext]) -> str:

@@ -20,6 +20,8 @@ ANSWER = {
     "rows": [[91]],
     "row_count": 1,
     "truncated": False,
+    "confidence": "high",
+    "confidence_reasons": [],
 }
 
 

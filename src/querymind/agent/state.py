@@ -20,7 +20,13 @@ from typing import Annotated, TypedDict
 
 import psycopg
 
-from querymind.agent.schemas import AnswerSummary, SanityWarning, SqlAttempt, SqlDraft
+from querymind.agent.schemas import (
+    AnswerSummary,
+    ConfidenceLevel,
+    SanityWarning,
+    SqlAttempt,
+    SqlDraft,
+)
 from querymind.config import Settings
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProvider
@@ -40,6 +46,7 @@ class AgentState(TypedDict, total=False):
     sql: str
     explanation: str
     result: QueryResult
+    self_assessment: ConfidenceLevel | None  # the LLM's own view of the query that ran
     warnings: list[SanityWarning]  # signs that `result` may be wrong (check_result)
     # Failed or suspicious tries, oldest first. `operator.add` is a *reducer*: a node returns
     # only its new attempt ({"attempts": [one]}) and LangGraph appends it, instead of replacing.

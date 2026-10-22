@@ -20,6 +20,7 @@ from typing import cast
 
 import psycopg
 
+from querymind.agent.confidence import score_confidence
 from querymind.agent.graph import build_graph
 from querymind.agent.schemas import (
     AgentReply,
@@ -97,7 +98,13 @@ class Pipeline:
             outcome = "refusal" if isinstance(reply, Refusal) else "clarification"
             self._audit(question, state, outcome=outcome, started=started)
             return reply
-        self._audit(question, state, outcome="ok", started=started)
+        confidence = score_confidence(
+            failed_attempts=state.get("attempts", []),
+            warnings=state.get("warnings", []),
+            truncated=state["result"].truncated,
+            self_assessment=state.get("self_assessment"),
+        )
+        self._audit(question, state, outcome="ok", started=started, confidence=confidence.level)
         return AskResult(
             question=question,
             sql=state["sql"],
@@ -107,6 +114,7 @@ class Pipeline:
             failed_attempts=tuple(state.get("attempts", [])),
             sql_attempts=_queries_run(state),
             warnings=tuple(state.get("warnings", [])),
+            confidence=confidence,
         )
 
     def _schema_info(self) -> tuple[SchemaInfo, str]:
@@ -121,7 +129,15 @@ class Pipeline:
                 self._schema = (schema, describe_schema(schema))
             return self._schema
 
-    def _audit(self, question: str, state: AgentState, *, outcome: str, started: float) -> None:
+    def _audit(
+        self,
+        question: str,
+        state: AgentState,
+        *,
+        outcome: str,
+        started: float,
+        confidence: str | None = None,
+    ) -> None:
         failed = state.get("attempts", [])
         result = state.get("result")
         audit_logger.info(
@@ -135,6 +151,7 @@ class Pipeline:
                 "sql_attempts": _queries_run(state),
                 "attempt_errors": [f"{a.error_kind}: {a.detail}" for a in failed],
                 "warnings": [w.code for w in state.get("warnings", [])],
+                "confidence": confidence,
                 "provider": self._llm.name,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },

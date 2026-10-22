@@ -12,6 +12,8 @@ from querymind.db.executor import QueryResult
 
 MAX_OPTIONS = 4
 
+ConfidenceLevel = Literal["high", "medium", "low"]
+
 
 class Clarification(BaseModel):
     """A question back to the user, when theirs has several reasonable meanings (2.4)."""
@@ -60,6 +62,12 @@ class SqlDraft(BaseModel):
     )
     # Reported by the LLM, so only informative: the validator (1.3) finds the real tables itself.
     tables_used: list[str] = Field(description="Names of the tables the query reads")
+    # One signal of the confidence score (2.5): the LLM's own view, filled in the same call.
+    self_assessment: ConfidenceLevel | None = Field(
+        default=None,
+        description="How sure you are that the query answers the question as the user meant "
+        "it: high, medium (some guessing), or low (a lot of guessing). Null if no SQL",
+    )
 
     @model_validator(mode="after")
     def _has_an_answer(self) -> Self:
@@ -107,6 +115,16 @@ class SqlAttempt(BaseModel):
     detail: str  # for the LLM: the validator's reason, or Postgres's own short message
 
 
+class Confidence(BaseModel):
+    """How sure QueryMind is of an answer, and why (scored in agent/confidence.py)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    level: ConfidenceLevel
+    reasons: tuple[str, ...]  # one plain sentence per signal that lowered it; empty when high
+    points: int
+
+
 class AskResult(BaseModel):
     """Everything one question produced: what ran, what came back, and the answer."""
 
@@ -121,6 +139,7 @@ class AskResult(BaseModel):
     failed_attempts: tuple[SqlAttempt, ...] = ()
     sql_attempts: int = 1  # SQL queries tried for this answer, including the one shown
     warnings: tuple[SanityWarning, ...] = ()  # signs the result may still be wrong
+    confidence: Confidence
 
 
 class ClarificationRequest(BaseModel):

@@ -39,6 +39,7 @@ from querymind.safety.sql_validator import validate_sql
 
 SUITES = {"golden": GOLDEN_DIR / "northwind.yaml"}
 TIERS = ("easy", "medium", "hard")
+CONFIDENCE_LEVELS = ("high", "medium", "low")
 
 type AskFn = Callable[[str], AgentReply]
 type ReferenceFn = Callable[[GoldenQuestion], QueryResult]
@@ -57,6 +58,7 @@ class Outcome:
     seconds: float
     provider_attempts: int  # calls to ask() for this question (> 1 after a rate-limit retry)
     sql_attempts: int  # SQL queries the agent tried (> 1 = it corrected itself); 0 = none
+    confidence: str | None  # the answer's confidence level; None when there was no answer
     # False = no verdict: the LLM provider stayed unavailable (e.g. a daily rate limit), so the
     # agent never got to answer. Left out of the accuracy, and listed for a rerun instead.
     scored: bool = True
@@ -115,6 +117,7 @@ def evaluate_question(
             seconds=time.perf_counter() - started,
             provider_attempts=attempt,
             sql_attempts=answer.sql_attempts,
+            confidence=answer.confidence.level,
         )
     raise AssertionError("unreachable: the loop always returns")
 
@@ -137,6 +140,7 @@ def _no_answer(
         seconds=time.perf_counter() - started,
         provider_attempts=attempt,
         sql_attempts=0,
+        confidence=None,
     )
 
 
@@ -160,6 +164,7 @@ def _failed(
         seconds=time.perf_counter() - started,
         provider_attempts=attempt,
         sql_attempts=audited.sql_attempts,
+        confidence=None,
         scored=scored,
     )
 
@@ -217,6 +222,9 @@ class Summary:
     errors: dict[str, int]  # exception type → how many scored questions failed with it
     not_scored: list[str]  # ids of questions with no verdict (LLM or database unavailable)
     corrected: list[str]  # ids that passed only after the agent fixed its own SQL
+    # Calibration: accuracy among the answers at each confidence level. A useful score has
+    # high >= medium >= low; answers that never came (errors, clarifications) aren't counted.
+    by_confidence: dict[str, Score]
     seconds: float
 
 
@@ -234,6 +242,10 @@ def summarize_outcomes(outcomes: Sequence[Outcome]) -> Summary:
         errors=dict(Counter(o.error for o in outcomes if o.error and o.scored)),
         not_scored=[o.item.id for o in outcomes if not o.scored],
         corrected=[o.item.id for o in outcomes if o.passed and o.sql_attempts > 1],
+        by_confidence={
+            level: score(o for o in outcomes if o.confidence == level)
+            for level in CONFIDENCE_LEVELS
+        },
         seconds=sum(o.seconds for o in outcomes),
     )
 
@@ -260,6 +272,14 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
         "| Tier | Passed |",
         "|---|---|",
         *(f"| {tier} | {score} |" for tier, score in summary.by_tier.items()),
+        "",
+        "## By confidence (calibration)",
+        "",
+        "Accuracy among the answers given at each level. High should be the most accurate.",
+        "",
+        "| Confidence | Passed |",
+        "|---|---|",
+        *(f"| {level} | {score} |" for level, score in summary.by_confidence.items()),
         "",
         "## By skill (tag)",
         "",
@@ -288,8 +308,8 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
     lines += [
         "## All questions",
         "",
-        "| Question | Tier | Result | SQL tries | Time | Why |",
-        "|---|---|---|---|---|---|",
+        "| Question | Tier | Result | SQL tries | Confidence | Time | Why |",
+        "|---|---|---|---|---|---|---|",
     ]
     for o in outcomes:
         result = _status(o)
@@ -298,7 +318,7 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
         why = o.reason.replace("|", "\\|").replace("\n", " ")
         lines.append(
             f"| `{o.item.id}` | {o.item.tier} | {result} | {o.sql_attempts or '-'} "
-            f"| {o.seconds:.1f} s | {why} |"
+            f"| {o.confidence or '-'} | {o.seconds:.1f} s | {why} |"
         )
 
     failures = [o for o in outcomes if o.scored and not o.passed]
@@ -385,6 +405,9 @@ def main() -> int:
     if summary.corrected:
         print(f"Passed after self-correction: {', '.join(summary.corrected)}")
     print("  " + "   ".join(f"{tier}: {score}" for tier, score in summary.by_tier.items()))
+    print("  confidence → accuracy: " + "   ".join(
+        f"{level}: {score}" for level, score in summary.by_confidence.items()
+    ))  # fmt: skip
     if summary.not_scored:
         print()
         print(f"Not scored (LLM or database unavailable): {', '.join(summary.not_scored)}")

@@ -17,12 +17,15 @@ from querymind.agent.schemas import (
     AskResult,
     Clarification,
     ClarificationRequest,
+    Confidence,
     SqlAttempt,
 )
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProviderError
 from querymind.safety.errors import UnsafeSqlError
+
+HIGH = Confidence(level="high", reasons=(), points=0)
 
 
 def result(rows: Sequence[Sequence[object]]) -> QueryResult:
@@ -58,6 +61,7 @@ def answer(rows: list[list[object]], *, retried: bool = False) -> AskResult:
         explanation="",
         result=result(rows),
         answer=AnswerSummary(text="", from_llm=False),
+        confidence=HIGH,
         failed_attempts=(FIXED,) if retried else (),
         sql_attempts=2 if retried else 1,
     )
@@ -136,7 +140,7 @@ def test_self_corrected_answers_are_counted() -> None:
     assert summary.corrected == ["q1"]
     report = build_report(outcomes, title="t", meta={})
     assert "| Passed after self-correction (SQL retried) | 1 |" in report
-    assert "| `q1` | easy | PASS | 2 |" in report  # the SQL tries column
+    assert "| `q1` | easy | PASS | 2 | high |" in report  # SQL tries, then confidence
 
 
 def test_rate_limits_are_retried_not_scored() -> None:
@@ -184,7 +188,7 @@ def test_unscored_questions_are_left_out_of_the_accuracy() -> None:
     report = build_report(outcomes, title="t", meta={})
     assert "| Not scored (LLM or database unavailable) | 1 |" in report
     assert "--ids q2" in report
-    assert "| `q2` | easy | SKIP | - |" in report
+    assert "| `q2` | easy | SKIP | - | - |" in report
     assert "## Failures in detail" not in report
 
 
@@ -231,7 +235,7 @@ def test_report_shows_scores_and_failures() -> None:
     assert report.startswith("# Test eval\n")
     assert "- **LLM:** fake" in report
     assert "| **Execution accuracy** (extra columns allowed) | **1/2 (50.0%)** |" in report
-    assert "| `q2` | easy | FAIL | 1 |" in report
+    assert "| `q2` | easy | FAIL | 1 | high |" in report
     assert "### `q2` (easy): wrong result" in report
     assert "```sql\nSELECT n FROM t LIMIT 1001\n```" in report  # QueryMind's SQL
 
@@ -244,3 +248,19 @@ def test_asking_back_on_a_golden_question_is_wrong() -> None:
     outcome = evaluate_question(question("q1"), ask=asker({"q1": [asks]}), reference=reference)
     assert (outcome.passed, outcome.scored, outcome.error) == (False, True, None)
     assert outcome.reason == "asked back instead of answering: Which year?"
+
+
+def test_calibration_counts_accuracy_per_confidence_level() -> None:
+    low = Confidence(level="low", reasons=("x",), points=3)
+    unsure = answer([[999]]).model_copy(update={"confidence": low})  # wrong AND unsure
+    ask = asker({"q1": [[[91]]], "q2": [unsure], "q3": [UnsafeSqlError("no")]})
+    outcomes = evaluate(
+        [question("q1"), question("q2"), question("q3")], ask=ask, reference=reference
+    )
+    summary = summarize_outcomes(outcomes)
+    assert {level: str(s) for level, s in summary.by_confidence.items()} == {
+        "high": "1/1 (100.0%)",
+        "medium": "0/0 (0.0%)",
+        "low": "0/1 (0.0%)",  # q3 gave no answer, so it has no confidence and isn't counted
+    }
+    assert "| low | 0/1 (0.0%) |" in build_report(outcomes, title="t", meta={})

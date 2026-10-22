@@ -12,6 +12,7 @@ from querymind.agent.schemas import (
     AskResult,
     Clarification,
     ClarificationRequest,
+    Confidence,
     Refusal,
     SanityWarning,
 )
@@ -23,6 +24,8 @@ from querymind.llm import LLMOutputError, LLMProviderError
 from querymind.logging_setup import JsonFormatter
 from querymind.safety.errors import UnsafeSqlError
 
+HIGH = Confidence(level="high", reasons=(), points=0)
+
 RESULT = AskResult(
     question="How many customers are there?",
     sql="SELECT count(*) AS customer_count FROM customers LIMIT 1001",
@@ -31,6 +34,7 @@ RESULT = AskResult(
         columns=["customer_count"], rows=[[91]], row_count=1, truncated=False, duration_ms=3
     ),
     answer=AnswerSummary(text="There are 91 customers.", from_llm=True),
+    confidence=HIGH,
 )
 
 
@@ -72,6 +76,8 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         "row_count": 1,
         "truncated": False,
         "warnings": [],
+        "confidence": "high",
+        "confidence_reasons": [],
     }
     assert pipeline.questions == ["How many customers are there?"]  # whitespace stripped
 

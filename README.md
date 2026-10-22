@@ -13,9 +13,9 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > 🚧 **Status: working agent.** Ask questions through a chat UI or an HTTP API. When a query fails, the agent
 > reads the database's error and fixes its own SQL; when a result looks wrong (no rows, duplicated rows), it
 > checks again and warns you. When a question is ambiguous ("best customers": by revenue or by orders?) it asks
-> back, and it politely refuses requests to change data. On a 30-question test set with known answers it gets
-> **30/30** right (29/30 before self-correction). Next: confidence levels and follow-up questions, then larger
-> databases.
+> back, and it politely refuses requests to change data. Every answer comes with a **confidence level** (High /
+> Medium / Low) and the reasons behind it. On a 30-question test set with known answers it gets **30/30** right
+> (29/30 before self-correction). Next: follow-up questions, then larger databases.
 
 ---
 
