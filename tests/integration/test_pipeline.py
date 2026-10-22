@@ -89,7 +89,9 @@ def test_schema_is_read_once(settings: Settings) -> None:
     pipeline = Pipeline(llm=fake, settings=settings, connect=counting_connect)
     pipeline.ask("one?")
     pipeline.ask("two?")
-    assert connections == 2  # one connection per question
+    # 3 = the schema read once (first question only) + one per question while its SQL runs.
+    # (Phase 1 kept one connection open for the whole question, LLM calls included.)
+    assert connections == 3
     # Both SQL prompts carry the same schema text, read only the first time.
     assert (
         fake.calls[0].prompt.split("<question>")[0] == fake.calls[2].prompt.split("<question>")[0]

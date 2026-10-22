@@ -21,6 +21,17 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 Question → LLM writes SQL → safety check → run on a read-only DB user → plain-language answer + table + SQL
 ```
 
+The steps run as a [LangGraph](https://langchain-ai.github.io/langgraph/) agent graph, so the next features
+(fixing its own SQL errors, asking clarifying questions) are new arrows in the graph:
+
+```mermaid
+graph TD;
+    start([Start]) --> generate_sql;
+    generate_sql["generate_sql<br/>LLM writes SQL"] --> run_sql;
+    run_sql["run_sql<br/>validate, then run read-only"] --> summarize;
+    summarize["summarize<br/>answer, checked against the data"] --> done([End]);
+```
+
 The answer is checked too: every number in it must appear in the query result, or a plain sentence built from
 the data is shown instead.
 
@@ -44,13 +55,14 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 |---|---|
 | Language | Python 3.12, [uv](https://docs.astral.sh/uv/) |
 | Database | PostgreSQL 16 + pgvector (Docker) |
+| Agent | LangGraph |
 | LLMs | Groq and Gemini through one interface (LangChain wrappers) |
 | SQL safety | sqlglot |
 | API / UI | FastAPI, Streamlit |
 | Config | pydantic-settings |
 | Quality | ruff, mypy (strict), pytest, pre-commit |
 | CI | GitHub Actions |
-| Planned | LangGraph, AWS (Bedrock, ECS), Terraform |
+| Planned | AWS (Bedrock, ECS), Terraform |
 
 ---
 
