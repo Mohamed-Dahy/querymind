@@ -39,6 +39,7 @@ from querymind.agent.schemas import (
 from querymind.config import Settings
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProvider
+from querymind.semantic.retrieval import SchemaRetriever, SchemaSelection
 
 MAX_HISTORY_TURNS = 5  # earlier turns the LLM sees; older ones are forgotten
 
@@ -53,9 +54,11 @@ class AgentState(TypedDict, total=False):
 
     # Set by Pipeline.ask before the run starts.
     question: str
-    schema_text: str  # the schema description the LLM sees
-    table_names: list[str]  # the validator's table allowlist
+    schema_text: str  # the schema description the LLM sees (retrieve_schema may narrow it)
+    table_names: list[str]  # the validator's table allowlist: never narrowed by retrieval
     # Filled in by the nodes.
+    schema_selection: SchemaSelection | None  # which tables the LLM was shown, and why (3.3)
+    repair_schema_text: str | None  # what a repair sees: wider than schema_text (3.3)
     draft: SqlDraft | None  # the query to try next (from generate_sql or repair_sql), not trusted
     # The last query that ran, as a set: its validated SQL, the LLM's explanation, its rows.
     # A later failed repair doesn't touch them, so a good-enough result is never lost.
@@ -83,6 +86,8 @@ def new_turn(*, question: str, schema_text: str, table_names: list[str]) -> Agen
         "question": question,
         "schema_text": schema_text,
         "table_names": table_names,
+        "schema_selection": None,
+        "repair_schema_text": None,
         "draft": None,
         "sql": None,
         "explanation": None,
@@ -106,6 +111,7 @@ CHECKPOINT_TYPES = [
         AnswerSummary,
         Clarification,
         SanityWarning,
+        SchemaSelection,
         SqlAttempt,
         SqlDraft,
         Turn,
@@ -128,3 +134,4 @@ class AgentContext:
     settings: Settings
     connect: Callable[[Settings], psycopg.Connection]  # must open a *read-only* connection
     summarize_answer: bool = True  # False: templated answer, no second LLM call (evals)
+    retriever: SchemaRetriever | None = None  # None: the LLM sees the whole schema (3.3)

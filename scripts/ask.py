@@ -17,7 +17,7 @@ from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest
 from querymind.config import ConfigError, get_settings
 from querymind.db.errors import QueryError
-from querymind.llm import LLMError, create_llm_provider
+from querymind.llm import LLMError, create_embedding_provider, create_llm_provider
 from querymind.safety.errors import UnsafeSqlError
 
 # Simple Northwind questions for the manual check: filters, joins, aggregations, top-N.
@@ -57,7 +57,11 @@ def main() -> int:
         return 1
     if args.provider:
         settings = settings.model_copy(update={"llm_provider": args.provider})
-    pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
+    pipeline = Pipeline(
+        llm=create_llm_provider(settings),
+        settings=settings,
+        embeddings=create_embedding_provider(settings),
+    )
 
     conversation_id = str(uuid.uuid4()) if args.conversation else None
     failures = 0

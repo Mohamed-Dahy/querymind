@@ -27,7 +27,13 @@ from querymind.api.deps import AnswersQuestions
 from querymind.api.routes import router
 from querymind.config import get_settings
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
-from querymind.llm import LLMError, LLMOutputError, LLMProviderError, create_llm_provider
+from querymind.llm import (
+    LLMError,
+    LLMOutputError,
+    LLMProviderError,
+    create_embedding_provider,
+    create_llm_provider,
+)
 from querymind.logging_setup import configure_logging
 from querymind.safety.errors import UnsafeSqlError
 
@@ -63,8 +69,18 @@ def create_app(pipeline: AnswersQuestions | None = None) -> FastAPI:
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
-            app.state.pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
-            logger.info("api started", extra={"provider": settings.llm_provider})
+            app.state.pipeline = Pipeline(
+                llm=create_llm_provider(settings),
+                settings=settings,
+                embeddings=create_embedding_provider(settings),  # schema retrieval (3.3)
+            )
+            logger.info(
+                "api started",
+                extra={
+                    "provider": settings.llm_provider,
+                    "schema_retrieval": settings.schema_retrieval,
+                },
+            )
         yield
 
     app = FastAPI(

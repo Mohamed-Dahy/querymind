@@ -1,10 +1,11 @@
 """The semantic layer as prompt text: a short "Business definitions" block after the schema.
 
-    text = schema_prompt_text(schema, layer)   # what the SQL prompt shows as the database
+    text = schema_prompt_text(schema, layers)                       # the whole database
+    text = schema_prompt_text(schema, layers, tables={"track", "genre"})  # retrieved (3.3)
 
 Only what helps write SQL goes in: metric definitions, other names for tables and columns,
 column notes and preferred joins. PII flags are left out (they are for masking, Phase 5.4).
-`tables=` keeps only the parts about those tables; schema retrieval (3.3) will use it.
+`tables=` keeps only those tables and the definitions about them (schema retrieval, 3.3).
 """
 
 from collections.abc import Callable, Collection, Sequence
@@ -15,9 +16,16 @@ from querymind.semantic.models import Metric, SemanticLayer
 HEADER = "When the question uses one of these terms, use exactly this definition:"
 
 
-def schema_prompt_text(schema: SchemaInfo, layers: Sequence[SemanticLayer]) -> str:
-    """The schema description, followed by each layer's business definitions."""
-    blocks = [block for layer in layers if (block := describe_semantics(layer))]
+def schema_prompt_text(
+    schema: SchemaInfo, layers: Sequence[SemanticLayer], tables: Collection[str] | None = None
+) -> str:
+    """The schema description, followed by each layer's business definitions.
+
+    With `tables`, only those tables (in the schema's order) and the definitions about them.
+    """
+    if tables is not None:
+        schema = SchemaInfo(tables=tuple(t for t in schema.tables if t.name in tables))
+    blocks = [block for layer in layers if (block := describe_semantics(layer, tables))]
     return "\n\n".join([describe_schema(schema), *blocks])
 
 

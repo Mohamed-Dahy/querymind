@@ -25,7 +25,12 @@ from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest
 from querymind.config import ConfigError, get_settings
 from querymind.db.errors import QueryError
-from querymind.llm import LLMError, LLMProviderError, create_llm_provider
+from querymind.llm import (
+    LLMError,
+    LLMProviderError,
+    create_embedding_provider,
+    create_llm_provider,
+)
 from querymind.safety.errors import UnsafeSqlError
 
 CLARIFY_FILE = GOLDEN_DIR / "clarification.yaml"
@@ -119,7 +124,11 @@ def main() -> int:
     except ConfigError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-    pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
+    pipeline = Pipeline(
+        llm=create_llm_provider(settings),
+        settings=settings,
+        embeddings=create_embedding_provider(settings),
+    )
 
     def ask(question: str) -> AgentReply:
         return pipeline.ask(question, summarize_answer=False)

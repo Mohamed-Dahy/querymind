@@ -39,12 +39,19 @@ Next to the schema, the LLM gets the company's **business definitions** from a r
 layer): exact SQL for metrics like revenue or "key account", other names for tables ("clients" = customers) and
 the preferred joins. Each one is checked against the database and run in the tests.
 
+On a bigger database it doesn't send every table to the LLM. Each table and business term is described once and
+stored as an embedding in **pgvector**; for each question, the closest tables are found, plus the tables needed
+to join them and the ones a business term reads. On the 25-table demo database that's about 40% of the schema per
+question. Retrieval only decides what the LLM *sees*: what it may *query* is still every table the read-only user
+can read. If the search fails, the whole schema is sent and the logs say so.
+
 Each turn of a conversation is remembered (the question, its SQL and the shape of its result, never the rows),
 so the next question can build on it. Only the last 5 turns are kept.
 
 ```mermaid
 graph TD;
-    start([Start]) --> generate_sql;
+    start([Start]) --> retrieve_schema;
+    retrieve_schema["retrieve_schema<br/>pick the relevant tables (pgvector)"] --> generate_sql;
     generate_sql["generate_sql<br/>LLM writes SQL"] --> run_sql;
     run_sql["run_sql<br/>validate, then run read-only"] -. ran .-> check_result;
     run_sql -. failed, tries left .-> repair_sql;
@@ -80,6 +87,7 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 |---|---|
 | Language | Python 3.12, [uv](https://docs.astral.sh/uv/) |
 | Database | PostgreSQL 16 + pgvector (Docker) |
+| Retrieval | Gemini embeddings, pgvector cosine search |
 | Agent | LangGraph |
 | LLMs | Groq and Gemini through one interface (LangChain wrappers) |
 | SQL safety | sqlglot |
@@ -111,7 +119,10 @@ cp .env.example .env                   # then edit .env: passwords + your API ke
 docker compose up -d --wait            # start Postgres + pgvector on 127.0.0.1:5433
 uv run python data/seed_northwind.py   # load the sample data + create the read-only user
 uv run python data/seed_chinook.py     # load the second sample (a music store) next to it
+uv run python scripts/build_index.py   # index the tables for retrieval (needs a Google AI Studio key)
 ```
+
+Without a Google key the app still works: it sends the whole schema and logs a warning.
 
 ### Ask questions
 
@@ -127,6 +138,8 @@ uv run python scripts/ask.py "How many orders were placed in 1997?"   # or strai
 uv run python -m evals.run --suite golden   # 30 questions with known answers (uses real LLM calls)
 uv run python -m evals.run --suite golden --max-attempts 1   # the same, with self-correction off
 uv run python -m evals.clarify               # does it ask back only when a question is ambiguous?
+uv run python -m evals.retrieval             # does retrieval find the tables each question needs?
+uv run python -m evals.run --suite chinook --schema-retrieval off   # the whole schema, for comparison
 ```
 
 ### Run the checks

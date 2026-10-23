@@ -8,6 +8,7 @@
     uv run python -m evals.run --suite business                     # questions in business terms
     uv run python -m evals.run --suite business --no-semantic-layer # same, without definitions
     uv run python -m evals.run --suite chinook                      # the music store (3.2)
+    uv run python -m evals.run --suite chinook --schema-retrieval off  # whole schema (3.3)
 
 For each question: QueryMind writes and runs its own SQL (the real pipeline, real LLM), the
 reference SQL runs too, and the two RESULTS are compared (evals/compare.py). The score is the
@@ -21,7 +22,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -36,7 +37,12 @@ from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError, QueryError
 from querymind.db.executor import QueryResult, execute_query
 from querymind.db.schema import introspect_schema
-from querymind.llm import LLMError, LLMProviderError, create_llm_provider
+from querymind.llm import (
+    LLMError,
+    LLMProviderError,
+    create_embedding_provider,
+    create_llm_provider,
+)
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
 
@@ -69,14 +75,22 @@ class Outcome:
     # False = no verdict: the LLM provider stayed unavailable (e.g. a daily rate limit), so the
     # agent never got to answer. Left out of the accuracy, and listed for a rerun instead.
     scored: bool = True
+    # What the LLM was shown (3.3): "full", "retrieved" or "fallback"; tables; size in tokens.
+    schema_mode: str | None = None
+    schema_tables: int = 0
+    schema_tokens: int = 0
 
 
 @dataclass(frozen=True)
 class AuditedAsk:
-    """What the pipeline's last audit line said: the last SQL tried, and how many queries."""
+    """What the pipeline's last audit line said: the last SQL tried, how many queries, and
+    the schema the LLM was shown."""
 
     sql: str | None = None
     sql_attempts: int = 0
+    schema_mode: str | None = None
+    schema_tables: int = 0
+    schema_tokens: int = 0
 
 
 def evaluate_question(
@@ -110,11 +124,11 @@ def evaluate_question(
             return _failed(item, exc, started, attempt, last_audit())
 
         if not isinstance(answer, AskResult):
-            return _no_answer(item, answer, started, attempt)
+            return _with_schema(_no_answer(item, answer, started, attempt), last_audit())
         comparison = compare_results(
             expected=reference(item), actual=answer.result, ordered=item.ordered
         )
-        return Outcome(
+        outcome = Outcome(
             item=item,
             passed=comparison.match,
             strict=comparison.strict,
@@ -126,7 +140,18 @@ def evaluate_question(
             sql_attempts=answer.sql_attempts,
             confidence=answer.confidence.level,
         )
+        return _with_schema(outcome, last_audit())
     raise AssertionError("unreachable: the loop always returns")
+
+
+def _with_schema(outcome: Outcome, audited: AuditedAsk) -> Outcome:
+    """Add what the audit line says the LLM was shown (3.3)."""
+    return replace(
+        outcome,
+        schema_mode=audited.schema_mode,
+        schema_tables=audited.schema_tables,
+        schema_tokens=audited.schema_tokens,
+    )
 
 
 def _no_answer(
@@ -161,7 +186,7 @@ def _failed(
     scored: bool = True,
 ) -> Outcome:
     message = exc.reason if isinstance(exc, UnsafeSqlError) else str(exc)
-    return Outcome(
+    outcome = Outcome(
         item=item,
         passed=False,
         strict=False,
@@ -174,6 +199,7 @@ def _failed(
         confidence=None,
         scored=scored,
     )
+    return _with_schema(outcome, audited)
 
 
 def evaluate(
@@ -233,6 +259,11 @@ class Summary:
     # high >= medium >= low; answers that never came (errors, clarifications) aren't counted.
     by_confidence: dict[str, Score]
     seconds: float
+    # The schema the LLM saw (3.3): mean size over the questions that got one, and the ids
+    # whose retrieval failed and fell back to the whole schema (they don't count as retrieval).
+    schema_tokens: float = 0.0
+    schema_modes: dict[str, int] | None = None
+    fallbacks: tuple[str, ...] = ()
 
 
 def summarize_outcomes(outcomes: Sequence[Outcome]) -> Summary:
@@ -241,6 +272,7 @@ def summarize_outcomes(outcomes: Sequence[Outcome]) -> Summary:
         return Score(sum(o.strict if strict else o.passed for o in group), len(group))
 
     tags = sorted({tag for o in outcomes for tag in o.item.tags})
+    shown = [o for o in outcomes if o.schema_mode]
     return Summary(
         accuracy=score(outcomes),
         strict=score(outcomes, strict=True),
@@ -254,6 +286,9 @@ def summarize_outcomes(outcomes: Sequence[Outcome]) -> Summary:
             for level in CONFIDENCE_LEVELS
         },
         seconds=sum(o.seconds for o in outcomes),
+        schema_tokens=sum(o.schema_tokens for o in shown) / len(shown) if shown else 0.0,
+        schema_modes=dict(Counter(o.schema_mode for o in shown if o.schema_mode)),
+        fallbacks=tuple(o.item.id for o in shown if o.schema_mode == "fallback"),
     )
 
 
@@ -272,6 +307,8 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
         f"| Strict (exactly the asked-for columns) | {summary.strict} |",
         f"| Passed after self-correction (SQL retried) | {len(summary.corrected)} |",
         f"| Not scored (LLM or database unavailable) | {len(summary.not_scored)} |",
+        f"| Schema shown (mean size) | {_modes(summary)}, ~{summary.schema_tokens:,.0f} tokens |",
+        f"| Retrieval fell back to the whole schema | {len(summary.fallbacks)} |",
         f"| Total time | {summary.seconds:.0f} s |",
         "",
         "## By tier",
@@ -315,17 +352,22 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
     lines += [
         "## All questions",
         "",
-        "| Question | Tier | Result | SQL tries | Confidence | Time | Why |",
-        "|---|---|---|---|---|---|---|",
+        "| Question | Tier | Result | SQL tries | Confidence | Schema | Time | Why |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for o in outcomes:
         result = _status(o)
         if o.passed and not o.strict:
             result += " (extra columns)"
         why = o.reason.replace("|", "\\|").replace("\n", " ")
+        schema = (
+            f"{o.schema_mode}: {o.schema_tables} tables, ~{o.schema_tokens:,}"
+            if o.schema_mode
+            else "-"
+        )
         lines.append(
             f"| `{o.item.id}` | {o.item.tier} | {result} | {o.sql_attempts or '-'} "
-            f"| {o.confidence or '-'} | {o.seconds:.1f} s | {why} |"
+            f"| {o.confidence or '-'} | {schema} | {o.seconds:.1f} s | {why} |"
         )
 
     failures = [o for o in outcomes if o.scored and not o.passed]
@@ -369,6 +411,11 @@ def main() -> int:
         action="store_true",
         help="leave the business definitions out of the prompt (ablation)",
     )
+    parser.add_argument(
+        "--schema-retrieval",
+        choices=["auto", "on", "off"],
+        help="override SCHEMA_RETRIEVAL (off = the whole schema, the 3.3 ablation)",
+    )
     parser.add_argument("--report", type=Path, help="write a markdown report to this file")
     args = parser.parse_args()
     sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
@@ -383,8 +430,15 @@ def main() -> int:
             settings = settings.model_copy(update={"max_sql_attempts": args.max_attempts})
         if args.no_semantic_layer:
             settings = settings.model_copy(update={"semantic_layer_paths": []})
+        if args.schema_retrieval:
+            settings = settings.model_copy(update={"schema_retrieval": args.schema_retrieval})
         model, _ = settings.llm_credentials()
         references = run_references(items)
+        pipeline = Pipeline(
+            llm=create_llm_provider(settings),
+            settings=settings,
+            embeddings=create_embedding_provider(settings),
+        )
     except (ConfigError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -392,7 +446,6 @@ def main() -> int:
         print(f"Error: {exc.__cause__}", file=sys.stderr)
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
-    pipeline = Pipeline(llm=create_llm_provider(settings), settings=settings)
     capture = AuditCapture.attach()
 
     def ask(question: str) -> AgentReply:
@@ -402,7 +455,7 @@ def main() -> int:
     print(
         f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}, "
         f"max {settings.max_sql_attempts} SQL attempts, "
-        f"semantic layer: {_layers(settings)}\n"
+        f"semantic layer: {_layers(settings)}, schema retrieval: {settings.schema_retrieval}\n"
     )
     outcomes = evaluate(
         items,
@@ -420,6 +473,9 @@ def main() -> int:
     if summary.corrected:
         print(f"Passed after self-correction: {', '.join(summary.corrected)}")
     print("  " + "   ".join(f"{tier}: {score}" for tier, score in summary.by_tier.items()))
+    print(f"  schema shown: {_modes(summary)}, mean ~{summary.schema_tokens:,.0f} tokens")
+    if summary.fallbacks:
+        print(f"  retrieval fell back to the whole schema: {', '.join(summary.fallbacks)}")
     print("  confidence → accuracy: " + "   ".join(
         f"{level}: {score}" for level, score in summary.by_confidence.items()
     ))  # fmt: skip
@@ -437,12 +493,20 @@ def main() -> int:
             "Max rows / timeout": f"{settings.max_rows} / {settings.query_timeout_seconds} s",
             "Max SQL attempts": str(settings.max_sql_attempts),
             "Semantic layer": _layers(settings),
+            "Schema retrieval": f"{settings.schema_retrieval} (top-k {settings.retrieval_top_k}, "
+            f"max {settings.retrieval_max_tables} tables)",
         }
         title = f"QueryMind eval: {args.suite} ({golden.database})"
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(build_report(outcomes, title=title, meta=meta), encoding="utf-8")
         print(f"\nReport written to {args.report}")
     return 0
+
+
+def _modes(summary: Summary) -> str:
+    """E.g. "retrieved 14, fallback 1": how many questions saw which kind of schema."""
+    modes = summary.schema_modes or {}
+    return ", ".join(f"{mode} {count}" for mode, count in sorted(modes.items())) or "-"
 
 
 def _layers(settings: Settings) -> str:
@@ -463,7 +527,11 @@ class AuditCapture(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         self.last = AuditedAsk(
-            sql=getattr(record, "sql", None), sql_attempts=getattr(record, "sql_attempts", 0)
+            sql=getattr(record, "sql", None),
+            sql_attempts=getattr(record, "sql_attempts", 0),
+            schema_mode=getattr(record, "schema_mode", None),
+            schema_tables=len(getattr(record, "schema_tables", None) or []),
+            schema_tokens=getattr(record, "schema_tokens", None) or 0,
         )
 
     @classmethod

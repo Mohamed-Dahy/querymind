@@ -7,14 +7,19 @@
         context=AgentContext(llm=llm, settings=settings, connect=connect_readonly),
     )
 
-    START → generate_sql ─┬─ refuses / asks back ─► remember (no SQL runs)
-                          └─► run_sql ─┬─ ran ──────────────────► check_result
-                         ▲     ├─ failed, tries left ───► repair_sql
-                         │     ├─ failed, result kept ──► summarize
-                         │     └─ failed, no result ────► remember
-                         │   check_result ─┬─ looks fine ──► summarize → remember → END
-                         │                 └─ looks wrong ─► repair_sql
-                         └── repair_sql (every repaired query is validated again)
+    START → retrieve_schema → generate_sql ─┬─ refuses / asks back ─► remember (no SQL runs)
+                                            └─► run_sql ─┬─ ran ──────────────────► check_result
+                                           ▲     ├─ failed, tries left ───► repair_sql
+                                           │     ├─ failed, result kept ──► summarize
+                                           │     └─ failed, no result ────► remember
+                                           │   check_result ─┬─ looks fine ──► summarize → remember
+                                           │                 └─ looks wrong ─► repair_sql
+                                           └── repair_sql (every repaired query is validated again)
+
+Schema retrieval (3.3): `retrieve_schema` narrows `schema_text` to the tables this question
+needs (semantic/retrieval.py), when the run's context has a retriever. Without one (a small
+schema, or SCHEMA_RETRIEVAL=off) it only records that the whole schema was sent. The table
+allowlist is never narrowed, and a repair sees a wider text than the first try.
 
 Self-correction (2.2): when the SQL is unsafe, the database rejects it, or it times out,
 `run_sql` records the failed attempt instead of raising, and the graph sends the error back
@@ -53,8 +58,10 @@ from querymind.agent.state import AgentContext, AgentState, require
 from querymind.agent.summarizer import fallback_answer, summarize
 from querymind.db.errors import QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import execute_query
+from querymind.db.schema import estimate_tokens
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
+from querymind.semantic.retrieval import SchemaSelection
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +78,15 @@ def build_graph(*, checkpointer: BaseCheckpointSaver[str] | None = None) -> Agen
     state is saved for the next turn. Without one, each run starts from nothing.
     """
     graph = StateGraph(AgentState, context_schema=AgentContext)
+    graph.add_node("retrieve_schema", _retrieve_schema)
     graph.add_node("generate_sql", _generate_sql)
     graph.add_node("run_sql", _run_sql)
     graph.add_node("check_result", _check_result)
     graph.add_node("repair_sql", _repair_sql)
     graph.add_node("summarize", _summarize)
     graph.add_node("remember", _remember)
-    graph.add_edge(START, "generate_sql")
+    graph.add_edge(START, "retrieve_schema")
+    graph.add_edge("retrieve_schema", "generate_sql")
     # A draft can be a refusal or a clarifying question instead of SQL (2.4): then stop.
     graph.add_conditional_edges("generate_sql", _after_generate, ["run_sql", "remember"])
     # Conditional edges: the function looks at the state and names the next node.
@@ -91,6 +100,24 @@ def build_graph(*, checkpointer: BaseCheckpointSaver[str] | None = None) -> Agen
     # Every turn, however it ended, is written to the history before the run stops (2.6).
     graph.add_edge("remember", END)
     return graph.compile(checkpointer=checkpointer)
+
+
+def _retrieve_schema(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
+    """Question (+ the conversation so far) → only the relevant tables in `schema_text`."""
+    retriever = runtime.context.retriever
+    if retriever is None:
+        full = SchemaSelection(
+            mode="full",
+            tables=tuple(state["table_names"]),
+            schema_tokens=estimate_tokens(state["schema_text"]),
+        )
+        return {"schema_selection": full}
+    selection = retriever.select(state["question"], history=state.get("history", []))
+    return {
+        "schema_text": selection.schema_text,
+        "repair_schema_text": selection.repair_schema_text,
+        "schema_selection": selection.info,
+    }
 
 
 def _generate_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
@@ -181,10 +208,14 @@ def _after_check(state: AgentState) -> str:
 
 
 def _repair_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
-    """Every failed or suspicious attempt + why → a new draft from the LLM."""
+    """Every failed or suspicious attempt + why → a new draft from the LLM.
+
+    With retrieval, the repair sees the chosen tables plus their neighbours: if the first try
+    failed because a table was left out, it's now in view.
+    """
     draft = repair_sql(
         runtime.context.llm,
-        schema_text=state["schema_text"],
+        schema_text=state.get("repair_schema_text") or state["schema_text"],
         question=state["question"],
         failed=state["attempts"],
         history=state.get("history", []),

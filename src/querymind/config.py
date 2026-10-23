@@ -73,6 +73,17 @@ class Settings(BaseSettings):
         Path("semantic_layer/chinook.yaml"),
     ]
 
+    # --- Schema retrieval (3.3) ---
+    # Send the LLM only the tables a question needs. auto = only when the database has more than
+    # RETRIEVAL_MIN_TABLES tables; on = always (needs GOOGLE_API_KEY and the index built by
+    # scripts/build_index.py); off = always the whole schema.
+    schema_retrieval: Literal["auto", "on", "off"] = "auto"
+    retrieval_min_tables: int = Field(default=15, ge=0)
+    retrieval_top_k: int = Field(default=5, ge=1, le=25)  # tables the search picks
+    retrieval_max_tables: int = Field(default=8, ge=1, le=50)  # incl. follow-ups and join paths
+    # Embeddings always use Google (GOOGLE_API_KEY), whatever LLM_PROVIDER is.
+    embedding_model: str = "gemini-embedding-001"
+
     @field_validator("semantic_layer_paths", mode="before")
     @classmethod
     def _comma_separated(cls, value: object) -> object:

@@ -13,7 +13,7 @@ The LLM sees the table's columns, keys and 3 sample rows, but never the values o
 (they are replaced by <hidden>): personal data shouldn't leave just to describe a column.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import yaml
@@ -128,6 +128,12 @@ def load_dictionary(path: Path) -> DataDictionary | None:
         return DataDictionary.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
     except (yaml.YAMLError, ValidationError) as exc:
         raise SemanticLayerError(f"{path} is not a valid data dictionary:\n{exc}") from exc
+
+
+def load_dictionaries(layer_paths: Sequence[Path]) -> dict[str, DataDictionary]:
+    """The dictionary next to each layer file, keyed by its database. Missing files are skipped."""
+    found = (load_dictionary(dictionary_path(path)) for path in layer_paths)
+    return {d.database: d for d in found if d is not None}
 
 
 HEADER = """\

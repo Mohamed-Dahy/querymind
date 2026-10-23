@@ -118,7 +118,14 @@ def test_nodes_run_in_order_and_fill_the_state(executor: StubExecutor) -> None:
             START, context=context(answering_llm()), stream_mode="updates"
         )
     ]
-    assert steps == ["generate_sql", "run_sql", "check_result", "summarize", "remember"]
+    assert steps == [
+        "retrieve_schema",  # 3.3; with no retriever it only records "whole schema"
+        "generate_sql",
+        "run_sql",
+        "check_result",
+        "summarize",
+        "remember",
+    ]
 
     final = build_graph().invoke(START, context=context(answering_llm()))
     assert final["sql"] == "SELECT COUNT(*) AS n FROM customers LIMIT 1001"  # the validated SQL
@@ -176,7 +183,8 @@ def test_state_holds_only_saveable_values(executor: StubExecutor) -> None:
 def test_diagram_shows_the_nodes_and_edges() -> None:
     mermaid = build_graph().get_graph().draw_mermaid()
     for edge in [
-        "__start__ --> generate_sql",
+        "__start__ --> retrieve_schema",  # 3.3: pick the tables first
+        "retrieve_schema --> generate_sql",
         "generate_sql -.-> run_sql",
         "generate_sql -.-> remember",  # it refused or asked back: no SQL runs
         "run_sql -.-> check_result",  # dotted = a conditional edge (one of these is taken)

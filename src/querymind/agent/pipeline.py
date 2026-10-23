@@ -15,8 +15,13 @@ stands alone (evals, scripts).
 Limits: memory is lost on restart, only the last MAX_CONVERSATIONS are kept, and anyone with
 an id can continue its conversation (Phase 5 ties conversations to users).
 
-Every question writes one structured "ask" log line with the outcome and every SQL attempt
-(CLAUDE.md §8.7; the real audit table arrives in Phase 5).
+Schema retrieval (3.3): on a big schema the LLM sees only the tables a question needs. It's
+decided once, at the first question: SCHEMA_RETRIEVAL, the number of tables, an embedding
+provider, and a usable index (scripts/build_index.py). In `auto`, anything missing means the
+whole schema plus a warning; in `on`, it's an error.
+
+Every question writes one structured "ask" log line with the outcome, every SQL attempt and
+which tables the LLM was shown (CLAUDE.md §8.7; the real audit table arrives in Phase 5).
 """
 
 import logging
@@ -42,16 +47,21 @@ from querymind.agent.schemas import (
     SqlAttempt,
 )
 from querymind.agent.state import CHECKPOINT_TYPES, AgentContext, AgentState, new_turn, require
-from querymind.config import Settings
+from querymind.config import ConfigError, Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import QueryExecutionError, QueryTimeoutError
-from querymind.db.schema import SchemaInfo, introspect_schema
+from querymind.db.schema import introspect_schema
 from querymind.llm import LLMProvider
+from querymind.llm.embeddings import EmbeddingProvider
 from querymind.safety.errors import UnsafeSqlError
+from querymind.semantic.dictionary import load_dictionaries
+from querymind.semantic.documents import build_documents
+from querymind.semantic.index import INDEX_TABLE, SchemaIndexError, index_status
 from querymind.semantic.loader import check_against, load_semantic_layers
 from querymind.semantic.models import SemanticLayer
-from querymind.semantic.render import schema_prompt_text
+from querymind.semantic.retrieval import SchemaCatalog, SchemaRetriever
 
+logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("querymind.audit")
 
 MAX_CONVERSATIONS = 100  # saved conversations; the least recently used is forgotten first
@@ -66,11 +76,24 @@ class Pipeline:
         llm: LLMProvider,
         settings: Settings,
         connect: Callable[[Settings], psycopg.Connection] = connect_readonly,
+        embeddings: EmbeddingProvider | None = None,
+        index_table: str = INDEX_TABLE,
     ) -> None:
-        """`connect` must open a *read-only* connection; it's a parameter so tests can swap it."""
+        """`connect` must open a *read-only* connection; it's a parameter so tests can swap it.
+
+        `embeddings` (from `create_embedding_provider`) enables schema retrieval; None = the
+        LLM always sees the whole schema. `index_table` lets tests use their own index.
+
+        Raises:
+            ConfigError: SCHEMA_RETRIEVAL=on without an embedding provider (GOOGLE_API_KEY).
+        """
+        if settings.schema_retrieval == "on" and embeddings is None:
+            raise ConfigError("SCHEMA_RETRIEVAL=on needs embeddings: set GOOGLE_API_KEY")
         self._llm = llm
         self._settings = settings
         self._connect = connect
+        self._embeddings = embeddings
+        self._index_table = index_table
         # The serializer may only rebuild our own state classes from a saved checkpoint.
         serde = JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
         self._checkpointer = InMemorySaver(serde=serde)
@@ -79,7 +102,7 @@ class Pipeline:
         self._semantic_layers: list[SemanticLayer] = load_semantic_layers(
             settings.semantic_layer_paths
         )
-        self._schema: tuple[SchemaInfo, str] | None = None
+        self._schema: tuple[SchemaCatalog, SchemaRetriever | None] | None = None
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
         self._conversations: OrderedDict[str, None] = OrderedDict()  # least recent first
         self._conversations_lock = threading.Lock()
@@ -107,17 +130,18 @@ class Pipeline:
         # A standalone question still needs a thread for the checkpointer: a throwaway one.
         thread_id = conversation_id or f"standalone-{uuid.uuid4()}"
         try:
-            schema, schema_text = self._schema_info()
+            catalog, retriever = self._schema_info()
             start = new_turn(
                 question=question,
-                schema_text=schema_text,
-                table_names=sorted(schema.table_names),
+                schema_text=catalog.full_text,  # retrieve_schema narrows it when it can
+                table_names=sorted(catalog.schema.table_names),
             )
             context = AgentContext(
                 llm=self._llm,
                 settings=self._settings,
                 connect=self._connect,
                 summarize_answer=summarize_answer,
+                retriever=retriever,
             )
             # stream(mode="values") yields the whole state after each node. Keeping the last
             # one means that if a node fails, we still know the SQL it was given (for the audit).
@@ -175,8 +199,9 @@ class Pipeline:
             confidence=confidence,
         )
 
-    def _schema_info(self) -> tuple[SchemaInfo, str]:
-        """The schema and its prompt text, read once (on its own connection) and then reused.
+    def _schema_info(self) -> tuple[SchemaCatalog, SchemaRetriever | None]:
+        """The schema with its prompt texts, and the retriever if retrieval is on. Read once
+        (on its own connection) and then reused.
 
         Restart the app after changing the database structure to pick up new tables.
         """
@@ -186,8 +211,46 @@ class Pipeline:
                     schema = introspect_schema(conn)
                 for layer in self._semantic_layers:
                     check_against(layer, schema)  # every name it uses must exist (3.1)
-                self._schema = (schema, schema_prompt_text(schema, self._semantic_layers))
+                catalog = SchemaCatalog(schema, self._semantic_layers)
+                self._schema = (catalog, self._make_retriever(catalog))
             return self._schema
+
+    def _make_retriever(self, catalog: SchemaCatalog) -> SchemaRetriever | None:
+        """A retriever when retrieval should and can run; None = send the whole schema.
+
+        Raises:
+            SchemaIndexError: SCHEMA_RETRIEVAL=on, but the index is missing or unusable.
+        """
+        settings = self._settings
+        mode = settings.schema_retrieval
+        tables = len(catalog.schema.tables)
+        if mode == "off" or (mode == "auto" and tables <= settings.retrieval_min_tables):
+            return None
+        if self._embeddings is None:  # only in auto: `on` was refused in __init__
+            logger.warning(
+                "schema retrieval skipped: no embeddings (set GOOGLE_API_KEY)",
+                extra={"tables": tables},
+            )
+            return None
+        docs = build_documents(
+            catalog.schema, catalog.layers, load_dictionaries(settings.semantic_layer_paths)
+        )
+        with self._connect(settings) as conn:
+            status = index_status(conn, docs, model=self._embeddings.name, table=self._index_table)
+        if not status.usable:
+            if mode == "on":
+                raise SchemaIndexError(f"Schema retrieval can't run: {status.message}")
+            logger.warning("schema retrieval skipped", extra={"reason": status.message})
+            return None
+        if status.message:  # usable but out of date: still better than the whole schema
+            logger.warning("schema index out of date", extra={"reason": status.message})
+        return SchemaRetriever(
+            catalog=catalog,
+            embeddings=self._embeddings,
+            connect=self._connect,
+            settings=settings,
+            index_table=self._index_table,
+        )
 
     def _keep_or_forget(self, thread_id: str, *, keep: bool) -> None:
         """After a turn: save only what the next turn needs, for the last MAX_CONVERSATIONS
@@ -226,6 +289,7 @@ class Pipeline:
     ) -> None:
         failed = state.get("attempts", [])
         result = state.get("result")
+        shown = state.get("schema_selection")
         audit_logger.info(
             "ask",
             extra={
@@ -238,6 +302,11 @@ class Pipeline:
                 "sql_attempts": _queries_run(state),
                 "attempt_errors": [f"{a.error_kind}: {a.detail}" for a in failed],
                 "warnings": [w.code for w in state.get("warnings", [])],
+                # What the LLM was shown (3.3): "full", "retrieved", or "fallback" (+ why).
+                "schema_mode": shown.mode if shown else None,
+                "schema_tables": list(shown.tables) if shown else None,
+                "schema_tokens": shown.schema_tokens if shown else None,
+                "schema_fallback": (shown.reason or None) if shown else None,
                 "confidence": confidence,
                 "provider": self._llm.name,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
