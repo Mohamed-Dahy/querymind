@@ -123,6 +123,16 @@ def _ids(hits: Sequence[IndexHit]) -> list[str]:
     return [hit.id for hit in hits]
 
 
+def _fused(first: _Ranking, second: _Ranking) -> _Ranking:
+    """Two wordings' rankings as one: tables and examples each fused by RRF."""
+    return _Ranking(
+        tables=fuse([first.tables, second.tables]),
+        examples=fuse([first.examples, second.examples]),
+        search=first.search,
+        note=first.note or second.note,
+    )
+
+
 class SchemaCatalog:
     """The whole schema and its business definitions, renderable for any subset of tables;
     and the few-shot examples this role may be shown, with the tables each one reads."""
@@ -242,11 +252,20 @@ class SchemaRetriever:
         self._llm = llm
         self._documents = dict(documents or {})
 
-    def select(self, question: str, *, history: Sequence[Turn] = ()) -> Selection:
+    def select(
+        self, question: str, *, history: Sequence[Turn] = (), also: Sequence[str] = ()
+    ) -> Selection:
         """The schema text for this question. Never raises for an embedding or search failure:
-        keyword search carries on alone, or the full schema is sent, and the selection says so."""
+        keyword search carries on alone, or the full schema is sent, and the selection says so.
+
+        `also`: other wordings of the same question, searched too and fused by rank (RRF). A
+        follow-up is searched as typed *and* rewritten (3.6): "break that down by carrier" has
+        the new part, its rewrite has what "that" means.
+        """
         try:
             ranking = self._rank(question)
+            for other in also:
+                ranking = _fused(ranking, self._rank(other))
         except psycopg.Error as exc:
             logger.warning(
                 "schema retrieval failed, sending the full schema", extra={"error": str(exc)}

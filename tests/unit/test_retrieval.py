@@ -403,3 +403,33 @@ def test_a_full_fallback_shows_no_examples(monkeypatch: pytest.MonkeyPatch) -> N
     selection = retriever(monkeypatch, examples=["shippers"]).select("q")
     assert selection.info.mode == "fallback"
     assert selection.examples == ()
+
+
+# --- Several wordings (3.6) ------------------------------------------------------------------
+
+
+def test_other_wordings_are_searched_and_fused(monkeypatch: pytest.MonkeyPatch) -> None:
+    by_question = {
+        "Break that down by carrier.": [hit("table:shippers")],
+        "Revenue in 1997 by carrier": [hit("table:order_details"), hit("table:orders")],
+    }
+
+    def fake_search(conn: psycopg.Connection, vector: list[float], **kw: Any) -> list[IndexHit]:
+        return []  # meaning: nothing; the words decide in this test
+
+    monkeypatch.setattr(retrieval_module, "search", fake_search)
+    monkeypatch.setattr(
+        retrieval_module,
+        "keyword_search",
+        lambda conn, question, **kw: [] if kw["kinds"] == EXAMPLE_KINDS else by_question[question],
+    )
+    r = SchemaRetriever(
+        catalog=CATALOG,
+        embeddings=FakeEmbeddings(),
+        connect=MagicMock(),
+        settings=settings(retrieval_mode="hybrid", retrieval_top_k=3),
+    )
+    alone = r.select("Revenue in 1997 by carrier").info
+    assert "shippers" not in alone.hits
+    both = r.select("Break that down by carrier.", also=["Revenue in 1997 by carrier"]).info
+    assert set(both.hits) == {"shippers", "order_details", "orders"}

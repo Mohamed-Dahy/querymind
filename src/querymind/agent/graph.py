@@ -51,6 +51,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 
+from querymind.agent.rewriter import rewrite_question
 from querymind.agent.sanity import RETRY_CODES, check_result
 from querymind.agent.schemas import AnswerSummary, SqlAttempt, Turn
 from querymind.agent.sql_generator import generate_sql, repair_sql
@@ -59,6 +60,7 @@ from querymind.agent.summarizer import fallback_answer, summarize
 from querymind.db.errors import QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import execute_query
 from querymind.db.schema import estimate_tokens
+from querymind.llm import LLMError
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.retrieval import SchemaSelection
@@ -103,7 +105,12 @@ def build_graph(*, checkpointer: BaseCheckpointSaver[str] | None = None) -> Agen
 
 
 def _retrieve_schema(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
-    """Question (+ the conversation so far) → only the relevant tables in `schema_text`."""
+    """Question (+ the conversation so far) → only the relevant tables in `schema_text`.
+
+    With QUERY_REWRITING on, a follow-up is also rewritten into a standalone question, and both
+    are searched (3.6). If the rewrite fails, only the question as typed is: the previous
+    answer's tables are carried over anyway, so the follow-up still works.
+    """
     retriever = runtime.context.retriever
     if retriever is None:
         full = SchemaSelection(
@@ -112,12 +119,28 @@ def _retrieve_schema(state: AgentState, runtime: Runtime[AgentContext]) -> Agent
             schema_tokens=estimate_tokens(state["schema_text"]),
         )
         return {"schema_selection": full}
-    selection = retriever.select(state["question"], history=state.get("history", []))
+    history = state.get("history", [])
+    question = state["question"]
+    search_question = question
+    if history and runtime.context.settings.query_rewriting:
+        try:
+            search_question = rewrite_question(
+                runtime.context.llm, question=question, history=history
+            )
+        except LLMError as exc:
+            logger.warning(
+                "rewrite failed, searching the question as typed", extra={"error": str(exc)}
+            )
+    # Both wordings are searched and fused: the typed follow-up has the new part ("by carrier"),
+    # the rewrite what "that" means. The rewrite alone lost tables the typed one found (3.6 eval).
+    also = (search_question,) if search_question != question else ()
+    selection = retriever.select(question, history=history, also=also)
     return {
         "schema_text": selection.schema_text,
         "repair_schema_text": selection.repair_schema_text,
         "schema_selection": selection.info,
         "examples": list(selection.examples),  # few-shot (3.5), for the first try and repairs
+        "search_question": search_question if search_question != question else None,
     }
 
 

@@ -1,0 +1,156 @@
+# Follow-up conversations for schema retrieval (Phase 3.6): does the LAST question of each
+# conversation get the tables it needs?
+#
+# Each turn has a reference SQL. The earlier turns become the history (question + SQL, as the
+# agent remembers them, 2.6); the last turn's SQL says which tables it needs (via the validator).
+# No SQL is generated: evals/followups.py only measures retrieval, with the follow-up searched
+# as typed or rewritten into a standalone question first.
+#
+# Several follow-ups point back without naming the new table ("Who makes them?"): that's where
+# searching the words as typed fails, and where rewriting should help.
+
+version: 1
+
+conversations:
+  - id: f01_only_1997
+    turns:
+      - question: Who are our top 5 customers by revenue?
+        sql: >-
+          SELECT cu.company_name, sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+          FROM customers AS cu JOIN orders AS o ON o.customer_id = cu.customer_id
+          JOIN order_details AS d ON d.order_id = o.order_id
+          GROUP BY cu.company_name ORDER BY revenue DESC LIMIT 5
+      - question: Only for 1997.
+        sql: >-
+          SELECT cu.company_name, sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+          FROM customers AS cu JOIN orders AS o ON o.customer_id = cu.customer_id
+          JOIN order_details AS d ON d.order_id = o.order_id
+          WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+          GROUP BY cu.company_name ORDER BY revenue DESC LIMIT 5
+
+  - id: f02_seafood_suppliers
+    turns:
+      - question: How many products are in each category?
+        sql: >-
+          SELECT c.category_name, count(*) FROM products AS p
+          JOIN categories AS c ON c.category_id = p.category_id GROUP BY c.category_name
+      - question: Which companies supply the ones in Seafood?
+        sql: >-
+          SELECT DISTINCT s.company_name FROM products AS p
+          JOIN categories AS c ON c.category_id = p.category_id
+          JOIN suppliers AS s ON s.supplier_id = p.supplier_id
+          WHERE c.category_name = 'Seafood'
+
+  - id: f03_her_territories
+    turns:
+      - question: Which employee handled the most orders?
+        sql: >-
+          SELECT e.first_name, e.last_name, count(*) AS orders FROM employees AS e
+          JOIN orders AS o ON o.employee_id = e.employee_id
+          GROUP BY e.employee_id, e.first_name, e.last_name ORDER BY orders DESC LIMIT 1
+      - question: Which territories does she cover?
+        sql: >-
+          SELECT t.territory_description FROM employees AS e
+          JOIN employee_territories AS et ON et.employee_id = e.employee_id
+          JOIN territories AS t ON t.territory_id = et.territory_id
+          WHERE e.first_name = 'Margaret' AND e.last_name = 'Peacock'
+
+  - id: f04_who_makes_them
+    turns:
+      - question: What are the top 5 products by revenue?
+        sql: >-
+          SELECT p.product_name, sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+          FROM products AS p JOIN order_details AS d ON d.product_id = p.product_id
+          GROUP BY p.product_name ORDER BY revenue DESC LIMIT 5
+      - question: Who makes them?
+        sql: >-
+          SELECT p.product_name, s.company_name FROM products AS p
+          JOIN suppliers AS s ON s.supplier_id = p.supplier_id
+          JOIN order_details AS d ON d.product_id = p.product_id
+          GROUP BY p.product_name, s.company_name
+          ORDER BY sum(d.unit_price * d.quantity * (1 - d.discount)) DESC LIMIT 5
+
+  - id: f05_where_from
+    turns:
+      - question: What are the 5 most expensive products?
+        sql: SELECT product_name, unit_price FROM products ORDER BY unit_price DESC LIMIT 5
+      - question: Which countries do they come from?
+        sql: >-
+          SELECT p.product_name, s.country FROM products AS p
+          JOIN suppliers AS s ON s.supplier_id = p.supplier_id
+          ORDER BY p.unit_price DESC LIMIT 5
+
+  - id: f06_by_shipper
+    turns:
+      - question: What was our total revenue in 1997?
+        sql: >-
+          SELECT sum(d.unit_price * d.quantity * (1 - d.discount)) FROM orders AS o
+          JOIN order_details AS d ON d.order_id = o.order_id
+          WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+      - question: Break that down by carrier.
+        sql: >-
+          SELECT s.company_name, sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+          FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id
+          JOIN shippers AS s ON s.shipper_id = o.ship_via
+          WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+          GROUP BY s.company_name
+
+  - id: f07_who_looks_after_them
+    turns:
+      - question: Who are the top 3 music store customers by spending?
+        sql: >-
+          SELECT c.first_name, c.last_name, sum(i.total) AS spent FROM customer AS c
+          JOIN invoice AS i ON i.customer_id = c.customer_id
+          GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY spent DESC LIMIT 3
+      - question: Who looks after them?
+        sql: >-
+          SELECT c.first_name, c.last_name, e.first_name AS rep_first, e.last_name AS rep_last
+          FROM customer AS c JOIN employee AS e ON e.employee_id = c.support_rep_id
+          JOIN invoice AS i ON i.customer_id = c.customer_id
+          GROUP BY c.customer_id, c.first_name, c.last_name, e.first_name, e.last_name
+          ORDER BY sum(i.total) DESC LIMIT 3
+
+  - id: f08_who_recorded_them
+    turns:
+      - question: Which albums have more than 25 tracks?
+        sql: >-
+          SELECT al.title FROM album AS al JOIN track AS t ON t.album_id = al.album_id
+          GROUP BY al.album_id, al.title HAVING count(*) > 25
+      - question: And who recorded them?
+        sql: >-
+          SELECT al.title, ar.name FROM album AS al
+          JOIN artist AS ar ON ar.artist_id = al.artist_id
+          JOIN track AS t ON t.album_id = al.album_id
+          GROUP BY al.album_id, al.title, ar.name HAVING count(*) > 25
+
+  - id: f09_now_per_category
+    turns:
+      - question: What was our revenue in each year?
+        sql: >-
+          SELECT extract(year FROM o.order_date) AS year,
+            sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+          FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id GROUP BY year
+      - question: Only 1997.
+        sql: >-
+          SELECT sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+          FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id
+          WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+      - question: Now split it per product group.
+        sql: >-
+          SELECT c.category_name, sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+          FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id
+          JOIN products AS p ON p.product_id = d.product_id
+          JOIN categories AS c ON c.category_id = p.category_id
+          WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+          GROUP BY c.category_name
+
+  - id: f10_which_lists
+    turns:
+      - question: Which tracks last longer than 20 minutes?
+        sql: SELECT name FROM track WHERE milliseconds > 1200000
+      - question: On which lists can people find them?
+        sql: >-
+          SELECT DISTINCT p.name FROM track AS t
+          JOIN playlist_track AS pt ON pt.track_id = t.track_id
+          JOIN playlist AS p ON p.playlist_id = pt.playlist_id
+          WHERE t.milliseconds > 1200000

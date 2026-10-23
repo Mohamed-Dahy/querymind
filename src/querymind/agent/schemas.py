@@ -184,6 +184,14 @@ class Turn(BaseModel):
     reply: str | None = None  # the question asked back (+ options), or the refusal
 
 
+class StandaloneQuestion(BaseModel):
+    """A follow-up rewritten so it can be understood without the conversation (3.6)."""
+
+    question: str = Field(
+        description="The follow-up as one complete question, everything it refers to spelled out"
+    )
+
+
 class FewShotExample(BaseModel):
     """A verified question → SQL pair, shown to the LLM as a pattern (3.5).
 

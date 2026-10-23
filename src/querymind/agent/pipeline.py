@@ -311,6 +311,7 @@ class Pipeline:
                 "schema_search": (shown.search or None) if shown else None,
                 "schema_fallback": (shown.reason or None) if shown else None,
                 "examples": list(shown.examples) if shown else [],  # few-shot ids (3.5)
+                "search_question": state.get("search_question"),  # the rewritten follow-up (3.6)
                 "confidence": confidence,
                 "provider": self._llm.name,
                 "duration_ms": round((time.perf_counter() - started) * 1000),

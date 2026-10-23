@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     # <db>.examples.yaml) to show, the closest to the question. 0 = none. They come with
     # schema retrieval (same embedding, same index): with the whole schema there are none.
     few_shot_examples: int = Field(default=3, ge=0, le=10)
+    # Query rewriting (3.6): a follow-up ("who looks after them?") is also rewritten into a
+    # standalone question by one small LLM call, and both are searched. Only with history and
+    # schema retrieval; the SQL prompt still gets the original question + the history. Off by
+    # default: carry-over already got every follow-up its tables (ADR 005).
+    query_rewriting: bool = False
     # Embeddings always use Google (GOOGLE_API_KEY), whatever LLM_PROVIDER is.
     embedding_model: str = "gemini-embedding-001"
 

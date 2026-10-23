@@ -61,6 +61,7 @@ class AgentState(TypedDict, total=False):
     schema_selection: SchemaSelection | None  # which tables the LLM was shown, and why (3.3)
     repair_schema_text: str | None  # what a repair sees: wider than schema_text (3.3)
     examples: list[FewShotExample]  # few-shot examples for this question (3.5), never in history
+    search_question: str | None  # what retrieval searched with: the follow-up rewritten (3.6)
     draft: SqlDraft | None  # the query to try next (from generate_sql or repair_sql), not trusted
     # The last query that ran, as a set: its validated SQL, the LLM's explanation, its rows.
     # A later failed repair doesn't touch them, so a good-enough result is never lost.
@@ -91,6 +92,7 @@ def new_turn(*, question: str, schema_text: str, table_names: list[str]) -> Agen
         "schema_selection": None,
         "repair_schema_text": None,
         "examples": [],
+        "search_question": None,
         "draft": None,
         "sql": None,
         "explanation": None,

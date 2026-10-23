@@ -17,8 +17,10 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > Medium / Low) and the reasons behind it. Follow-up questions work too: "Top 5 customers by revenue", then
 > "only for 1997", then "break that down by country". On a 30-question test set with known answers it gets
 > **30/30** right (29/30 before self-correction). A **semantic layer** teaches it the company's own terms ("key
-> accounts", "active customers", "turnover"): on 13 such questions it goes from 5/13 to 13/13. Next: larger
-> databases, with retrieval of only the relevant tables.
+> accounts", "active customers", "turnover"): on 13 such questions it goes from 5/13 to 13/13. On a database with
+> two businesses (25 tables), it sends the LLM only the tables a question needs, about 40% of the schema, and
+> finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Next:
+> evaluation at scale (the BIRD benchmark).
 
 ---
 
