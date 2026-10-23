@@ -9,10 +9,17 @@
     uv run python -m evals.run --suite business --no-semantic-layer # same, without definitions
     uv run python -m evals.run --suite chinook                      # the music store (3.2)
     uv run python -m evals.run --suite chinook --schema-retrieval off  # whole schema (3.3)
+    uv run python -m evals.run --suite bird --limit 20 --provider gemini   # BIRD benchmark (4.1)
+    uv run python -m evals.run --suite bird --no-evidence           # without BIRD's hints
+    uv run python -m evals.run --suite bird --references-only       # only the gold SQL, no LLM
 
 For each question: QueryMind writes and runs its own SQL (the real pipeline, real LLM), the
 reference SQL runs too, and the two RESULTS are compared (evals/compare.py). The score is the
 share of questions whose results match. Uses real LLM calls: not run in CI.
+
+The BIRD suite (4.1) spans 11 databases: each question runs in its own (bird_<db_id>), with one
+Pipeline per database, BIRD's protocol (whole schema, no definitions of ours, evals/bird.py),
+and the evidence hint after the question unless --no-evidence.
 """
 
 import argparse
@@ -20,7 +27,7 @@ import logging
 import subprocess
 import sys
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -28,6 +35,15 @@ from pathlib import Path
 
 import psycopg
 
+from evals.bird import (
+    SUBSET_FILE,
+    BirdError,
+    bird_settings,
+    interleave,
+    load_bird_questions,
+    load_subset,
+    to_golden,
+)
 from evals.compare import compare_results
 from evals.golden_set import GOLDEN_DIR, GoldenQuestion, load_golden_set
 from querymind.agent.pipeline import Pipeline
@@ -51,10 +67,12 @@ SUITES = {
     "business": GOLDEN_DIR / "northwind_business.yaml",  # needs the semantic layer (3.1)
     "chinook": GOLDEN_DIR / "chinook.yaml",  # the music store, next to Northwind (3.2)
 }
+BIRD_SUITE = "bird"  # the BIRD Mini-Dev benchmark (4.1): 11 databases, not a YAML file
 TIERS = ("easy", "medium", "hard")
 CONFIDENCE_LEVELS = ("high", "medium", "low")
 
-type AskFn = Callable[[str], AgentReply]
+# ask() gets the whole item, not just its text: a BIRD question picks its database by its id.
+type AskFn = Callable[[GoldenQuestion], AgentReply]
 type ReferenceFn = Callable[[GoldenQuestion], QueryResult]
 
 
@@ -114,7 +132,7 @@ def evaluate_question(
     started = time.perf_counter()
     for attempt in range(1, retries + 2):
         try:
-            answer = ask(item.question)
+            answer = ask(item)
         except (LLMProviderError, DatabaseUnavailableError) as exc:
             if attempt <= retries:
                 sleep(backoff_seconds * attempt)
@@ -292,8 +310,19 @@ def summarize_outcomes(outcomes: Sequence[Outcome]) -> Summary:
     )
 
 
-def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str]) -> str:
-    """A markdown report: scores, breakdowns, then every failure with both SQLs."""
+def build_report(
+    outcomes: Sequence[Outcome],
+    *,
+    title: str,
+    meta: dict[str, str],
+    run_flags: str = "--suite golden",
+    reference_failures: dict[str, str] | None = None,
+) -> str:
+    """A markdown report: scores, breakdowns, then every failure with both SQLs.
+
+    `reference_failures`: questions whose reference SQL itself failed (id → why). They were
+    not asked, and are listed so they are never silently dropped.
+    """
     summary = summarize_outcomes(outcomes)
     lines = [f"# {title}", ""]
     lines += [f"- **{key}:** {value}" for key, value in meta.items()]
@@ -340,8 +369,20 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
             "limit), so the agent never answered. They are left out of the accuracy above. Rerun:",
             "",
             "```",
-            f"uv run python -m evals.run --suite golden --ids {' '.join(summary.not_scored)}",
+            f"uv run python -m evals.run {run_flags} --ids {' '.join(summary.not_scored)}",
             "```",
+            "",
+        ]
+    if reference_failures:
+        lines += [
+            "## Reference SQL failed (not asked)",
+            "",
+            "The reference SQL could not run through our validator and executor, so there is",
+            "nothing to compare with. These questions are left out of the accuracy above.",
+            "",
+            "| Question | Why |",
+            "|---|---|",
+            *(f"| `{qid}` | {why} |" for qid, why in sorted(reference_failures.items())),
             "",
         ]
     if summary.errors:
@@ -392,9 +433,40 @@ def build_report(outcomes: Sequence[Outcome], *, title: str, meta: dict[str, str
     return "\n".join(lines) + "\n"
 
 
+@dataclass(frozen=True)
+class Suite:
+    """The questions of one run, and the database each one is about."""
+
+    name: str
+    label: str  # for the report, e.g. "northwind, version 2"
+    items: list[GoldenQuestion]
+    databases: dict[str, str]  # question id → Postgres database; empty = the one in .env
+
+
+def load_suite(name: str, *, full: bool = False, evidence: bool = True) -> Suite:
+    """A golden YAML set, or BIRD: the fixed 100-question subset (all 500 with `full`).
+
+    Raises:
+        BirdError: BIRD isn't downloaded yet (data/seed_bird.py) or the subset file is invalid.
+    """
+    if name != BIRD_SUITE:
+        golden = load_golden_set(SUITES[name])
+        return Suite(name, f"{golden.database}, version {golden.version}", [*golden.questions], {})
+    questions = load_bird_questions()
+    chosen = interleave(questions if full else load_subset(questions))  # --limit: all databases
+    source = "all 500" if full else f"the fixed subset, {SUBSET_FILE.name}"
+    label = f"BIRD Mini-Dev, {source}, evidence {'on' if evidence else 'off'}"
+    return Suite(
+        name,
+        label,
+        [to_golden(q, evidence=evidence) for q in chosen],
+        {q.id: q.database for q in chosen},
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Measure QueryMind's execution accuracy.")
-    parser.add_argument("--suite", choices=SUITES, default="golden")
+    parser.add_argument("--suite", choices=[*SUITES, BIRD_SUITE], default="golden")
     parser.add_argument("--limit", type=int, help="only the first N questions")
     parser.add_argument("--ids", nargs="+", help="only these question ids")
     parser.add_argument("--provider", choices=["groq", "gemini"], help="override LLM_PROVIDER")
@@ -426,12 +498,30 @@ def main() -> int:
         choices=["on", "off"],
         help="off = no few-shot examples in the prompt (the 3.5 ablation); on = FEW_SHOT_EXAMPLES",
     )
+    parser.add_argument(
+        "--no-evidence", action="store_true", help="bird: ask without BIRD's hints (ablation)"
+    )
+    parser.add_argument(
+        "--full", action="store_true", help="bird: all 500 questions, not the fixed 100"
+    )
+    parser.add_argument(
+        "--references-only",
+        action="store_true",
+        help="only run the reference SQL (no LLM): checks the suite itself",
+    )
     parser.add_argument("--report", type=Path, help="write a markdown report to this file")
     args = parser.parse_args()
     sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
 
-    golden = load_golden_set(SUITES[args.suite])
-    items = [q for q in golden.questions if not args.ids or q.id in args.ids][: args.limit]
+    try:
+        suite = load_suite(args.suite, full=args.full, evidence=not args.no_evidence)
+    except BirdError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    items = [q for q in suite.items if not args.ids or q.id in args.ids][: args.limit]
+    if not items:
+        print("Error: no questions match --ids / --limit", file=sys.stderr)
+        return 1
     try:
         settings = get_settings()
         if args.provider:
@@ -446,13 +536,17 @@ def main() -> int:
             settings = settings.model_copy(update={"retrieval_mode": args.retrieval_mode})
         if args.few_shot == "off":
             settings = settings.model_copy(update={"few_shot_examples": 0})
+
+        def settings_for(item: GoldenQuestion) -> Settings:
+            database = suite.databases.get(item.id)
+            return bird_settings(settings, database) if database else settings
+
+        references, reference_failures = run_references(items, settings_for)
+        if args.references_only:
+            return _print_references(items, references, reference_failures)
+        items = [item for item in items if item.id not in reference_failures]
         model, _ = settings.llm_credentials()
-        references = run_references(items)
-        pipeline = Pipeline(
-            llm=create_llm_provider(settings),
-            settings=settings,
-            embeddings=create_embedding_provider(settings),
-        )
+        pipelines = _pipelines(items, settings_for)
     except (ConfigError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -462,16 +556,21 @@ def main() -> int:
         return 1
     capture = AuditCapture.attach()
 
-    def ask(question: str) -> AgentReply:
+    def ask(item: GoldenQuestion) -> AgentReply:
         capture.last = AuditedAsk()
-        return pipeline.ask(question, summarize_answer=False)
+        pipeline = pipelines[settings_for(item).postgres_db]
+        return pipeline.ask(item.question, summarize_answer=False)
 
+    shown = settings_for(items[0])  # BIRD: what every one of its databases gets
+    databases = f"{len(pipelines)} databases, " if len(pipelines) > 1 else ""
     print(
         f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}, "
-        f"max {settings.max_sql_attempts} SQL attempts, "
-        f"semantic layer: {_layers(settings)}, schema retrieval: {settings.schema_retrieval}, "
-        f"few-shot: {settings.few_shot_examples or 'off'}\n"
+        f"{databases}max {shown.max_sql_attempts} SQL attempts, "
+        f"semantic layer: {_layers(shown)}, schema retrieval: {shown.schema_retrieval}, "
+        f"few-shot: {shown.few_shot_examples or 'off'}\n"
     )
+    if reference_failures:
+        print(f"Reference SQL failed, not asked: {', '.join(sorted(reference_failures))}\n")
     outcomes = evaluate(
         items,
         ask=ask,
@@ -497,26 +596,94 @@ def main() -> int:
     if summary.not_scored:
         print()
         print(f"Not scored (LLM or database unavailable): {', '.join(summary.not_scored)}")
-        print(f"Rerun: uv run python -m evals.run --ids {' '.join(summary.not_scored)}")
+        rerun = f"{rerun_flags(sys.argv[1:])} --ids {' '.join(summary.not_scored)}"
+        print(f"Rerun: uv run python -m evals.run {rerun}")
     if args.report:
         meta = {
             "Date": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
-            "Suite": f"{args.suite} ({golden.database}, version {golden.version})",
+            "Suite": f"{suite.name} ({suite.label})",
             "Questions": str(len(items)),
             "LLM": f"{settings.llm_provider} / {model}",
             "Code": _git_commit(),
-            "Max rows / timeout": f"{settings.max_rows} / {settings.query_timeout_seconds} s",
-            "Max SQL attempts": str(settings.max_sql_attempts),
-            "Semantic layer": _layers(settings),
-            "Schema retrieval": f"{settings.schema_retrieval} ({settings.retrieval_mode}, "
-            f"top-k {settings.retrieval_top_k}, max {settings.retrieval_max_tables} tables)",
-            "Few-shot examples": str(settings.few_shot_examples or "off"),
+            "Max rows / timeout": f"{shown.max_rows} / {shown.query_timeout_seconds} s",
+            "Max SQL attempts": str(shown.max_sql_attempts),
+            "Semantic layer": _layers(shown),
+            "Schema retrieval": f"{shown.schema_retrieval} ({shown.retrieval_mode}, "
+            f"top-k {shown.retrieval_top_k}, max {shown.retrieval_max_tables} tables)",
+            "Few-shot examples": str(shown.few_shot_examples or "off"),
         }
-        title = f"QueryMind eval: {args.suite} ({golden.database})"
+        report = build_report(
+            outcomes,
+            title=f"QueryMind eval: {suite.name} ({suite.label.split(',')[0]})",
+            meta=meta,
+            run_flags=rerun_flags(sys.argv[1:]),
+            reference_failures=reference_failures,
+        )
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(build_report(outcomes, title=title, meta=meta), encoding="utf-8")
+        args.report.write_text(report, encoding="utf-8")
         print(f"\nReport written to {args.report}")
     return 0
+
+
+def rerun_flags(argv: Sequence[str]) -> str:
+    """This run's flags minus the ones that pick questions or outputs (--ids, --limit, --report).
+
+    A rerun of the *not scored* questions must use the same setup (provider, ablation arm,
+    evidence...), or its answers would be mixed into the wrong arm of a comparison.
+    """
+    kept: list[str] = []
+    dropping = False
+    for arg in argv:
+        if arg.startswith("--"):
+            name = arg.split("=", 1)[0]
+            dropping = name in {"--ids", "--limit", "--report"}
+            if dropping and "=" in arg:
+                dropping = False  # --limit=5: the value came with it
+                continue
+        if not dropping:
+            kept.append(arg)
+    return " ".join(kept)
+
+
+def _pipelines(
+    items: Sequence[GoldenQuestion], settings_for: Callable[[GoldenQuestion], Settings]
+) -> dict[str, Pipeline]:
+    """One Pipeline per database the questions use (BIRD: up to 11), keyed by database name.
+
+    They share one LLM client. Embeddings only where schema retrieval may run: BIRD shows
+    the whole schema and has no index, so its pipelines get none.
+    """
+    first = settings_for(items[0])
+    llm = create_llm_provider(first)
+    embeddings = create_embedding_provider(first)
+    pipelines: dict[str, Pipeline] = {}
+    for item in items:
+        settings = settings_for(item)
+        if settings.postgres_db not in pipelines:
+            pipelines[settings.postgres_db] = Pipeline(
+                llm=llm,
+                settings=settings,
+                embeddings=None if settings.schema_retrieval == "off" else embeddings,
+            )
+    return pipelines
+
+
+def _print_references(
+    items: Sequence[GoldenQuestion],
+    references: dict[str, QueryResult],
+    failures: dict[str, str],
+) -> int:
+    """--references-only: did every reference SQL run, and how big are the answers?"""
+    truncated = sorted(qid for qid, result in references.items() if result.truncated)
+    empty = sorted(qid for qid, result in references.items() if not result.rows)
+    largest = max((r.row_count for r in references.values()), default=0)
+    print(f"Reference SQL: {len(references)} of {len(items)} ran, {len(failures)} failed")
+    print(f"  largest answer: {largest:,} rows; empty answers: {', '.join(empty) or 'none'}")
+    if truncated:
+        print(f"  cut off at the row cap (can't be compared fully): {', '.join(truncated)}")
+    for qid, why in sorted(failures.items()):
+        print(f"  FAILED {qid}: {why}")
+    return 1 if failures or truncated else 0
 
 
 def _modes(summary: Summary) -> str:
@@ -559,18 +726,37 @@ class AuditCapture(logging.Handler):
         return handler
 
 
-def run_references(items: Sequence[GoldenQuestion]) -> dict[str, QueryResult]:
-    """Run every reference SQL once, through the same validator and executor as the agent."""
-    settings = get_settings()
-    with connect_readonly(settings) as conn:
-        tables = introspect_schema(conn).table_names
-        results = {}
-        for item in items:
-            query = validate_sql(item.sql, allowed_tables=tables, max_rows=settings.max_rows)
-            results[item.id] = execute_query(
-                conn, query, timeout_seconds=settings.query_timeout_seconds
-            )
-    return results
+def run_references(
+    items: Sequence[GoldenQuestion], settings_for: Callable[[GoldenQuestion], Settings]
+) -> tuple[dict[str, QueryResult], dict[str, str]]:
+    """Run every reference SQL once, through the same validator and executor as the agent.
+
+    `settings_for` says which database (and row cap) each question uses. Returns the results,
+    and the questions whose reference failed (id → why): those get no verdict instead of
+    stopping the whole run, and the report lists them.
+    """
+    groups: dict[str, list[GoldenQuestion]] = defaultdict(list)
+    for item in items:
+        groups[settings_for(item).postgres_db].append(item)
+    results: dict[str, QueryResult] = {}
+    failures: dict[str, str] = {}
+    for group in groups.values():
+        settings = settings_for(group[0])
+        with connect_readonly(settings) as conn:
+            tables = introspect_schema(conn, sample_rows=0).table_names
+            for item in group:
+                try:
+                    query = validate_sql(
+                        item.sql, allowed_tables=tables, max_rows=settings.max_rows
+                    )
+                    results[item.id] = execute_query(
+                        conn, query, timeout_seconds=settings.query_timeout_seconds
+                    )
+                except UnsafeSqlError as exc:
+                    failures[item.id] = f"rejected by the validator: {exc.reason}"
+                except QueryError as exc:
+                    failures[item.id] = f"{type(exc).__name__}: {exc}"
+    return results, failures
 
 
 def _progress_line(number: int, total: int, outcome: Outcome) -> str:

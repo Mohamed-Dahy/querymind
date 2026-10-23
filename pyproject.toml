@@ -51,8 +51,9 @@ plugins = ["pydantic.mypy"]
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# The repo root, so tests can import top-level folders like `evals` (querymind is installed).
-pythonpath = ["."]
+# The repo root, so tests can import top-level folders like `evals` (querymind is installed),
+# and data/, so tests can import the seed scripts the way they import each other (4.1).
+pythonpath = [".", "data"]
 addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
 markers = [
     "integration: needs the Docker Postgres database (deselect with -m 'not integration')",

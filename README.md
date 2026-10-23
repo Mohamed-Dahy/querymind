@@ -19,8 +19,8 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > **30/30** right (29/30 before self-correction). A **semantic layer** teaches it the company's own terms ("key
 > accounts", "active customers", "turnover"): on 13 such questions it goes from 5/13 to 13/13. On a database with
 > two businesses (25 tables), it sends the LLM only the tables a question needs, about 40% of the schema, and
-> finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Next:
-> evaluation at scale (the BIRD benchmark).
+> finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Now:
+> evaluation at scale on the public **BIRD** text-to-SQL benchmark (11 databases it has never seen).
 
 ---
 
@@ -130,6 +130,10 @@ uv run python scripts/build_index.py   # index the tables for retrieval (needs a
 
 Without a Google key the app still works: it sends the whole schema and logs a warning.
 
+Optional, for the benchmark: `uv run python data/seed_bird.py` downloads [BIRD Mini-Dev](https://bird-bench.github.io)
+(~800 MB, once, checked against a pinned hash) and loads its 11 databases, each into its own Postgres database.
+The data is CC BY-SA 4.0 and is never committed here.
+
 ### Ask questions
 
 ```bash
@@ -146,6 +150,8 @@ uv run python -m evals.run --suite golden --max-attempts 1   # the same, with se
 uv run python -m evals.clarify               # does it ask back only when a question is ambiguous?
 uv run python -m evals.retrieval             # does retrieval find the tables each question needs?
 uv run python -m evals.run --suite chinook --schema-retrieval off   # the whole schema, for comparison
+uv run python -m evals.run --suite bird --limit 20 --provider gemini # BIRD benchmark (after seed_bird.py)
+uv run python -m evals.run --suite bird --references-only           # check the benchmark's own SQL, no LLM
 ```
 
 ### Run the checks

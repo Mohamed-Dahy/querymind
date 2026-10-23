@@ -8,6 +8,7 @@ import pytest
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.schema import (
+    RESERVED_WORDS,
     SCHEMA_TOKEN_BUDGET,
     ForeignKey,
     SchemaInfo,
@@ -15,6 +16,7 @@ from querymind.db.schema import (
     describe_schema,
     estimate_tokens,
     introspect_schema,
+    quote_name,
 )
 
 pytestmark = pytest.mark.integration
@@ -136,3 +138,17 @@ def test_tables_without_grant_stay_hidden(settings: Settings, hidden_table: str)
         schema = introspect_schema(conn)
     assert hidden_table not in schema.table_names
     assert hidden_table not in describe_schema(schema)  # not even through a foreign key
+
+
+def test_reserved_words_match_postgres(ro_conn: psycopg.Connection) -> None:
+    # quote_name's list must be exactly the words this Postgres version needs quoted.
+    rows = ro_conn.execute("SELECT word FROM pg_get_keywords() WHERE catcode IN ('R', 'T')")
+    assert {word for (word,) in rows} == RESERVED_WORDS
+
+
+@pytest.mark.parametrize("name", ["order", "Free Meal Count (K-12)", "aCL IgA", 'a "b"'])
+def test_quoted_names_work_in_real_sql(ro_conn: psycopg.Connection, name: str) -> None:
+    # What the LLM copies from the schema text is valid SQL for that exact name.
+    cursor = ro_conn.execute(f"SELECT 1 AS {quote_name(name)}")
+    assert cursor.description is not None
+    assert cursor.description[0].name == name

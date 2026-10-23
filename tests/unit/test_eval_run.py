@@ -10,6 +10,7 @@ from evals.run import (
     build_report,
     evaluate,
     evaluate_question,
+    rerun_flags,
     summarize_outcomes,
 )
 from querymind.agent.schemas import (
@@ -74,11 +75,13 @@ def reference(item: GoldenQuestion) -> QueryResult:
     return REFERENCE[item.id]
 
 
-def asker(replies: dict[str, list[object]]) -> Callable[[str], AskResult | ClarificationRequest]:
+def asker(
+    replies: dict[str, list[object]],
+) -> Callable[[GoldenQuestion], AskResult | ClarificationRequest]:
     """Answer each question with the next queued reply: rows, an AskResult, or an exception."""
 
-    def ask(text: str) -> AskResult | ClarificationRequest:
-        reply = replies[text.removeprefix("question ").removesuffix("?")].pop(0)
+    def ask(item: GoldenQuestion) -> AskResult | ClarificationRequest:
+        reply = replies[item.id].pop(0)
         if isinstance(reply, Exception):
             raise reply
         if isinstance(reply, AskResult | ClarificationRequest):
@@ -264,3 +267,12 @@ def test_calibration_counts_accuracy_per_confidence_level() -> None:
         "low": "0/1 (0.0%)",  # q3 gave no answer, so it has no confidence and isn't counted
     }
     assert "| low | 0/1 (0.0%) |" in build_report(outcomes, title="t", meta={})
+
+
+def test_rerun_keeps_the_setup_but_not_the_question_choice() -> None:
+    argv = [
+        "--suite", "bird", "--no-evidence", "--ids", "bird_1", "bird_2",
+        "--provider", "gemini", "--limit=20", "--report", "out.md", "--max-attempts", "1",
+    ]  # fmt: skip
+    assert rerun_flags(argv) == "--suite bird --no-evidence --provider gemini --max-attempts 1"
+    assert rerun_flags([]) == ""

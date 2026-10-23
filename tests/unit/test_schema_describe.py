@@ -12,6 +12,7 @@ from querymind.db.schema import (
     Table,
     describe_schema,
     estimate_tokens,
+    quote_name,
 )
 
 CUSTOMERS = Table(
@@ -147,3 +148,43 @@ def test_no_warning_within_budget(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING):
         describe_schema(SCHEMA)
     assert caplog.text == ""
+
+
+@pytest.mark.parametrize(
+    ("name", "written"),
+    [
+        ("customer_id", "customer_id"),  # plain lowercase: bare, as before
+        ("cdscode", "cdscode"),
+        ("date", "date"),  # a keyword, but not a reserved one: works bare
+        ("order", '"order"'),  # reserved: FROM order is a syntax error
+        ("user", '"user"'),
+        ("Free Meal Count (K-12)", '"Free Meal Count (K-12)"'),  # spaces, capitals, ( )
+        ("aCL IgA", '"aCL IgA"'),  # bare, Postgres would fold it to lowercase
+        ("T-CHO", '"T-CHO"'),
+        ("2nd", '"2nd"'),  # starts with a digit
+        ('say "hi"', '"say ""hi"""'),  # a quote inside is doubled
+    ],
+)
+def test_quote_name(name: str, written: str) -> None:
+    assert quote_name(name) == written
+
+
+def test_names_that_need_quotes_are_quoted_everywhere() -> None:
+    # BIRD's financial database: a table called "order", columns with capitals and spaces.
+    order = Table(
+        name="order",
+        columns=(
+            Column(name="order_id", data_type="bigint"),
+            Column(name="Free Meal Count (K-12)", data_type="real"),
+        ),
+        primary_key=("order_id",),
+        foreign_keys=(
+            ForeignKey(columns=("Free Meal Count (K-12)",), ref_table="user", ref_columns=("Id",)),
+        ),
+    )
+    assert describe_schema(SchemaInfo(tables=(order,))) == (
+        'Table "order"\n'
+        '  Columns: order_id bigint, "Free Meal Count (K-12)" real\n'
+        "  Primary key: order_id\n"
+        '  Foreign keys: "Free Meal Count (K-12)" -> "user"("Id")'
+    )

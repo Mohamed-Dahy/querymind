@@ -18,6 +18,7 @@ same list is what the SQL validator (Phase 1.3) will allow.
 import datetime as dt
 import logging
 import math
+import re
 from collections.abc import Collection, Sequence
 from decimal import Decimal
 
@@ -43,6 +44,29 @@ _SHORT_TYPES = {
     "timestamp with time zone": "timestamptz",
     "time without time zone": "time",
 }
+
+# Postgres keywords a table or column can only be named with quotes ("order"): those of
+# pg_get_keywords() in category R (reserved) and T (reserved, except as a function or type name).
+# tests/integration/test_schema_introspection.py checks this list against the real one.
+# fmt: off
+RESERVED_WORDS = frozenset({
+    "all", "analyse", "analyze", "and", "any", "array", "as", "asc", "asymmetric", "both",
+    "case", "cast", "check", "collate", "column", "constraint", "create", "current_catalog",
+    "current_date", "current_role", "current_time", "current_timestamp", "current_user",
+    "default", "deferrable", "desc", "distinct", "do", "else", "end", "except", "false",
+    "fetch", "for", "foreign", "from", "grant", "group", "having", "in", "initially",
+    "intersect", "into", "lateral", "leading", "limit", "localtime", "localtimestamp", "not",
+    "null", "offset", "on", "only", "or", "order", "placing", "primary", "references",
+    "returning", "select", "session_user", "some", "symmetric", "system_user", "table", "then",
+    "to", "trailing", "true", "union", "unique", "user", "using", "variadic", "when", "where",
+    "window", "with", "authorization", "binary", "collation", "concurrently", "cross",
+    "current_schema", "freeze", "full", "ilike", "inner", "is", "isnull", "join", "left",
+    "like", "natural", "notnull", "outer", "overlaps", "right", "similar", "tablesample",
+    "verbose",
+})
+# fmt: on
+# A name Postgres reads the same with or without quotes: lowercase letters, digits, _ and $.
+_PLAIN_NAME = re.compile(r"[a-z_][a-z0-9_$]*")
 
 # A sample value after conversion: only plain types, so the models stay simple.
 type SampleValue = str | int | float | bool | None
@@ -248,13 +272,30 @@ def estimate_tokens(text: str) -> int:
     return math.ceil(len(text) / 4)
 
 
+def quote_name(name: str) -> str:
+    """A table or column name the way SQL must write it, so the LLM copies it right.
+
+    Plain lowercase names stay bare (customer_id). Any other name only works in quotes:
+    capitals or spaces ("Free Meal Count (K-12)": unquoted, Postgres would read FREE, MEAL...,
+    and fold "aCL IgA" to lowercase) and reserved words ("order": FROM order is a syntax error).
+    A quote inside the name is doubled, the SQL way.
+    """
+    if _PLAIN_NAME.fullmatch(name) and name not in RESERVED_WORDS:
+        return name
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _names(names: Sequence[str]) -> str:
+    return ", ".join(quote_name(name) for name in names)
+
+
 def _describe_table(table: Table) -> str:
     columns = ", ".join(
-        f"{c.name} {_SHORT_TYPES.get(c.data_type, c.data_type)}" for c in table.columns
+        f"{quote_name(c.name)} {_SHORT_TYPES.get(c.data_type, c.data_type)}" for c in table.columns
     )
-    lines = [f"Table {table.name}", f"  Columns: {columns}"]
+    lines = [f"Table {quote_name(table.name)}", f"  Columns: {columns}"]
     if table.primary_key:
-        lines.append(f"  Primary key: {', '.join(table.primary_key)}")
+        lines.append(f"  Primary key: {_names(table.primary_key)}")
     if table.foreign_keys:
         keys = "; ".join(_describe_foreign_key(fk) for fk in table.foreign_keys)
         lines.append(f"  Foreign keys: {keys}")
@@ -270,7 +311,7 @@ def _describe_table(table: Table) -> str:
 
 
 def _describe_foreign_key(fk: ForeignKey) -> str:
-    return f"{', '.join(fk.columns)} -> {fk.ref_table}({', '.join(fk.ref_columns)})"
+    return f"{_names(fk.columns)} -> {quote_name(fk.ref_table)}({_names(fk.ref_columns)})"
 
 
 def _format_value(value: SampleValue) -> str:
