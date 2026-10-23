@@ -24,7 +24,7 @@ from querymind.safety.sql_validator import ValidatedQuery
 from querymind.semantic import retrieval as retrieval_module
 from querymind.semantic.index import IndexHit, IndexStatus, SchemaIndexError
 from querymind.semantic.retrieval import SchemaCatalog, SchemaRetriever
-from tests.unit.retrieval_fixtures import FOOD, MUSIC, SCHEMA
+from tests.unit.retrieval_fixtures import EXAMPLES, FOOD, MUSIC, SCHEMA
 
 RESULT = QueryResult(columns=["n"], rows=[[3]], row_count=1, truncated=False, duration_ms=1)
 SHIPPERS = SqlDraft(sql="SELECT count(*) AS n FROM shippers", explanation="Counts.", tables_used=[])
@@ -207,3 +207,37 @@ def test_without_a_retriever_the_node_changes_nothing(monkeypatch: pytest.Monkey
     assert "Table shippers\n  Columns: n" in llm.calls[0].prompt
     assert final["schema_selection"].mode == "full"
     assert final["schema_selection"].tables == ("shippers",)
+
+
+def test_examples_reach_the_first_try_and_the_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(graph_module, "execute_query", StubExecutor())
+
+    def fake_search(conn: psycopg.Connection, vector: list[float], **kw: Any) -> list[IndexHit]:
+        if kw["kinds"] == ("example",):
+            return [IndexHit(id="example:shippers", kind="example", table="", score=0.9)]
+        return [IndexHit(id="table:shippers", kind="table", table="shippers", score=0.9)]
+
+    monkeypatch.setattr(retrieval_module, "search", fake_search)
+    retriever = SchemaRetriever(
+        catalog=SchemaCatalog(SCHEMA, [FOOD, MUSIC], EXAMPLES),
+        embeddings=FakeEmbeddings(),
+        connect=MagicMock(),
+        settings=settings(retrieval_mode="vector"),
+    )
+    bad = SqlDraft(sql="DELETE FROM shippers", explanation="", tables_used=[])  # one repair
+    llm = FakeLLMProvider([bad, SHIPPERS])
+    context = AgentContext(
+        llm=llm,
+        settings=settings(),
+        connect=MagicMock(),
+        summarize_answer=False,
+        retriever=retriever,
+    )
+    start = new_turn(question="List the shippers", schema_text="FULL", table_names=["shippers"])
+    final = build_graph().invoke(start, context=context)
+
+    first, repair = llm.calls
+    for prompt in (first.prompt, repair.prompt):
+        assert "<example>\nQuestion: List the shippers.\nSQL: SELECT * FROM shippers" in prompt
+    assert final["schema_selection"].examples == ("shippers",)
+    assert all("example" not in turn.model_dump_json() for turn in final["history"])

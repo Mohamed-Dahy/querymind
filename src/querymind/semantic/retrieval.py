@@ -33,14 +33,14 @@ retrieval success. A failed rerank keeps the fused order.
 import logging
 from collections import deque
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import psycopg
 from pydantic import BaseModel, ConfigDict, Field
 
 from querymind.agent.prompts.rerank import SYSTEM_PROMPT as RERANK_SYSTEM
 from querymind.agent.prompts.rerank import build_user_prompt as rerank_prompt
-from querymind.agent.schemas import Turn
+from querymind.agent.schemas import FewShotExample, Turn
 from querymind.config import Settings
 from querymind.db.schema import SchemaInfo, estimate_tokens
 from querymind.llm.base import LLMProvider
@@ -48,6 +48,7 @@ from querymind.llm.embeddings import EmbeddingProvider
 from querymind.llm.errors import LLMError, LLMProviderError
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
+from querymind.semantic.documents import EXAMPLE_KINDS, SCHEMA_KINDS
 from querymind.semantic.index import INDEX_TABLE, IndexHit, keyword_search, search
 from querymind.semantic.models import Metric, SemanticLayer
 from querymind.semantic.render import schema_prompt_text
@@ -97,25 +98,53 @@ class SchemaSelection(BaseModel):
     search: str = ""  # the search that ran: vector, keyword, hybrid, hybrid_rerank (3.4)
     reason: str = ""  # why it fell back
     schema_tokens: int  # estimated size of the schema text
+    examples: tuple[str, ...] = ()  # ids of the few-shot examples shown (3.5)
 
 
 class Selection(BaseModel):
-    """The texts for one question: for the first SQL draft, and for repairs."""
+    """The texts for one question: for the first SQL draft, and for repairs; and the examples."""
 
     model_config = ConfigDict(frozen=True)
 
     schema_text: str
     repair_schema_text: str
+    examples: tuple[FewShotExample, ...] = ()
     info: SchemaSelection
 
 
-class SchemaCatalog:
-    """The whole schema and its business definitions, renderable for any subset of tables."""
+class _Ranking(NamedTuple):
+    tables: list[str]  # table names, best first
+    examples: list[str]  # example ids, best first
+    search: str  # the search that really ran
+    note: str  # why a step was skipped or failed ("" = all ran)
 
-    def __init__(self, schema: SchemaInfo, layers: Sequence[SemanticLayer]) -> None:
+
+def _ids(hits: Sequence[IndexHit]) -> list[str]:
+    return [hit.id for hit in hits]
+
+
+class SchemaCatalog:
+    """The whole schema and its business definitions, renderable for any subset of tables;
+    and the few-shot examples this role may be shown, with the tables each one reads."""
+
+    def __init__(
+        self,
+        schema: SchemaInfo,
+        layers: Sequence[SemanticLayer],
+        examples: Sequence[FewShotExample] = (),
+    ) -> None:
         self.schema = schema
         self.layers = list(layers)
         self.full_text = schema_prompt_text(schema, self.layers)
+        # Each example's tables, found once by the validator. An example reading a table this
+        # role can't see is left out: the LLM is never shown SQL it couldn't run itself.
+        self.examples: dict[str, tuple[FewShotExample, frozenset[str]]] = {}
+        for example in examples:
+            try:
+                query = validate_sql(example.sql, allowed_tables=schema.table_names, max_rows=1)
+            except UnsafeSqlError:
+                continue
+            self.examples[example.id] = (example, query.tables)
         # The join graph: one edge per foreign key and per preferred join, both directions.
         self._links: dict[str, set[str]] = {name: set() for name in schema.table_names}
         edges = [(t.name, fk.ref_table) for t in schema.tables for fk in t.foreign_keys]
@@ -217,16 +246,16 @@ class SchemaRetriever:
         """The schema text for this question. Never raises for an embedding or search failure:
         keyword search carries on alone, or the full schema is sent, and the selection says so."""
         try:
-            ranked, used, note = self._rank(question)
+            ranking = self._rank(question)
         except psycopg.Error as exc:
             logger.warning(
                 "schema retrieval failed, sending the full schema", extra={"error": str(exc)}
             )
             return self.catalog.full(mode="fallback", reason=f"{type(exc).__name__}: {exc}")
-        if not ranked:  # an empty index, or no word of the question in keyword-only search
-            reason = note or "the search found no matching documents"
+        if not ranking.tables:  # an empty index, or no word of the question in keyword search
+            reason = ranking.note or "the search found no matching documents"
             return self.catalog.full(mode="fallback", reason=reason)
-        hits = ranked[: self._settings.retrieval_top_k]
+        hits = ranking.tables[: self._settings.retrieval_top_k]
 
         carried = [t for t in _tables_of_last_answer(history, self.catalog.schema) if t not in hits]
         chosen = hits + carried
@@ -234,26 +263,45 @@ class SchemaRetriever:
         chosen += self.catalog.bridges(chosen)
         tables = chosen[: self._settings.retrieval_max_tables]
         widened = set(tables) | self.catalog.neighbours(tables)
+        examples = self._pick_examples(ranking.examples, tables)
         schema_text = self.catalog.text(tables)
         info = SchemaSelection(
             mode="retrieved",
             tables=tuple(tables),
             hits=tuple(hits),
             added=tuple(t for t in tables if t not in hits),
-            search=used,
-            reason=note,
+            search=ranking.search,
+            reason=ranking.note,
             schema_tokens=estimate_tokens(schema_text),
+            examples=tuple(e.id for e in examples),
         )
         return Selection(
-            schema_text=schema_text, repair_schema_text=self.catalog.text(widened), info=info
+            schema_text=schema_text,
+            repair_schema_text=self.catalog.text(widened),
+            examples=tuple(examples),
+            info=info,
         )
 
-    def _rank(self, question: str) -> tuple[list[str], str, str]:
-        """Every matching table, best first; the search that really ran; and a note if a step
-        failed (embeddings → keyword only; rerank → fused order).
+    def _pick_examples(self, ranked: Sequence[str], tables: Sequence[str]) -> list[FewShotExample]:
+        """The closest examples whose every table is in the prompt (3.5).
+
+        An example reading a table the LLM wasn't shown would contradict "use only the tables
+        in the schema", and is often about the other business (customer vs customers).
+        """
+        shown = set(tables)
+        picked = [
+            example
+            for example, needs in (self.catalog.examples[i] for i in ranked)
+            if needs <= shown
+        ]
+        return picked[: self._settings.few_shot_examples]
+
+    def _rank(self, question: str) -> _Ranking:
+        """Every matching table and example, best first; the search that really ran; and a
+        note if a step failed (embeddings → keyword only; rerank → fused order).
 
         The question is embedded *before* the connection opens: a slow embedding API never
-        holds a database connection.
+        holds a database connection. The same vector searches tables and examples.
         """
         mode = self._settings.retrieval_mode
         vector: list[float] | None = None
@@ -264,28 +312,53 @@ class SchemaRetriever:
             except LLMProviderError as exc:
                 note = f"embeddings failed, keyword search only: {exc}"
                 logger.warning("embedding failed, keyword search only", extra={"error": str(exc)})
+        by_words_only = vector is None or mode == "keyword"
+        want_examples = self._settings.few_shot_examples > 0 and bool(self.catalog.examples)
         with self._connect(self._settings) as conn:
-            by_meaning = (
-                self._tables(search(conn, vector, limit=SEARCH_DEPTH, table=self._index_table))
-                if vector is not None
+            tables = self._ranked(
+                conn, question, vector, kinds=SCHEMA_KINDS, words=mode != "vector"
+            )
+            examples = (
+                self._ranked(conn, question, vector, kinds=EXAMPLE_KINDS, words=mode != "vector")
+                if want_examples
                 else []
             )
-            by_words = (
-                self._tables(
-                    keyword_search(conn, question, limit=SEARCH_DEPTH, table=self._index_table)
-                )
-                if mode != "vector" or vector is None
-                else []
-            )
-        if vector is None or mode == "keyword":
-            return by_words, "keyword", note
-        if mode == "vector":
-            return by_meaning, "vector", note
-        fused = fuse([by_meaning, by_words])
+        examples = [e.removeprefix("example:") for e in examples]
+        examples = [e for e in examples if e in self.catalog.examples]
+        if by_words_only:
+            return _Ranking(tables, examples, "keyword", note)
         if mode == "hybrid_rerank":
-            reranked, rerank_note = self._rerank(question, fused)
-            return reranked, "hybrid" if rerank_note else "hybrid_rerank", rerank_note
-        return fused, "hybrid", note
+            reranked, rerank_note = self._rerank(question, tables)
+            used = "hybrid" if rerank_note else "hybrid_rerank"
+            return _Ranking(reranked, examples, used, rerank_note)
+        return _Ranking(tables, examples, mode, note)
+
+    def _ranked(
+        self,
+        conn: psycopg.Connection,
+        question: str,
+        vector: list[float] | None,
+        *,
+        kinds: Sequence[str],
+        words: bool,
+    ) -> list[str]:
+        """One kind of document ranked by meaning, by words, or both fused (RRF).
+
+        Tables come back as table names (a metric hit is its table), examples as document ids.
+        Without a vector (embeddings failed) only the keyword list is left.
+        """
+        as_names = self._tables if kinds == SCHEMA_KINDS else _ids
+        by_meaning = (
+            as_names(search(conn, vector, limit=SEARCH_DEPTH, kinds=kinds, table=self._index_table))
+            if vector is not None
+            else []
+        )
+        if vector is not None and not words:
+            return by_meaning
+        by_words = as_names(
+            keyword_search(conn, question, limit=SEARCH_DEPTH, kinds=kinds, table=self._index_table)
+        )
+        return by_words if vector is None else fuse([by_meaning, by_words])
 
     def _tables(self, hits: Sequence[IndexHit]) -> list[str]:
         """Distinct tables in hit order (a metric hit is its table), visible tables only."""

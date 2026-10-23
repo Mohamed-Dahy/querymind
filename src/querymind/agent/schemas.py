@@ -182,3 +182,16 @@ class Turn(BaseModel):
     columns: list[str] = []
     row_count: int | None = None
     reply: str | None = None  # the question asked back (+ options), or the refusal
+
+
+class FewShotExample(BaseModel):
+    """A verified question → SQL pair, shown to the LLM as a pattern (3.5).
+
+    Lives in semantic_layer/<db>.examples.yaml; retrieval picks the ones closest to a question.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(pattern=r"^[a-z0-9_]+$")
+    question: str = Field(min_length=1)
+    sql: str = Field(min_length=1)

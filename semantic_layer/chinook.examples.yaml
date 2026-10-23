@@ -1,0 +1,149 @@
+# Few-shot examples for Chinook, our music store (Phase 3.5): verified question → SQL pairs.
+#
+# Same rules as northwind.examples.yaml: written separately from the golden sets (no near-copies,
+# tests/unit/test_examples.py), every query runs as analyst_ro and returns rows
+# (tests/integration/test_examples_db.py). Music sales = invoice_line.unit_price * quantity.
+
+database: chinook
+examples:
+  - id: cx01_playlist_count
+    question: What is the total number of playlists?
+    sql: SELECT count(*) AS playlist_count FROM playlist
+
+  - id: cx02_iron_maiden_albums
+    question: Which albums by Iron Maiden does the store sell? Return the album titles.
+    sql: >-
+      SELECT al.title FROM album AS al JOIN artist AS ar ON ar.artist_id = al.artist_id
+      WHERE ar.name = 'Iron Maiden'
+
+  - id: cx03_hendrix_tracks
+    question: Which tracks were composed by Jimi Hendrix? Return the track names.
+    sql: SELECT name FROM track WHERE composer ILIKE '%jimi hendrix%'
+
+  - id: cx04_tracks_per_playlist
+    question: How many tracks are on each playlist? Return the playlist name and the number of tracks.
+    sql: >-
+      SELECT p.name, count(*) AS track_count FROM playlist AS p
+      JOIN playlist_track AS pt ON pt.playlist_id = p.playlist_id
+      GROUP BY p.playlist_id, p.name
+
+  - id: cx05_minutes_per_genre
+    question: What is the average track length in minutes for each genre? Return the genre and the minutes.
+    sql: >-
+      SELECT g.name, avg(t.milliseconds) / 60000.0 AS avg_minutes FROM track AS t
+      JOIN genre AS g ON g.genre_id = t.genre_id GROUP BY g.name
+
+  - id: cx06_invoices_per_month_2024
+    question: How many invoices were issued in each month of 2024? Return the month (1-12) and the count.
+    sql: >-
+      SELECT extract(month FROM invoice_date) AS month, count(*) AS invoice_count
+      FROM invoice
+      WHERE invoice_date >= '2024-01-01' AND invoice_date < '2025-01-01'
+      GROUP BY month ORDER BY month
+
+  - id: cx07_support_agents
+    question: Which employees work as sales support agents? Return their first and last names.
+    sql: SELECT first_name, last_name FROM employee WHERE title = 'Sales Support Agent'
+
+  - id: cx08_ten_minute_tracks
+    question: Which tracks last longer than 10 minutes? Return the track name and its album title.
+    sql: >-
+      SELECT t.name, al.title FROM track AS t JOIN album AS al ON al.album_id = t.album_id
+      WHERE t.milliseconds > 600000
+
+  - id: cx09_jazz_buyers
+    question: Which customers have bought at least one Jazz track? Return their first and last names.
+    sql: >-
+      SELECT DISTINCT c.first_name, c.last_name FROM customer AS c
+      JOIN invoice AS i ON i.customer_id = c.customer_id
+      JOIN invoice_line AS il ON il.invoice_id = i.invoice_id
+      JOIN track AS t ON t.track_id = il.track_id
+      JOIN genre AS g ON g.genre_id = t.genre_id
+      WHERE g.name = 'Jazz'
+
+  - id: cx10_sales_per_media_type
+    question: How much music was sold in each media type? Return the media type name and its sales.
+    sql: >-
+      SELECT m.name, sum(il.unit_price * il.quantity) AS sales FROM invoice_line AS il
+      JOIN track AS t ON t.track_id = il.track_id
+      JOIN media_type AS m ON m.media_type_id = t.media_type_id
+      GROUP BY m.name
+
+  - id: cx11_big_albums
+    question: Which albums have more than 20 tracks? Return the album title and the number of tracks.
+    sql: >-
+      SELECT al.title, count(*) AS track_count FROM album AS al
+      JOIN track AS t ON t.album_id = al.album_id
+      GROUP BY al.album_id, al.title HAVING count(*) > 20
+
+  - id: cx12_video_tracks_per_genre
+    question: How many video tracks are there in each genre? Return the genre and the count.
+    sql: >-
+      SELECT g.name, count(*) AS video_tracks FROM track AS t
+      JOIN genre AS g ON g.genre_id = t.genre_id
+      WHERE t.media_type_id IN (SELECT m.media_type_id FROM media_type AS m WHERE m.name ILIKE '%video%')
+      GROUP BY g.name
+
+  - id: cx13_unsold_tracks_per_genre
+    question: How many tracks in each genre have never been sold? Return the genre and the count.
+    sql: >-
+      SELECT g.name, count(*) AS unsold_tracks FROM track AS t
+      JOIN genre AS g ON g.genre_id = t.genre_id
+      WHERE NOT EXISTS (SELECT 1 FROM invoice_line AS il WHERE il.track_id = t.track_id)
+      GROUP BY g.name
+
+  - id: cx14_first_purchase_germany
+    question: When did each customer from Germany first buy something? Return the first and last name and the date.
+    sql: >-
+      SELECT c.first_name, c.last_name, min(i.invoice_date) AS first_purchase
+      FROM customer AS c JOIN invoice AS i ON i.customer_id = c.customer_id
+      WHERE c.country = 'Germany'
+      GROUP BY c.customer_id, c.first_name, c.last_name
+
+  - id: cx15_average_invoice_busy_countries
+    question: >-
+      What is the average invoice total in each billing country with more than 10 invoices?
+      Return the country and the average.
+    sql: >-
+      SELECT billing_country, avg(total) AS avg_invoice FROM invoice
+      GROUP BY billing_country HAVING count(*) > 10
+
+  - id: cx16_genre_rank_by_tracks
+    question: >-
+      Rank the genres by their number of tracks, most first. Return the genre, the number of
+      tracks and its rank.
+    sql: >-
+      SELECT g.name, count(*) AS track_count, rank() OVER (ORDER BY count(*) DESC) AS genre_rank
+      FROM track AS t JOIN genre AS g ON g.genre_id = t.genre_id
+      GROUP BY g.name ORDER BY genre_rank
+
+  - id: cx17_french_customers_reps
+    question: >-
+      Who is the support rep of each customer in France? Return the customer's first and last
+      name and the rep's first and last name.
+    sql: >-
+      SELECT c.first_name, c.last_name, e.first_name AS rep_first_name,
+        e.last_name AS rep_last_name
+      FROM customer AS c JOIN employee AS e ON e.employee_id = c.support_rep_id
+      WHERE c.country = 'France'
+
+  - id: cx18_media_type_share
+    question: What share of all tracks does each media type have? Return the media type and the percentage.
+    sql: >-
+      SELECT m.name, 100.0 * count(*) / (SELECT count(*) FROM track) AS percent_of_tracks
+      FROM track AS t JOIN media_type AS m ON m.media_type_id = t.media_type_id
+      GROUP BY m.name
+
+  - id: cx19_tracks_without_composer
+    question: How many tracks have no composer listed?
+    sql: SELECT count(*) AS track_count FROM track WHERE composer IS NULL
+
+  - id: cx20_playlists_with_metallica
+    question: Which playlists contain at least one Metallica track? Return the playlist names.
+    sql: >-
+      SELECT DISTINCT p.name FROM playlist AS p
+      JOIN playlist_track AS pt ON pt.playlist_id = p.playlist_id
+      JOIN track AS t ON t.track_id = pt.track_id
+      JOIN album AS al ON al.album_id = t.album_id
+      JOIN artist AS ar ON ar.artist_id = al.artist_id
+      WHERE ar.name = 'Metallica'

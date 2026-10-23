@@ -36,8 +36,8 @@ from querymind.llm import LLMProvider, create_llm_provider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.llm.factory import create_embedding_provider
 from querymind.safety.sql_validator import validate_sql
-from querymind.semantic.dictionary import load_dictionaries
-from querymind.semantic.documents import build_documents
+from querymind.semantic.documents import index_documents
+from querymind.semantic.examples import load_all_examples
 from querymind.semantic.loader import SemanticLayerError, load_semantic_layers
 from querymind.semantic.retrieval import SchemaCatalog, SchemaRetriever, SchemaSelection
 
@@ -139,6 +139,7 @@ class Score:
     tokens: float  # mean schema tokens
     fallbacks: int  # questions that got the full schema (or keyword only) because a step failed
     milliseconds: float  # mean time per question (search, + the rerank call)
+    examples: float  # mean few-shot examples shown (3.5)
 
 
 def score(results: Sequence[Retrieved], *, mode: str, k: int) -> Score:
@@ -155,6 +156,7 @@ def score(results: Sequence[Retrieved], *, mode: str, k: int) -> Score:
         tokens=sum(r.selection.schema_tokens for r in results) / n,
         fallbacks=sum(r.selection.mode == "fallback" or bool(r.selection.reason) for r in results),
         milliseconds=1000 * sum(r.seconds for r in results) / n,
+        examples=sum(len(r.selection.examples) for r in results) / n,
     )
 
 
@@ -200,8 +202,8 @@ def build_report(
         "embedding call; the others reuse it).",
         "",
         "| Mode | top-k | Recall | Search only | Complete | MRR | Tables | Schema tokens "
-        "| Degraded | Time |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Degraded | Time | Examples |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for (mode, k), rs in results.items():
         s = score(rs, mode=mode, k=k)
@@ -209,7 +211,7 @@ def build_report(
             f"| {mode} | {k} | {s.recall:.1%} | {s.search_recall:.1%} "
             f"| {s.complete}/{s.questions} | {s.mrr:.2f} | {s.tables:.1f} "
             f"| ~{s.tokens:,.0f} ({s.tokens / full_tokens:.0%}) | {s.fallbacks} "
-            f"| {s.milliseconds:.0f} ms |"
+            f"| {s.milliseconds:.0f} ms | {s.examples:.1f} |"
         )
     if rerank_tokens:
         lines += ["", f"The rerank call adds ~{rerank_tokens:,.0f} prompt tokens per question."]
@@ -266,8 +268,8 @@ def main() -> int:
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
 
-    catalog = SchemaCatalog(schema, layers)
-    docs = build_documents(schema, layers, load_dictionaries(settings.semantic_layer_paths))
+    catalog = SchemaCatalog(schema, layers, load_all_examples(settings.semantic_layer_paths))
+    docs = index_documents(schema, layers, settings.semantic_layer_paths)
     documents = {d.table: d.text for d in docs if d.kind == "table"}
     embeddings = CachedEmbeddings(inner)
     retrievers = {
@@ -293,7 +295,8 @@ def main() -> int:
         print(
             f"{mode:13} top-{k}: recall {s.recall:.1%} (search only {s.search_recall:.1%}), "
             f"complete {s.complete}/{s.questions}, MRR {s.mrr:.2f}, {s.tables:.1f} tables, "
-            f"~{s.tokens:,.0f} tokens, degraded {s.fallbacks}, {s.milliseconds:.0f} ms"
+            f"~{s.tokens:,.0f} tokens, degraded {s.fallbacks}, {s.milliseconds:.0f} ms, "
+            f"{s.examples:.1f} examples"
         )
     rerank_tokens = llm.prompt_tokens / llm.calls if llm and llm.calls else 0.0
     if llm:

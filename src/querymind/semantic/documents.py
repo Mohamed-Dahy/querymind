@@ -10,18 +10,30 @@ semantic layer first (hand-written) and the data dictionary second (LLM draft, 3
 A metric gets its own document too, so "Who are our big spenders?" can find `big_spender`
 even though no table or column has those words. A metric hit counts as a hit on its table.
 
+A few-shot example (3.5) is a document too: its text is the example's *question*, so a new
+question finds the examples asked the most alike. Searches filter by kind, so an example never
+takes a table's place (and the other way round).
+
 Each document has a hash of its text: the index only re-embeds documents whose text changed.
+
+    docs = index_documents(schema, layers, settings.semantic_layer_paths)   # everything indexed
 """
 
 import hashlib
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from querymind.agent.schemas import FewShotExample
 from querymind.db.schema import SchemaInfo, Table
-from querymind.semantic.dictionary import DataDictionary, DictionaryTable
+from querymind.semantic.dictionary import DataDictionary, DictionaryTable, load_dictionaries
+from querymind.semantic.examples import load_all_examples
 from querymind.semantic.models import Metric, SemanticLayer, TableInfo
+
+SCHEMA_KINDS = ("table", "metric")  # what schema search ranks
+EXAMPLE_KINDS = ("example",)  # what few-shot search ranks
 
 
 class SchemaDoc(BaseModel):
@@ -29,10 +41,10 @@ class SchemaDoc(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    id: str  # "table:customer" or "metric:big_spender"
-    kind: Literal["table", "metric"]
+    id: str  # "table:customer", "metric:big_spender" or "example:cx09_jazz_buyers"
+    kind: Literal["table", "metric", "example"]
     name: str
-    table: str  # the table itself, or the table a metric is computed on
+    table: str  # the table itself, the table a metric is computed on, "" for an example
     text: str
 
     @property
@@ -63,6 +75,27 @@ def build_documents(
             if metric.table in visible:
                 docs.append(_metric_doc(name, metric, layer))
     return docs
+
+
+def example_documents(examples: Sequence[FewShotExample]) -> list[SchemaDoc]:
+    """One document per example; its text is the question (what a new question is like)."""
+    return [
+        SchemaDoc(id=f"example:{e.id}", kind="example", name=e.id, table="", text=e.question)
+        for e in examples
+    ]
+
+
+def index_documents(
+    schema: SchemaInfo, layers: Sequence[SemanticLayer], layer_paths: Sequence[Path]
+) -> list[SchemaDoc]:
+    """Everything the index holds: tables, metrics (with the dictionaries) and examples.
+
+    One function for the build script, the app's freshness check and the evals, so they can't
+    disagree about what "up to date" means.
+    """
+    dictionaries = load_dictionaries(layer_paths)
+    examples = load_all_examples(layer_paths)
+    return build_documents(schema, layers, dictionaries) + example_documents(examples)
 
 
 def _table_doc(

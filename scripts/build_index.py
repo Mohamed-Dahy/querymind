@@ -26,8 +26,7 @@ from querymind.db.schema import introspect_schema
 from querymind.llm import LLMProviderError
 from querymind.llm.embeddings import EmbeddingProvider, FakeEmbeddings
 from querymind.llm.factory import create_embedding_provider
-from querymind.semantic.dictionary import load_dictionaries
-from querymind.semantic.documents import build_documents
+from querymind.semantic.documents import index_documents
 from querymind.semantic.index import ensure_index, upsert_documents
 from querymind.semantic.loader import SemanticLayerError, check_against, load_semantic_layers
 
@@ -51,12 +50,11 @@ def main() -> int:
             print("Error: GOOGLE_API_KEY is not set (or use --fake-embeddings).", file=sys.stderr)
             return 1
         layers = load_semantic_layers(settings.semantic_layer_paths)
-        dictionaries = load_dictionaries(settings.semantic_layer_paths)
         with connect_readonly(settings) as conn:  # only what the agent may read gets indexed
             schema = introspect_schema(conn)
         for layer in layers:
             check_against(layer, schema)
-        docs = build_documents(schema, layers, dictionaries)
+        docs = index_documents(schema, layers, settings.semantic_layer_paths)
         # One transaction as admin: the index changes completely, or not at all.
         with psycopg.connect(settings.admin_conninfo()) as conn:
             ensure_index(conn, reader=settings.analyst_ro_user)
@@ -69,10 +67,10 @@ def main() -> int:
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
 
-    kinds = {kind: sum(d.kind == kind for d in docs) for kind in ("table", "metric")}
+    kinds = {kind: sum(d.kind == kind for d in docs) for kind in ("table", "metric", "example")}
     print(
-        f"Index: {len(docs)} documents ({kinds['table']} tables, {kinds['metric']} metrics), "
-        f"model {embeddings.name}"
+        f"Index: {len(docs)} documents ({kinds['table']} tables, {kinds['metric']} metrics, "
+        f"{kinds['example']} examples), model {embeddings.name}"
     )
     print(
         f"  embedded {embedded} new or changed, deleted {deleted}, {len(docs) - embedded} unchanged"

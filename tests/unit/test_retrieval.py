@@ -19,6 +19,7 @@ from querymind.llm import LLMOutputError, LLMProviderError
 from querymind.llm.embeddings import EmbeddingProvider, FakeEmbeddings
 from querymind.llm.fake import FakeLLMProvider
 from querymind.semantic import retrieval as retrieval_module
+from querymind.semantic.documents import EXAMPLE_KINDS
 from querymind.semantic.index import IndexHit
 from querymind.semantic.retrieval import (
     RRF_K,
@@ -27,9 +28,9 @@ from querymind.semantic.retrieval import (
     SchemaRetriever,
     fuse,
 )
-from tests.unit.retrieval_fixtures import FOOD, MUSIC, SCHEMA
+from tests.unit.retrieval_fixtures import EXAMPLES, FOOD, MUSIC, SCHEMA
 
-CATALOG = SchemaCatalog(SCHEMA, [FOOD, MUSIC])
+CATALOG = SchemaCatalog(SCHEMA, [FOOD, MUSIC], EXAMPLES)
 
 
 def settings(**overrides: Any) -> Settings:
@@ -67,20 +68,37 @@ def retriever(
     monkeypatch: pytest.MonkeyPatch,
     *found: IndexHit | Exception,
     words: Sequence[IndexHit] = (),
+    examples: Sequence[str] = (),
     embeddings: EmbeddingProvider | None = None,
     llm: FakeLLMProvider | None = None,
     **overrides: Any,
 ) -> SchemaRetriever:
     """A retriever whose vector search returns `found` (or raises it, if it's one exception)
-    and whose keyword search returns `words`. Vector only by default, as in 3.3."""
+    and whose keyword search returns `words`; both return `examples` (ids, best first) when
+    asked for example documents. Vector only by default, as in 3.3."""
 
-    def fake_search(conn: psycopg.Connection, vector: list[float], **_: Any) -> list[IndexHit]:
+    def example_hits(kinds: Sequence[str]) -> list[IndexHit] | None:
+        if tuple(kinds) != EXAMPLE_KINDS:
+            return None
+        return [IndexHit(id=f"example:{i}", kind="example", table="", score=0.5) for i in examples]
+
+    def fake_search(
+        conn: psycopg.Connection, vector: list[float], *, kinds: Sequence[str], **_: Any
+    ) -> list[IndexHit]:
+        if (hits := example_hits(kinds)) is not None:
+            return hits
         if len(found) == 1 and isinstance(found[0], Exception):
             raise found[0]
         return [h for h in found if isinstance(h, IndexHit)]
 
+    def fake_keyword_search(
+        conn: psycopg.Connection, question: str, *, kinds: Sequence[str], **_: Any
+    ) -> list[IndexHit]:
+        hits = example_hits(kinds)
+        return list(words) if hits is None else hits
+
     monkeypatch.setattr(retrieval_module, "search", fake_search)
-    monkeypatch.setattr(retrieval_module, "keyword_search", lambda conn, q, **_: list(words))
+    monkeypatch.setattr(retrieval_module, "keyword_search", fake_keyword_search)
     return SchemaRetriever(
         catalog=CATALOG,
         embeddings=embeddings or FakeEmbeddings(),
@@ -332,3 +350,56 @@ def test_a_failed_rerank_keeps_the_fused_order(monkeypatch: pytest.MonkeyPatch) 
 def test_rerank_needs_an_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValueError, match="needs an LLM"):
         retriever(monkeypatch, retrieval_mode="hybrid_rerank")
+
+
+# --- Few-shot examples (3.5) ------------------------------------------------------------------
+
+
+def test_examples_the_role_cannot_run_are_never_kept() -> None:
+    assert set(CATALOG.examples) == {"food_orders", "music_spend", "shippers"}  # not "unsafe"
+    _, needs = CATALOG.examples["food_orders"]
+    assert needs == {"customers", "orders"}
+
+
+def test_the_closest_examples_whose_tables_are_all_shown(monkeypatch: pytest.MonkeyPatch) -> None:
+    r = retriever(
+        monkeypatch,
+        hit("table:customer"),
+        hit("table:invoice"),
+        examples=["food_orders", "music_spend", "shippers", "unsafe"],
+    )
+    selection = r.select("How much did each music customer spend?")
+    # food_orders and shippers read tables that aren't in this prompt: not shown.
+    assert selection.info.examples == ("music_spend",)
+    assert [e.id for e in selection.examples] == ["music_spend"]
+
+
+def test_at_most_few_shot_examples_are_shown(monkeypatch: pytest.MonkeyPatch) -> None:
+    found = [hit("table:customers"), hit("table:orders"), hit("table:shippers")]
+    many = ["shippers", "food_orders"]
+    assert retriever(monkeypatch, *found, examples=many, retrieval_top_k=3).select(
+        "q"
+    ).info.examples == ("shippers", "food_orders")
+    one = retriever(monkeypatch, *found, examples=many, retrieval_top_k=3, few_shot_examples=1)
+    assert one.select("q").info.examples == ("shippers",)
+    off = retriever(monkeypatch, *found, examples=many, retrieval_top_k=3, few_shot_examples=0)
+    assert off.select("q").examples == ()
+
+
+def test_examples_survive_an_embedding_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Keyword search alone still finds examples by their words.
+    r = retriever(
+        monkeypatch,
+        words=[hit("table:shippers")],
+        examples=["shippers"],
+        embeddings=BrokenEmbeddings(),
+        retrieval_mode="hybrid",
+        retrieval_top_k=1,
+    )
+    assert r.select("List the shippers").info.examples == ("shippers",)
+
+
+def test_a_full_fallback_shows_no_examples(monkeypatch: pytest.MonkeyPatch) -> None:
+    selection = retriever(monkeypatch, examples=["shippers"]).select("q")
+    assert selection.info.mode == "fallback"
+    assert selection.examples == ()

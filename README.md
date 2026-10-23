@@ -43,7 +43,9 @@ On a bigger database it doesn't send every table to the LLM. Each table and busi
 stored as an embedding in **pgvector**; for each question, tables are ranked two ways, by meaning (vector search)
 and by exact words (Postgres full-text search), and the two rankings are merged with Reciprocal Rank Fusion. The
 top tables are sent, plus the tables needed to join them and the ones a business term reads. On 58 test
-questions this hybrid search puts every needed table in the prompt. On the 25-table demo database that's about 40% of the schema per
+questions this hybrid search puts every needed table in the prompt. The same search also finds up to three
+**verified example queries** for similar questions, shown to the LLM as patterns. They are written separately from
+the test questions, and a test checks that none of them is a copy of one. On the 25-table demo database that's about 40% of the schema per
 question. Retrieval only decides what the LLM *sees*: what it may *query* is still every table the read-only user
 can read. If the search fails, the whole schema is sent and the logs say so.
 

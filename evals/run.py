@@ -421,6 +421,11 @@ def main() -> int:
         choices=["vector", "keyword", "hybrid", "hybrid_rerank"],
         help="override RETRIEVAL_MODE (how tables are ranked, 3.4)",
     )
+    parser.add_argument(
+        "--few-shot",
+        choices=["on", "off"],
+        help="off = no few-shot examples in the prompt (the 3.5 ablation); on = FEW_SHOT_EXAMPLES",
+    )
     parser.add_argument("--report", type=Path, help="write a markdown report to this file")
     args = parser.parse_args()
     sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
@@ -439,6 +444,8 @@ def main() -> int:
             settings = settings.model_copy(update={"schema_retrieval": args.schema_retrieval})
         if args.retrieval_mode:
             settings = settings.model_copy(update={"retrieval_mode": args.retrieval_mode})
+        if args.few_shot == "off":
+            settings = settings.model_copy(update={"few_shot_examples": 0})
         model, _ = settings.llm_credentials()
         references = run_references(items)
         pipeline = Pipeline(
@@ -462,7 +469,8 @@ def main() -> int:
     print(
         f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}, "
         f"max {settings.max_sql_attempts} SQL attempts, "
-        f"semantic layer: {_layers(settings)}, schema retrieval: {settings.schema_retrieval}\n"
+        f"semantic layer: {_layers(settings)}, schema retrieval: {settings.schema_retrieval}, "
+        f"few-shot: {settings.few_shot_examples or 'off'}\n"
     )
     outcomes = evaluate(
         items,
@@ -502,6 +510,7 @@ def main() -> int:
             "Semantic layer": _layers(settings),
             "Schema retrieval": f"{settings.schema_retrieval} ({settings.retrieval_mode}, "
             f"top-k {settings.retrieval_top_k}, max {settings.retrieval_max_tables} tables)",
+            "Few-shot examples": str(settings.few_shot_examples or "off"),
         }
         title = f"QueryMind eval: {args.suite} ({golden.database})"
         args.report.parent.mkdir(parents=True, exist_ok=True)

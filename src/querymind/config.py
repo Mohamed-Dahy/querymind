@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # How tables are ranked (3.4): vector (meaning) · keyword (exact words, Postgres full-text) ·
     # hybrid (both, fused by rank) · hybrid_rerank (hybrid + one LLM call reorders the top 10).
     retrieval_mode: Literal["vector", "keyword", "hybrid", "hybrid_rerank"] = "hybrid"
+    # Few-shot examples (3.5): how many verified question → SQL pairs (semantic_layer/
+    # <db>.examples.yaml) to show, the closest to the question. 0 = none. They come with
+    # schema retrieval (same embedding, same index): with the whole schema there are none.
+    few_shot_examples: int = Field(default=3, ge=0, le=10)
     # Embeddings always use Google (GOOGLE_API_KEY), whatever LLM_PROVIDER is.
     embedding_model: str = "gemini-embedding-001"
 

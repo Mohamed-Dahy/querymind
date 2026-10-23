@@ -19,6 +19,7 @@ from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.schema import SCHEMA_TOKEN_BUDGET, estimate_tokens, introspect_schema
 from querymind.llm import create_embedding_provider
+from querymind.semantic.examples import load_all_examples
 from querymind.semantic.loader import SemanticLayerError, check_against, load_semantic_layers
 from querymind.semantic.retrieval import SchemaCatalog, SchemaRetriever
 
@@ -44,7 +45,7 @@ def main() -> int:
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
 
-    catalog = SchemaCatalog(schema, layers)
+    catalog = SchemaCatalog(schema, layers, load_all_examples(settings.semantic_layer_paths))
     if not args.question:
         text = catalog.full_text
         print(text)
@@ -71,6 +72,7 @@ def main() -> int:
     if info.reason:
         print(f"    fell back because: {info.reason}")
     print(f"    ~{info.schema_tokens} tokens (whole schema ~{full})")
+    print(f"    examples shown: {', '.join(info.examples) or '-'}")
     return 0
 
 

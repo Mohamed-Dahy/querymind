@@ -8,7 +8,7 @@ the real cause and doesn't repeat a query that already failed.
 from collections.abc import Sequence
 
 from querymind.agent.prompts.sql_generation import build_user_prompt
-from querymind.agent.schemas import SqlAttempt, Turn
+from querymind.agent.schemas import FewShotExample, SqlAttempt, Turn
 
 # What each kind of failure means, in words the LLM can act on.
 ERROR_HINTS = {
@@ -46,13 +46,16 @@ def build_repair_prompt(
     question: str,
     failed: Sequence[SqlAttempt],
     history: Sequence[Turn] = (),
+    examples: Sequence[FewShotExample] = (),
 ) -> str:
-    """The normal SQL prompt (with the conversation so far), then every failed attempt."""
+    """The normal SQL prompt (with the examples and the conversation), then every failed try."""
     attempts = "\n\n".join(
         ATTEMPT_TEMPLATE.format(
             number=number, sql=a.sql, hint=ERROR_HINTS[a.error_kind], detail=a.detail
         )
         for number, a in enumerate(failed, start=1)
     )
-    base = build_user_prompt(schema_text=schema_text, question=question, history=history)
+    base = build_user_prompt(
+        schema_text=schema_text, question=question, history=history, examples=examples
+    )
     return REPAIR_TEMPLATE.format(base=base, attempts=attempts)

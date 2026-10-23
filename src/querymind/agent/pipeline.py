@@ -54,8 +54,8 @@ from querymind.db.schema import introspect_schema
 from querymind.llm import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.safety.errors import UnsafeSqlError
-from querymind.semantic.dictionary import load_dictionaries
-from querymind.semantic.documents import build_documents
+from querymind.semantic.documents import index_documents
+from querymind.semantic.examples import load_all_examples
 from querymind.semantic.index import INDEX_TABLE, SchemaIndexError, index_status
 from querymind.semantic.loader import check_against, load_semantic_layers
 from querymind.semantic.models import SemanticLayer
@@ -102,6 +102,7 @@ class Pipeline:
         self._semantic_layers: list[SemanticLayer] = load_semantic_layers(
             settings.semantic_layer_paths
         )
+        self._examples = load_all_examples(settings.semantic_layer_paths)  # few-shot (3.5)
         self._schema: tuple[SchemaCatalog, SchemaRetriever | None] | None = None
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
         self._conversations: OrderedDict[str, None] = OrderedDict()  # least recent first
@@ -211,7 +212,7 @@ class Pipeline:
                     schema = introspect_schema(conn)
                 for layer in self._semantic_layers:
                     check_against(layer, schema)  # every name it uses must exist (3.1)
-                catalog = SchemaCatalog(schema, self._semantic_layers)
+                catalog = SchemaCatalog(schema, self._semantic_layers, self._examples)
                 self._schema = (catalog, self._make_retriever(catalog))
             return self._schema
 
@@ -232,9 +233,7 @@ class Pipeline:
                 extra={"tables": tables},
             )
             return None
-        docs = build_documents(
-            catalog.schema, catalog.layers, load_dictionaries(settings.semantic_layer_paths)
-        )
+        docs = index_documents(catalog.schema, catalog.layers, settings.semantic_layer_paths)
         with self._connect(settings) as conn:
             status = index_status(conn, docs, model=self._embeddings.name, table=self._index_table)
         if not status.usable:
@@ -311,6 +310,7 @@ class Pipeline:
                 "schema_tokens": shown.schema_tokens if shown else None,
                 "schema_search": (shown.search or None) if shown else None,
                 "schema_fallback": (shown.reason or None) if shown else None,
+                "examples": list(shown.examples) if shown else [],  # few-shot ids (3.5)
                 "confidence": confidence,
                 "provider": self._llm.name,
                 "duration_ms": round((time.perf_counter() - started) * 1000),

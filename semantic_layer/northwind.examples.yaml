@@ -1,0 +1,157 @@
+# Few-shot examples for Northwind (Phase 3.5): verified question → SQL pairs.
+#
+# Shown to the LLM as patterns when a question is similar (schema retrieval finds them in the same
+# index). Written separately from the golden sets on purpose: an example that copies a test
+# question would make the eval's gain fake. tests/unit/test_examples.py checks there is no near-copy;
+# tests/integration/test_examples_db.py checks every query runs as analyst_ro and returns rows.
+#
+# Business terms use the semantic layer's exact SQL (revenue, late shipment, open order...).
+
+database: northwind
+examples:
+  - id: nx01_supplier_count
+    question: How many suppliers do we buy from?
+    sql: SELECT count(*) AS supplier_count FROM suppliers
+
+  - id: nx02_products_over_50
+    question: Which products cost more than 50 per unit? Return the product name and its price.
+    sql: SELECT product_name, unit_price FROM products WHERE unit_price > 50
+
+  - id: nx03_japanese_suppliers
+    question: Which suppliers are located in Japan? Return their company names and cities.
+    sql: SELECT company_name, city FROM suppliers WHERE country = 'Japan'
+
+  - id: nx04_orders_to_france
+    question: How many orders were shipped to France?
+    sql: SELECT count(*) AS order_count FROM orders WHERE ship_country = 'France'
+
+  - id: nx05_products_per_supplier_country
+    question: How many products come from suppliers in each country? Return the country and the count.
+    sql: >-
+      SELECT s.country, count(*) AS product_count FROM products AS p
+      JOIN suppliers AS s ON s.supplier_id = p.supplier_id GROUP BY s.country
+
+  - id: nx06_stock_value_per_category
+    question: >-
+      What is the value of the stock in each category (unit price times units in stock)?
+      Return the category name and the stock value.
+    sql: >-
+      SELECT c.category_name, sum(p.unit_price * p.units_in_stock) AS stock_value
+      FROM products AS p JOIN categories AS c ON c.category_id = p.category_id
+      GROUP BY c.category_name
+
+  - id: nx07_revenue_per_employee_1996
+    question: >-
+      How much sales revenue did each employee bring in from orders placed in 1996? Return the
+      employee's first and last name and the revenue.
+    sql: >-
+      SELECT e.first_name, e.last_name,
+        sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+      FROM employees AS e
+      JOIN orders AS o ON o.employee_id = e.employee_id
+      JOIN order_details AS d ON d.order_id = o.order_id
+      WHERE o.order_date >= '1996-01-01' AND o.order_date < '1997-01-01'
+      GROUP BY e.employee_id, e.first_name, e.last_name
+
+  - id: nx08_orders_per_weekday
+    question: >-
+      On which day of the week are orders placed? Return the day number (0 = Sunday) and the
+      number of orders.
+    sql: >-
+      SELECT extract(dow FROM order_date) AS weekday, count(*) AS order_count
+      FROM orders GROUP BY weekday ORDER BY weekday
+
+  - id: nx09_employees_hired_before_1993
+    question: Which employees were hired before 1993? Return their first and last names and hire dates.
+    sql: >-
+      SELECT first_name, last_name, hire_date FROM employees
+      WHERE hire_date < '1993-01-01'
+
+  - id: nx10_territories_per_employee
+    question: How many territories does each employee cover? Return the first and last name and the count.
+    sql: >-
+      SELECT e.first_name, e.last_name, count(*) AS territory_count
+      FROM employees AS e JOIN employee_territories AS et ON et.employee_id = e.employee_id
+      GROUP BY e.employee_id, e.first_name, e.last_name
+
+  - id: nx11_territories_per_region
+    question: How many sales territories are in each region? Return the region and the count.
+    sql: >-
+      SELECT r.region_description, count(*) AS territory_count
+      FROM territories AS t JOIN region AS r ON r.region_id = t.region_id
+      GROUP BY r.region_description
+
+  - id: nx12_multi_category_suppliers
+    question: Which suppliers sell products in more than one category? Return their company names.
+    sql: >-
+      SELECT s.company_name FROM suppliers AS s
+      JOIN products AS p ON p.supplier_id = s.supplier_id
+      GROUP BY s.supplier_id, s.company_name HAVING count(DISTINCT p.category_id) > 1
+
+  - id: nx13_revenue_per_quarter_1997
+    question: What was the sales revenue in each quarter of 1997? Return the quarter (1-4) and the revenue.
+    sql: >-
+      SELECT extract(quarter FROM o.order_date) AS quarter,
+        sum(d.unit_price * d.quantity * (1 - d.discount)) AS revenue
+      FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id
+      WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+      GROUP BY quarter ORDER BY quarter
+
+  - id: nx14_freight_vs_customer_average
+    question: >-
+      For orders shipped to Brazil, show each order id, its freight, and the average freight of
+      all orders from the same customer.
+    sql: >-
+      SELECT order_id, freight, avg_freight FROM (
+        SELECT order_id, freight, ship_country,
+          avg(freight) OVER (PARTITION BY customer_id) AS avg_freight
+        FROM orders) AS o
+      WHERE ship_country = 'Brazil'
+
+  - id: nx15_late_shipments_per_employee
+    question: >-
+      How many late shipments did each employee's orders have? Return the first and last name
+      and the number of late shipments.
+    sql: >-
+      SELECT e.first_name, e.last_name, count(*) AS late_shipments
+      FROM orders AS o JOIN employees AS e ON e.employee_id = o.employee_id
+      WHERE o.shipped_date > o.required_date
+      GROUP BY e.employee_id, e.first_name, e.last_name
+
+  - id: nx16_open_orders_per_destination
+    question: How many open orders are going to each country? Return the destination country and the count.
+    sql: >-
+      SELECT ship_country, count(*) AS open_orders FROM orders
+      WHERE shipped_date IS NULL GROUP BY ship_country
+
+  - id: nx17_seafood_buyers_1997
+    question: Which customers bought Seafood products in 1997? Return their company names.
+    sql: >-
+      SELECT DISTINCT cu.company_name FROM customers AS cu
+      JOIN orders AS o ON o.customer_id = cu.customer_id
+      JOIN order_details AS d ON d.order_id = o.order_id
+      JOIN products AS p ON p.product_id = d.product_id
+      JOIN categories AS c ON c.category_id = p.category_id
+      WHERE c.category_name = 'Seafood'
+        AND o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+
+  - id: nx18_reports_to_fuller
+    question: Which employees report to Andrew Fuller? Return their first and last names.
+    sql: >-
+      SELECT e.first_name, e.last_name FROM employees AS e
+      JOIN employees AS m ON m.employee_id = e.reports_to
+      WHERE m.first_name = 'Andrew' AND m.last_name = 'Fuller'
+
+  - id: nx19_shipper_order_share
+    question: What share of all orders did each shipper carry? Return the company name and the percentage.
+    sql: >-
+      SELECT s.company_name, 100.0 * count(*) / (SELECT count(*) FROM orders) AS percent_of_orders
+      FROM orders AS o JOIN shippers AS s ON s.shipper_id = o.ship_via
+      GROUP BY s.company_name
+
+  - id: nx20_frequent_customers
+    question: Which customers placed more than 20 orders? Return the company name and the number of orders.
+    sql: >-
+      SELECT cu.company_name, count(*) AS order_count FROM customers AS cu
+      JOIN orders AS o ON o.customer_id = cu.customer_id
+      GROUP BY cu.customer_id, cu.company_name HAVING count(*) > 20

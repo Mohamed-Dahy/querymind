@@ -24,7 +24,7 @@ from psycopg import sql
 from pydantic import BaseModel, ConfigDict
 
 from querymind.llm.embeddings import DIMENSIONS, EmbeddingProvider
-from querymind.semantic.documents import SchemaDoc
+from querymind.semantic.documents import SCHEMA_KINDS, SchemaDoc
 
 INDEX_SCHEMA = "querymind"
 INDEX_TABLE = "schema_docs"
@@ -192,14 +192,25 @@ def index_status(
 
 
 def search(
-    conn: psycopg.Connection, query_vector: Sequence[float], *, limit: int, table: str = INDEX_TABLE
+    conn: psycopg.Connection,
+    query_vector: Sequence[float],
+    *,
+    limit: int,
+    kinds: Sequence[str] = SCHEMA_KINDS,
+    table: str = INDEX_TABLE,
 ) -> list[IndexHit]:
-    """The `limit` documents closest to the question's vector, closest first."""
+    """The `limit` documents of these `kinds` closest to the question's vector, closest first.
+
+    Kinds are searched separately (tables + metrics, or examples) so one never crowds out
+    the other: example questions are full of business words.
+    """
     query = sql.SQL(
         """SELECT id, kind, table_name, 1 - (embedding <=> %(q)s::vector) AS similarity
-        FROM {} ORDER BY embedding <=> %(q)s::vector LIMIT %(limit)s"""
+        FROM {} WHERE kind = ANY(%(kinds)s)
+        ORDER BY embedding <=> %(q)s::vector LIMIT %(limit)s"""
     ).format(sql.Identifier(INDEX_SCHEMA, table))
-    rows = conn.execute(query, {"q": to_vector(query_vector), "limit": limit})
+    params = {"q": to_vector(query_vector), "limit": limit, "kinds": list(kinds)}
+    rows = conn.execute(query, params)
     return [IndexHit(id=i, kind=k, table=t, score=float(s)) for i, k, t, s in rows]
 
 
@@ -219,14 +230,19 @@ WITH q AS (
 )
 SELECT id, kind, table_name, ts_rank(words, q.query) AS score
 FROM {}, q
-WHERE words @@ q.query
+WHERE words @@ q.query AND kind = ANY(%(kinds)s)
 ORDER BY score DESC, id
 LIMIT %(limit)s
 """
 
 
 def keyword_search(
-    conn: psycopg.Connection, question: str, *, limit: int, table: str = INDEX_TABLE
+    conn: psycopg.Connection,
+    question: str,
+    *,
+    limit: int,
+    kinds: Sequence[str] = SCHEMA_KINDS,
+    table: str = INDEX_TABLE,
 ) -> list[IndexHit]:
     """The `limit` documents sharing the most (and most important) words with the question.
 
@@ -235,7 +251,12 @@ def keyword_search(
     stopwords ("How many are there?") matches nothing and returns [].
     """
     query = sql.SQL(_KEYWORD_QUERY).format(sql.Identifier(INDEX_SCHEMA, table))
-    params = {"question": question, "limit": limit, "schema_words": list(SCHEMA_WORDS)}
+    params = {
+        "question": question,
+        "limit": limit,
+        "schema_words": list(SCHEMA_WORDS),
+        "kinds": list(kinds),
+    }
     rows = conn.execute(query, params)
     return [IndexHit(id=i, kind=k, table=t, score=float(s)) for i, k, t, s in rows]
 

@@ -12,18 +12,24 @@ from collections.abc import Sequence
 
 from querymind.agent.prompts.sql_generation import SYSTEM_PROMPT, build_user_prompt
 from querymind.agent.prompts.sql_repair import build_repair_prompt
-from querymind.agent.schemas import SqlAttempt, SqlDraft, Turn
+from querymind.agent.schemas import FewShotExample, SqlAttempt, SqlDraft, Turn
 from querymind.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 
 
 def generate_sql(
-    llm: LLMProvider, *, schema_text: str, question: str, history: Sequence[Turn] = ()
+    llm: LLMProvider,
+    *,
+    schema_text: str,
+    question: str,
+    history: Sequence[Turn] = (),
+    examples: Sequence[FewShotExample] = (),
 ) -> SqlDraft:
     """Ask the LLM for a SQL query that answers `question` on the described schema.
 
     `history` holds the earlier turns of the conversation, so follow-ups can build on them.
+    `examples` are verified question → SQL pairs similar to this one (3.5).
 
     Raises:
         ValueError: the question is empty.
@@ -34,7 +40,9 @@ def generate_sql(
         raise ValueError("question is empty")
 
     draft = llm.generate_structured(
-        build_user_prompt(schema_text=schema_text, question=question, history=history),
+        build_user_prompt(
+            schema_text=schema_text, question=question, history=history, examples=examples
+        ),
         SqlDraft,
         system=SYSTEM_PROMPT,
     )
@@ -52,6 +60,7 @@ def repair_sql(
     question: str,
     failed: Sequence[SqlAttempt],
     history: Sequence[Turn] = (),
+    examples: Sequence[FewShotExample] = (),
 ) -> SqlDraft:
     """Ask the LLM for a fixed query, showing it every failed attempt and its error.
 
@@ -63,7 +72,11 @@ def repair_sql(
         raise ValueError("nothing to repair: no failed attempt")
     draft = llm.generate_structured(
         build_repair_prompt(
-            schema_text=schema_text, question=question.strip(), failed=failed, history=history
+            schema_text=schema_text,
+            question=question.strip(),
+            failed=failed,
+            history=history,
+            examples=examples,
         ),
         SqlDraft,
         system=SYSTEM_PROMPT,

@@ -19,8 +19,7 @@ from querymind.llm.embeddings import FakeEmbeddings
 from querymind.llm.fake import FakeLLMProvider
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
-from querymind.semantic.dictionary import load_dictionaries
-from querymind.semantic.documents import SchemaDoc, build_documents
+from querymind.semantic.documents import SchemaDoc, index_documents
 from querymind.semantic.index import (
     INDEX_SCHEMA,
     ensure_index,
@@ -47,7 +46,7 @@ def schema(settings: Settings) -> SchemaInfo:
 @pytest.fixture(scope="module")
 def docs(settings: Settings, schema: SchemaInfo) -> list[SchemaDoc]:
     layers = load_semantic_layers(settings.semantic_layer_paths)
-    return build_documents(schema, layers, load_dictionaries(settings.semantic_layer_paths))
+    return index_documents(schema, layers, settings.semantic_layer_paths)
 
 
 @pytest.fixture

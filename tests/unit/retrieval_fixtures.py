@@ -1,6 +1,7 @@
 """A small two-business schema for the retrieval tests: food trading (Northwind-like) and a
 music store (Chinook-like), joined by foreign keys within each business, never across."""
 
+from querymind.agent.schemas import FewShotExample
 from querymind.db.schema import Column, ForeignKey, SchemaInfo, Table
 from querymind.semantic.dictionary import DataDictionary, DictionaryTable
 from querymind.semantic.models import SemanticLayer
@@ -117,3 +118,21 @@ DICTIONARIES = {
         tables={"customer": DictionaryTable(description="People who buy music tracks.")},
     ),
 }
+
+EXAMPLES = (
+    FewShotExample(
+        id="food_orders",
+        question="How many orders did each client place?",
+        sql="SELECT c.company_name, count(*) FROM customers AS c "
+        "JOIN orders AS o ON o.customer_id = c.customer_id GROUP BY c.company_name",
+    ),
+    FewShotExample(
+        id="music_spend",
+        question="How much did each music customer spend?",
+        sql="SELECT c.first_name, sum(i.total) FROM customer AS c "
+        "JOIN invoice AS i ON i.customer_id = c.customer_id GROUP BY c.first_name",
+    ),
+    FewShotExample(id="shippers", question="List the shippers.", sql="SELECT * FROM shippers"),
+    # Never shown: it doesn't pass the validator (and the role can't read a `secrets` table).
+    FewShotExample(id="unsafe", question="Read the secrets.", sql="SELECT * FROM secrets"),
+)

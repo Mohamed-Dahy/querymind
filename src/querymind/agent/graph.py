@@ -117,6 +117,7 @@ def _retrieve_schema(state: AgentState, runtime: Runtime[AgentContext]) -> Agent
         "schema_text": selection.schema_text,
         "repair_schema_text": selection.repair_schema_text,
         "schema_selection": selection.info,
+        "examples": list(selection.examples),  # few-shot (3.5), for the first try and repairs
     }
 
 
@@ -127,6 +128,7 @@ def _generate_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentSta
         schema_text=state["schema_text"],
         question=state["question"],
         history=state.get("history", []),
+        examples=state.get("examples", []),
     )
     return {"draft": draft}
 
@@ -219,6 +221,7 @@ def _repair_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState
         question=state["question"],
         failed=state["attempts"],
         history=state.get("history", []),
+        examples=state.get("examples", []),
     )
     return {"draft": draft}
 
