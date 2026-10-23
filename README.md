@@ -40,8 +40,10 @@ layer): exact SQL for metrics like revenue or "key account", other names for tab
 the preferred joins. Each one is checked against the database and run in the tests.
 
 On a bigger database it doesn't send every table to the LLM. Each table and business term is described once and
-stored as an embedding in **pgvector**; for each question, the closest tables are found, plus the tables needed
-to join them and the ones a business term reads. On the 25-table demo database that's about 40% of the schema per
+stored as an embedding in **pgvector**; for each question, tables are ranked two ways, by meaning (vector search)
+and by exact words (Postgres full-text search), and the two rankings are merged with Reciprocal Rank Fusion. The
+top tables are sent, plus the tables needed to join them and the ones a business term reads. On 58 test
+questions this hybrid search puts every needed table in the prompt. On the 25-table demo database that's about 40% of the schema per
 question. Retrieval only decides what the LLM *sees*: what it may *query* is still every table the read-only user
 can read. If the search fails, the whole schema is sent and the logs say so.
 
@@ -51,7 +53,7 @@ so the next question can build on it. Only the last 5 turns are kept.
 ```mermaid
 graph TD;
     start([Start]) --> retrieve_schema;
-    retrieve_schema["retrieve_schema<br/>pick the relevant tables (pgvector)"] --> generate_sql;
+    retrieve_schema["retrieve_schema<br/>pick the relevant tables (hybrid search)"] --> generate_sql;
     generate_sql["generate_sql<br/>LLM writes SQL"] --> run_sql;
     run_sql["run_sql<br/>validate, then run read-only"] -. ran .-> check_result;
     run_sql -. failed, tries left .-> repair_sql;
@@ -87,7 +89,7 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 |---|---|
 | Language | Python 3.12, [uv](https://docs.astral.sh/uv/) |
 | Database | PostgreSQL 16 + pgvector (Docker) |
-| Retrieval | Gemini embeddings, pgvector cosine search |
+| Retrieval | Gemini embeddings, pgvector cosine search, Postgres full-text search, RRF |
 | Agent | LangGraph |
 | LLMs | Groq and Gemini through one interface (LangChain wrappers) |
 | SQL safety | sqlglot |

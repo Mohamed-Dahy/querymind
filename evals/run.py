@@ -416,6 +416,11 @@ def main() -> int:
         choices=["auto", "on", "off"],
         help="override SCHEMA_RETRIEVAL (off = the whole schema, the 3.3 ablation)",
     )
+    parser.add_argument(
+        "--retrieval-mode",
+        choices=["vector", "keyword", "hybrid", "hybrid_rerank"],
+        help="override RETRIEVAL_MODE (how tables are ranked, 3.4)",
+    )
     parser.add_argument("--report", type=Path, help="write a markdown report to this file")
     args = parser.parse_args()
     sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
@@ -432,6 +437,8 @@ def main() -> int:
             settings = settings.model_copy(update={"semantic_layer_paths": []})
         if args.schema_retrieval:
             settings = settings.model_copy(update={"schema_retrieval": args.schema_retrieval})
+        if args.retrieval_mode:
+            settings = settings.model_copy(update={"retrieval_mode": args.retrieval_mode})
         model, _ = settings.llm_credentials()
         references = run_references(items)
         pipeline = Pipeline(
@@ -493,8 +500,8 @@ def main() -> int:
             "Max rows / timeout": f"{settings.max_rows} / {settings.query_timeout_seconds} s",
             "Max SQL attempts": str(settings.max_sql_attempts),
             "Semantic layer": _layers(settings),
-            "Schema retrieval": f"{settings.schema_retrieval} (top-k {settings.retrieval_top_k}, "
-            f"max {settings.retrieval_max_tables} tables)",
+            "Schema retrieval": f"{settings.schema_retrieval} ({settings.retrieval_mode}, "
+            f"top-k {settings.retrieval_top_k}, max {settings.retrieval_max_tables} tables)",
         }
         title = f"QueryMind eval: {args.suite} ({golden.database})"
         args.report.parent.mkdir(parents=True, exist_ok=True)

@@ -3,13 +3,18 @@
     ensure_index(admin_conn, reader="analyst_ro")      # once, as admin (scripts/build_index.py)
     upsert_documents(admin_conn, docs, embeddings)     # embeds only new or changed documents
     hits = search(ro_conn, embeddings.embed_query(question), limit=10)
+    hits = keyword_search(ro_conn, question, limit=10)  # Postgres full-text search (3.4)
 
 It lives in its own schema, `querymind`, not in `public`: the SQL validator only allows
 `public` tables, so SQL written by the LLM can never read (or learn about) the index. The
 read-only role may SELECT from it for searching; only the admin role writes to it.
 
-Search is an exact scan: `ORDER BY embedding <=> query` (cosine distance) over a few dozen rows.
-An approximate index (HNSW) only pays off at many thousands of rows, and would add a setting.
+Vector search is an exact scan: `ORDER BY embedding <=> query` (cosine distance) over a few
+dozen rows. An approximate index (HNSW) only pays off at many thousands of rows.
+
+Keyword search (3.4) uses a `tsvector` column Postgres keeps up to date itself (GENERATED):
+the document's words, stemmed ("categories" → "categori") and without stopwords, with the
+table/metric name weighted higher than the description. A GIN index makes it fast.
 """
 
 from collections.abc import Sequence
@@ -30,14 +35,16 @@ class SchemaIndexError(Exception):
 
 
 class IndexHit(BaseModel):
-    """One search result: which document, the table it points to, and how close it was."""
+    """One search result: which document, the table it points to, and how good a match."""
 
     model_config = ConfigDict(frozen=True)
 
     id: str
     kind: str
     table: str
-    similarity: float  # cosine similarity, 1 = same direction, 0 = unrelated
+    # Vector search: cosine similarity (1 = same direction, 0 = unrelated). Keyword search:
+    # ts_rank (higher = more, and more important, words matched). Only compare within one list.
+    score: float
 
 
 def ensure_index(conn: psycopg.Connection, *, reader: str, table: str = INDEX_TABLE) -> None:
@@ -61,6 +68,22 @@ def ensure_index(conn: psycopg.Connection, *, reader: str, table: str = INDEX_TA
                 embedding vector({}) NOT NULL
             )"""
         ).format(name, sql.Literal(DIMENSIONS))
+    )
+    # Keyword search (3.4). ADD COLUMN IF NOT EXISTS: a 3.3 index gets it in place, and
+    # Postgres fills it for every existing row. Name words ("order_details" → order, detail)
+    # weigh A, the description B: matching the table's own name counts more.
+    conn.execute(
+        sql.SQL(
+            """ALTER TABLE {} ADD COLUMN IF NOT EXISTS words tsvector GENERATED ALWAYS AS (
+                setweight(to_tsvector('english', name), 'A')
+                || setweight(to_tsvector('english', text), 'B')
+            ) STORED"""
+        ).format(name)
+    )
+    conn.execute(
+        sql.SQL("CREATE INDEX IF NOT EXISTS {} ON {} USING gin (words)").format(
+            sql.Identifier(f"{table}_words_idx"), name
+        )
     )
     role = sql.Identifier(reader)
     conn.execute(
@@ -177,7 +200,44 @@ def search(
         FROM {} ORDER BY embedding <=> %(q)s::vector LIMIT %(limit)s"""
     ).format(sql.Identifier(INDEX_SCHEMA, table))
     rows = conn.execute(query, {"q": to_vector(query_vector), "limit": limit})
-    return [IndexHit(id=i, kind=k, table=t, similarity=float(s)) for i, k, t, s in rows]
+    return [IndexHit(id=i, kind=k, table=t, score=float(s)) for i, k, t, s in rows]
+
+
+# Words about the database itself, not the business: every document says "Table ..." and many
+# say "one row per ...", so they'd match everything. Dropped from the question like stopwords
+# (as stems: to_tsvector('english', 'tables rows') = 'tabl' 'row').
+SCHEMA_WORDS = ("tabl", "row", "column", "record", "field", "databas")
+
+# The question's words, stemmed, stopwords dropped, joined with OR ('categori' | 'revenu').
+# Not websearch_to_tsquery: it ANDs every word, and no description holds all the words of a
+# question. Each word is quoted (quote_literal), so nothing in the question is tsquery syntax.
+_KEYWORD_QUERY = """
+WITH q AS (
+    SELECT string_agg(quote_literal(word), ' | ')::tsquery AS query
+    FROM unnest(tsvector_to_array(to_tsvector('english', %(question)s))) AS word
+    WHERE word <> ALL(%(schema_words)s)
+)
+SELECT id, kind, table_name, ts_rank(words, q.query) AS score
+FROM {}, q
+WHERE words @@ q.query
+ORDER BY score DESC, id
+LIMIT %(limit)s
+"""
+
+
+def keyword_search(
+    conn: psycopg.Connection, question: str, *, limit: int, table: str = INDEX_TABLE
+) -> list[IndexHit]:
+    """The `limit` documents sharing the most (and most important) words with the question.
+
+    No embedding call: this works when the embedding API is down, and it catches exact words
+    ("category", a column name) that vector search can rank too low. A question of only
+    stopwords ("How many are there?") matches nothing and returns [].
+    """
+    query = sql.SQL(_KEYWORD_QUERY).format(sql.Identifier(INDEX_SCHEMA, table))
+    params = {"question": question, "limit": limit, "schema_words": list(SCHEMA_WORDS)}
+    rows = conn.execute(query, params)
+    return [IndexHit(id=i, kind=k, table=t, score=float(s)) for i, k, t, s in rows]
 
 
 def to_vector(vector: Sequence[float]) -> str:

@@ -56,7 +56,7 @@ def stubs(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr(graph_module, "execute_query", lambda conn, query, **_: RESULT)
     status = MagicMock(return_value=IndexStatus(usable=True))
     monkeypatch.setattr(pipeline_module, "index_status", status)
-    hits = [IndexHit(id="table:shippers", kind="table", table="shippers", similarity=0.9)]
+    hits = [IndexHit(id="table:shippers", kind="table", table="shippers", score=0.9)]
     monkeypatch.setattr(retrieval_module, "search", lambda conn, vector, **_: hits)
     return status
 
@@ -163,7 +163,7 @@ def test_retrieval_runs_first_and_repairs_see_a_wider_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(graph_module, "execute_query", StubExecutor())
-    hits = [IndexHit(id="table:orders", kind="table", table="orders", similarity=0.9)]
+    hits = [IndexHit(id="table:orders", kind="table", table="orders", score=0.9)]
     monkeypatch.setattr(retrieval_module, "search", lambda conn, vector, **_: hits)
     retriever = SchemaRetriever(
         catalog=SchemaCatalog(SCHEMA, [FOOD, MUSIC]),

@@ -25,6 +25,7 @@ from querymind.semantic.index import (
     INDEX_SCHEMA,
     ensure_index,
     index_status,
+    keyword_search,
     search,
     upsert_documents,
 )
@@ -91,7 +92,41 @@ def test_search_ranks_the_matching_table_first(settings: Settings, index: FakeEm
             conn, index.embed_query("invoice_line unit_price quantity"), limit=3, table=TEST_TABLE
         )
     assert hits[0].table == "invoice_line"
-    assert hits[0].similarity >= hits[1].similarity >= hits[2].similarity
+    assert hits[0].score >= hits[1].score >= hits[2].score
+
+
+def test_keyword_search_finds_exact_words(settings: Settings, index: FakeEmbeddings) -> None:
+    # "category" is stemmed like "categories" (categori), so the word finds the table.
+    with connect_readonly(settings) as conn:
+        hits = keyword_search(conn, "revenue share per product category", limit=5, table=TEST_TABLE)
+    assert "categories" in [h.table for h in hits]
+    assert hits == sorted(hits, key=lambda h: -h.score)
+
+
+def test_keyword_search_ignores_stopwords_and_syntax(
+    settings: Settings, index: FakeEmbeddings
+) -> None:
+    with connect_readonly(settings) as conn:
+        assert keyword_search(conn, "What is it?", limit=5, table=TEST_TABLE) == []
+        # "table" and "rows" are in every document: they're dropped, not matched.
+        assert keyword_search(conn, "Which tables have rows?", limit=5, table=TEST_TABLE) == []
+        # tsquery operators in a question are just words, never syntax (quote_literal).
+        tricky = keyword_search(conn, "orders & !(customers) | ' :*", limit=5, table=TEST_TABLE)
+    assert {"orders", "customers"} & {h.table for h in tricky}
+
+
+def test_an_old_index_gets_the_keyword_column(settings: Settings, index: FakeEmbeddings) -> None:
+    # A 3.3 index had no `words` column: ensure_index adds it and Postgres fills every row.
+    with psycopg.connect(settings.admin_conninfo()) as conn:
+        conn.execute(
+            sql.SQL("DROP INDEX {}").format(sql.Identifier(INDEX_SCHEMA, f"{TEST_TABLE}_words_idx"))
+        )
+        conn.execute(sql.SQL("ALTER TABLE {} DROP COLUMN words").format(QUALIFIED))
+        ensure_index(conn, reader=settings.analyst_ro_user, table=TEST_TABLE)
+        empty = conn.execute(
+            sql.SQL("SELECT count(*) FROM {} WHERE words IS NULL OR words = ''").format(QUALIFIED)
+        ).fetchone()
+    assert empty == (0,)
 
 
 def test_the_read_only_role_cannot_change_the_index(

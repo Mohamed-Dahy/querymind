@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     retrieval_min_tables: int = Field(default=15, ge=0)
     retrieval_top_k: int = Field(default=5, ge=1, le=25)  # tables the search picks
     retrieval_max_tables: int = Field(default=8, ge=1, le=50)  # incl. follow-ups and join paths
+    # How tables are ranked (3.4): vector (meaning) · keyword (exact words, Postgres full-text) ·
+    # hybrid (both, fused by rank) · hybrid_rerank (hybrid + one LLM call reorders the top 10).
+    retrieval_mode: Literal["vector", "keyword", "hybrid", "hybrid_rerank"] = "hybrid"
     # Embeddings always use Google (GOOGLE_API_KEY), whatever LLM_PROVIDER is.
     embedding_model: str = "gemini-embedding-001"
 

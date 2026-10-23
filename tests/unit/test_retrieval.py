@@ -1,9 +1,11 @@
-"""Schema retrieval (3.3): which tables reach the prompt, and what happens when search fails.
+"""Schema retrieval (3.3, 3.4): which tables reach the prompt, and what happens when a step fails.
 
-The search itself is stubbed (it's pgvector SQL, tested in tests/integration/test_schema_index.py),
-so these tests check the selection rules: top-k, carry-over, join bridges, the cap, fallbacks.
+Both searches are stubbed (they're SQL, tested in tests/integration/test_schema_index.py), so
+these tests check the selection rules: top-k, fusion, rerank, carry-over, metric needs, join
+bridges, the cap, and every fallback.
 """
 
+from collections.abc import Sequence
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -13,11 +15,18 @@ from pydantic import SecretStr
 
 from querymind.agent.schemas import Turn
 from querymind.config import Settings
-from querymind.llm import LLMProviderError
-from querymind.llm.embeddings import FakeEmbeddings
+from querymind.llm import LLMOutputError, LLMProviderError
+from querymind.llm.embeddings import EmbeddingProvider, FakeEmbeddings
+from querymind.llm.fake import FakeLLMProvider
 from querymind.semantic import retrieval as retrieval_module
 from querymind.semantic.index import IndexHit
-from querymind.semantic.retrieval import SchemaCatalog, SchemaRetriever
+from querymind.semantic.retrieval import (
+    RRF_K,
+    RerankResult,
+    SchemaCatalog,
+    SchemaRetriever,
+    fuse,
+)
 from tests.unit.retrieval_fixtures import FOOD, MUSIC, SCHEMA
 
 CATALOG = SchemaCatalog(SCHEMA, [FOOD, MUSIC])
@@ -41,16 +50,29 @@ def settings(**overrides: Any) -> Settings:
     return Settings.model_validate(values | overrides)
 
 
-def hit(doc: str, similarity: float = 0.5) -> IndexHit:
+def hit(doc: str, score: float = 0.5) -> IndexHit:
     kind, name = doc.split(":")
     table = {"revenue": "order_details", "big_spender": "customer"}.get(name, name)
-    return IndexHit(id=doc, kind=kind, table=table, similarity=similarity)
+    return IndexHit(id=doc, kind=kind, table=table, score=score)
+
+
+class BrokenEmbeddings(FakeEmbeddings):
+    """The embedding API is down (a 429, a timeout...)."""
+
+    def embed_query(self, text: str) -> list[float]:
+        raise LLMProviderError("gemini-embedding-001 embedding request failed: 429")
 
 
 def retriever(
-    monkeypatch: pytest.MonkeyPatch, *found: IndexHit | Exception, **overrides: Any
+    monkeypatch: pytest.MonkeyPatch,
+    *found: IndexHit | Exception,
+    words: Sequence[IndexHit] = (),
+    embeddings: EmbeddingProvider | None = None,
+    llm: FakeLLMProvider | None = None,
+    **overrides: Any,
 ) -> SchemaRetriever:
-    """A retriever whose search returns `found` (or raises it, if it's one exception)."""
+    """A retriever whose vector search returns `found` (or raises it, if it's one exception)
+    and whose keyword search returns `words`. Vector only by default, as in 3.3."""
 
     def fake_search(conn: psycopg.Connection, vector: list[float], **_: Any) -> list[IndexHit]:
         if len(found) == 1 and isinstance(found[0], Exception):
@@ -58,11 +80,14 @@ def retriever(
         return [h for h in found if isinstance(h, IndexHit)]
 
     monkeypatch.setattr(retrieval_module, "search", fake_search)
+    monkeypatch.setattr(retrieval_module, "keyword_search", lambda conn, q, **_: list(words))
     return SchemaRetriever(
         catalog=CATALOG,
-        embeddings=FakeEmbeddings(),
+        embeddings=embeddings or FakeEmbeddings(),
         connect=MagicMock(),
-        settings=settings(**overrides),
+        settings=settings(**{"retrieval_mode": "vector", **overrides}),
+        llm=llm,
+        documents={"customer": "Table customer: people who buy music."},
     )
 
 
@@ -172,19 +197,13 @@ def test_the_selection_reports_its_size(monkeypatch: pytest.MonkeyPatch) -> None
 # --- Fallbacks: never an empty schema, never silent ---------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "failure",
-    [
-        LLMProviderError("gemini-embedding-001 embedding request failed: 429"),
-        psycopg.OperationalError("gone"),
-    ],
-)
 def test_a_failed_search_sends_the_full_schema_and_says_so(
-    monkeypatch: pytest.MonkeyPatch, failure: Exception
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    selection = retriever(monkeypatch, failure).select("How many customers?")
+    failure = psycopg.OperationalError("gone")
+    selection = retriever(monkeypatch, failure, retrieval_mode="hybrid").select("How many?")
     assert selection.info.mode == "fallback"
-    assert type(failure).__name__ in selection.info.reason
+    assert "OperationalError" in selection.info.reason
     assert selection.schema_text == CATALOG.full_text
     assert set(selection.info.tables) == SCHEMA.table_names
 
@@ -192,4 +211,124 @@ def test_a_failed_search_sends_the_full_schema_and_says_so(
 def test_an_empty_index_falls_back_too(monkeypatch: pytest.MonkeyPatch) -> None:
     selection = retriever(monkeypatch).select("How many customers?")
     assert selection.info.mode == "fallback"
-    assert selection.info.reason == "the index returned no documents"
+    assert selection.info.reason == "the search found no matching documents"
+
+
+@pytest.mark.parametrize("mode", ["vector", "hybrid", "hybrid_rerank"])
+def test_without_embeddings_keyword_search_carries_on(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    r = retriever(
+        monkeypatch,
+        hit("table:customers"),  # never reached: the question can't be embedded
+        words=[hit("table:shippers")],
+        embeddings=BrokenEmbeddings(),
+        llm=FakeLLMProvider(),  # and no rerank call is made either
+        retrieval_mode=mode,
+        retrieval_top_k=1,
+    )
+    info = r.select("List the shippers").info
+    assert info.mode == "retrieved" and info.search == "keyword"
+    assert info.hits == ("shippers",)
+    assert info.reason.startswith("embeddings failed, keyword search only")
+
+
+def test_no_embeddings_and_no_matching_words_is_a_full_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r = retriever(monkeypatch, embeddings=BrokenEmbeddings(), retrieval_mode="hybrid")
+    info = r.select("What is it?").info
+    assert info.mode == "fallback"
+    assert info.reason.startswith("embeddings failed")
+
+
+# --- Hybrid search: Reciprocal Rank Fusion (3.4) ----------------------------------------------
+
+
+def test_fusion_adds_up_reciprocal_ranks() -> None:
+    # b is 2nd by meaning and 1st by words: in both lists beats first in one.
+    assert fuse([["a", "b"], ["b", "c"]]) == ["b", "a", "c"]
+    scores = {"a": 1 / (RRF_K + 1), "b": 1 / (RRF_K + 2) + 1 / (RRF_K + 1), "c": 1 / (RRF_K + 2)}
+    assert sorted(scores, key=lambda t: -scores[t]) == ["b", "a", "c"]
+
+
+def test_fusion_ties_are_stable() -> None:
+    # Same score: the better single rank wins, then the name. Same answer every run.
+    assert fuse([["b"], ["a"]]) == ["a", "b"]
+    assert fuse([["x", "a"], ["b"]]) == ["b", "x", "a"]
+    assert fuse([[], []]) == []
+
+
+def test_keyword_mode_never_embeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    embeddings = FakeEmbeddings()
+    r = retriever(
+        monkeypatch,
+        words=[hit("table:products")],
+        embeddings=embeddings,
+        retrieval_mode="keyword",
+        retrieval_top_k=1,
+    )
+    info = r.select("product names").info
+    assert info.hits == ("products",) and info.search == "keyword"
+    assert embeddings.calls == 0
+
+
+def test_hybrid_finds_what_one_search_alone_misses(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Meaning finds customers first; the exact word "shipper" finds shippers. Both make it.
+    r = retriever(
+        monkeypatch,
+        hit("table:customers"),
+        hit("table:orders"),
+        words=[hit("table:shippers"), hit("table:orders")],
+        retrieval_mode="hybrid",
+        retrieval_top_k=3,
+    )
+    info = r.select("Which shipper delivered the most client orders?").info
+    assert info.search == "hybrid"
+    assert info.hits == ("orders", "customers", "shippers")  # orders is in both lists
+
+
+# --- Rerank (3.4, an experiment arm) -------------------------------------------------------------
+
+
+def rerank_retriever(monkeypatch: pytest.MonkeyPatch, llm: FakeLLMProvider) -> SchemaRetriever:
+    return retriever(
+        monkeypatch,
+        hit("table:customers"),
+        hit("table:customer"),
+        words=[hit("table:invoice")],
+        llm=llm,
+        retrieval_mode="hybrid_rerank",
+        retrieval_top_k=2,
+    )
+
+
+def test_the_reranker_reorders_the_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm = FakeLLMProvider([RerankResult(tables=["customer", "invoice", "customers"])])
+    info = rerank_retriever(monkeypatch, llm).select("Music customers per invoice").info
+    assert info.search == "hybrid_rerank"
+    assert info.hits == ("customer", "invoice")  # the food business's customers moved down
+    (call,) = llm.calls
+    assert "<question>Music customers per invoice</question>" in call.prompt
+    assert '<table name="customer">\nTable customer: people who buy music.\n</table>' in call.prompt
+
+
+def test_the_reranker_can_only_reorder(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An invented table is dropped; candidates it left out keep their fused order after it.
+    llm = FakeLLMProvider([RerankResult(tables=["albums", "invoice"])])
+    info = rerank_retriever(monkeypatch, llm).select("Invoices").info
+    assert info.hits == ("invoice", "customers")
+    assert "albums" not in info.tables
+
+
+def test_a_failed_rerank_keeps_the_fused_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm = FakeLLMProvider([LLMOutputError("not a RerankResult")])
+    info = rerank_retriever(monkeypatch, llm).select("Invoices").info
+    assert info.mode == "retrieved" and info.search == "hybrid"
+    assert info.hits == ("customers", "invoice")  # fused: rank 1 in each list, then the name
+    assert info.reason.startswith("rerank failed")
+
+
+def test_rerank_needs_an_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="needs an LLM"):
+        retriever(monkeypatch, retrieval_mode="hybrid_rerank")

@@ -250,6 +250,8 @@ class Pipeline:
             connect=self._connect,
             settings=settings,
             index_table=self._index_table,
+            llm=self._llm,  # only used by RETRIEVAL_MODE=hybrid_rerank
+            documents={d.table: d.text for d in docs if d.kind == "table"},
         )
 
     def _keep_or_forget(self, thread_id: str, *, keep: bool) -> None:
@@ -302,10 +304,12 @@ class Pipeline:
                 "sql_attempts": _queries_run(state),
                 "attempt_errors": [f"{a.error_kind}: {a.detail}" for a in failed],
                 "warnings": [w.code for w in state.get("warnings", [])],
-                # What the LLM was shown (3.3): "full", "retrieved", or "fallback" (+ why).
+                # What the LLM was shown (3.3): "full", "retrieved", or "fallback"; the search
+                # that ran (3.4); and why it fell back or was weaker (e.g. keyword only).
                 "schema_mode": shown.mode if shown else None,
                 "schema_tables": list(shown.tables) if shown else None,
                 "schema_tokens": shown.schema_tokens if shown else None,
+                "schema_search": (shown.search or None) if shown else None,
                 "schema_fallback": (shown.reason or None) if shown else None,
                 "confidence": confidence,
                 "provider": self._llm.name,
