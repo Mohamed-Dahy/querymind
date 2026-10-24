@@ -1,5 +1,6 @@
 """Gemini adapter: Google's hosted models through the Gemini API (Google AI Studio key)."""
 
+import httpx
 from google.genai import errors as genai_errors
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
@@ -28,5 +29,8 @@ class GeminiProvider(LangChainProvider):
             provider_errors=(
                 ChatGoogleGenerativeAIError,  # LangChain's wrapper around API failures
                 genai_errors.APIError,  # raw SDK errors: bad key, quota, unknown model, 5xx
+                # No network (DNS, connection refused, timeout): the SDK lets httpx's own errors
+                # through. Found in 4.4, when the Wi-Fi dropped and crashed a whole eval run.
+                httpx.TransportError,
             ),
         )

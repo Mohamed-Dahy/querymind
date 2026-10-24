@@ -16,15 +16,18 @@
 #       window, cte, set_logic
 
 database: northwind
-version: 1
+# Version 2 (4.4): e01 names Northwind. Since Chinook (3.2) shares the database, "customers" alone
+# has two right answers, and asking back is a fair reply, so v1 scores aren't comparable for e01.
+version: 2
 
 questions:
   # --- Easy: one table, filters, simple aggregates --------------------------------------
   - id: e01_customer_count
     tier: easy
     tags: [aggregation]
-    question: How many customers are there?
+    question: How many Northwind customers are there?
     sql: SELECT count(*) FROM customers
+    notes: v1 said "How many customers are there?", ambiguous once Chinook's customer table joined.
 
   - id: e02_discontinued_count
     tier: easy
