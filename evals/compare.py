@@ -11,9 +11,14 @@ What counts as the same answer:
   - row order matters only when `ordered=True` (rankings, time series);
   - numbers match within a small tolerance: float4-vs-numeric noise and ROUND(x, 2) pass;
   - a number written as text ('1997') equals the number 1997.
+
+`bird_ex` is the other way to compare: BIRD's official execution accuracy (4.2), exactly what
+leaderboards report, so our BIRD number can be compared with theirs. It is stricter in some ways
+(column order, extra columns, exact numbers) and looser in others (duplicates, row order).
 """
 
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from itertools import permutations
 
@@ -66,6 +71,51 @@ def compare_results(*, expected: QueryResult, actual: QueryResult, ordered: bool
         if _same_rows(expected.rows, picked, ordered):
             return Comparison(match=True, strict=len(actual.columns) == width, reason="")
     return _no("the columns match one by one, but the rows don't line up")
+
+
+def bird_ex(*, expected: QueryResult, actual: QueryResult) -> Comparison:
+    """BIRD's official execution accuracy: the two results hold the same SET of rows.
+
+    It is one line in BIRD's evaluation_ex.py (`calculate_ex`):
+        set(predicted_res) == set(ground_truth_res)
+    where each result is psycopg2's `fetchall()`, a list of row tuples. What that means:
+      - row order and duplicate rows don't matter (a set has neither);
+      - column NAMES don't matter, but column ORDER does: (a, b) is not (b, a);
+      - an extra column fails: a 3-value row never equals a 2-value row;
+      - values must be exactly equal (Python ==): 0.30000000000000004 is not 0.3, '1997' is
+        not 1997. Python's own quirks come along: 1 == 1.0 == True.
+    One difference: we compare the executor's JSON-safe values (Decimal → float, dates → ISO
+    text), the same for both sides, so a long Decimal and the float closest to it count as
+    equal here where BIRD's script would see two different numbers. Rare, and only ever lenient.
+    """
+    if expected.truncated or actual.truncated:
+        return _no("a result hit the row cap, so not all its rows can be compared")
+    expected_rows = {_hashable_row(row) for row in expected.rows}
+    actual_rows = {_hashable_row(row) for row in actual.rows}
+    if expected_rows == actual_rows:
+        return Comparison(match=True, strict=True, reason="")
+    widths = Counter(len(row) for row in actual_rows)
+    if len(expected.columns) not in widths and actual_rows:
+        return _no(
+            f"official EX compares whole rows: expected {len(expected.columns)} columns, "
+            f"got {len(actual.columns)}"
+        )
+    missing = len(expected_rows - actual_rows)
+    extra = len(actual_rows - expected_rows)
+    return _no(f"official EX: {missing} expected rows missing, {extra} unexpected rows")
+
+
+def _hashable_row(row: Row) -> tuple[Hashable, ...]:
+    """A row as a tuple, so it can go in a set (lists and dicts can't: they're mutable)."""
+    return tuple(_hashable(value) for value in row)
+
+
+def _hashable(value: Value) -> Hashable:
+    if isinstance(value, list):  # an array column
+        return tuple(_hashable(item) for item in value)
+    if isinstance(value, dict):  # a json column
+        return tuple((key, _hashable(value[key])) for key in sorted(value))
+    return value
 
 
 def values_equal(expected: Value, actual: Value) -> bool:

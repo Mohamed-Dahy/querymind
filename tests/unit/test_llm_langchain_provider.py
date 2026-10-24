@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from querymind.llm import LLMOutputError, LLMProviderError
-from querymind.llm.langchain_provider import LangChainProvider
+from querymind.llm.langchain_provider import LangChainProvider, token_usage
 
 
 class Answer(BaseModel):
@@ -21,6 +21,15 @@ class Answer(BaseModel):
 
 class Other(BaseModel):
     name: str
+
+
+USAGE = {"input_tokens": 1200, "output_tokens": 80, "total_tokens": 1280}
+
+
+def structured(parsed: object, error: Exception | None = None) -> dict[str, object]:
+    """What LangChain's with_structured_output(..., include_raw=True) returns."""
+    raw = AIMessage("{...}", usage_metadata=USAGE)
+    return {"raw": raw, "parsed": parsed, "parsing_error": error}
 
 
 class VendorDown(Exception):
@@ -68,10 +77,12 @@ def test_empty_text_is_an_output_error(provider: LangChainProvider, chat_model: 
 def test_generate_structured_returns_the_schema_object(
     provider: LangChainProvider, chat_model: MagicMock
 ) -> None:
-    chat_model.with_structured_output.return_value.invoke.return_value = Answer(value=42)
+    chat_model.with_structured_output.return_value.invoke.return_value = structured(
+        Answer(value=42)
+    )
     result = provider.generate_structured("question", Answer)
     assert result == Answer(value=42)
-    chat_model.with_structured_output.assert_called_once_with(Answer)
+    chat_model.with_structured_output.assert_called_once_with(Answer, include_raw=True)
 
 
 def test_structured_output_options_are_passed_to_langchain(chat_model: MagicMock) -> None:
@@ -81,17 +92,17 @@ def test_structured_output_options_are_passed_to_langchain(chat_model: MagicMock
         provider_errors=(VendorDown,),
         structured_output_options={"method": "json_schema", "strict": True},
     )
-    chat_model.with_structured_output.return_value.invoke.return_value = Answer(value=1)
+    chat_model.with_structured_output.return_value.invoke.return_value = structured(Answer(value=1))
     provider.generate_structured("question", Answer)
     chat_model.with_structured_output.assert_called_once_with(
-        Answer, method="json_schema", strict=True
+        Answer, include_raw=True, method="json_schema", strict=True
     )
 
 
 def test_wrong_structured_type_is_an_output_error(
     provider: LangChainProvider, chat_model: MagicMock
 ) -> None:
-    chat_model.with_structured_output.return_value.invoke.return_value = Other(name="x")
+    chat_model.with_structured_output.return_value.invoke.return_value = structured(Other(name="x"))
     with pytest.raises(LLMOutputError, match="expected Answer"):
         provider.generate_structured("question", Answer)
 
@@ -100,6 +111,10 @@ def test_unparseable_output_is_an_output_error(
     provider: LangChainProvider, chat_model: MagicMock
 ) -> None:
     error = OutputParserException("not valid JSON")
+    chat_model.with_structured_output.return_value.invoke.return_value = structured(None, error)
+    with pytest.raises(LLMOutputError, match="did not match the schema"):
+        provider.generate_structured("question", Answer)
+    # A parser that raises instead (LangChain does for some formats): the same error for us.
     chat_model.with_structured_output.return_value.invoke.side_effect = error
     with pytest.raises(LLMOutputError, match="did not match the schema"):
         provider.generate_structured("question", Answer)
@@ -137,3 +152,21 @@ def test_unexpected_errors_are_not_hidden(
     chat_model.invoke.side_effect = KeyError("bug")
     with pytest.raises(KeyError):
         provider.generate_text("question")
+
+
+def test_each_call_logs_its_tokens(
+    provider: LangChainProvider, chat_model: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    chat_model.with_structured_output.return_value.invoke.return_value = structured(Answer(value=1))
+    chat_model.invoke.return_value = AIMessage("hi", usage_metadata=USAGE)
+    with caplog.at_level("INFO", logger="querymind.llm"):
+        provider.generate_structured("question", Answer)
+        provider.generate_text("question")
+    calls = [r for r in caplog.records if r.getMessage() == "llm call"]
+    tokens = [(getattr(r, "input_tokens", 0), getattr(r, "output_tokens", 0)) for r in calls]
+    assert tokens == [(1200, 80), (1200, 80)]
+
+
+def test_token_usage_unknown_or_failed() -> None:
+    assert token_usage(AIMessage("no usage")) == {"input_tokens": None, "output_tokens": None}
+    assert token_usage(None) == {"input_tokens": None, "output_tokens": None}  # the call failed

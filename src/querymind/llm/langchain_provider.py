@@ -2,6 +2,10 @@
 
 Groq and Gemini only differ in how their chat model is built, so the calling,
 error handling and logging all live here, once.
+
+Every call logs one "llm call" line with its duration and the tokens it used (input = the
+prompt, output = the answer), as the provider reports them. Tokens are what LLM APIs charge
+for, so this line is the base of cost tracking (the eval adds them up per question, 4.2).
 """
 
 import logging
@@ -11,7 +15,7 @@ from typing import Any
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, ValidationError
 
@@ -62,13 +66,17 @@ class LangChainProvider(LLMProvider):
         self, prompt: str, schema: type[T], *, system: str | None = None
     ) -> T:
         # LangChain asks the model to fill `schema` (via tool calling or JSON schema)
-        # and parses the reply into a Pydantic object for us.
+        # and parses the reply into a Pydantic object for us. include_raw=True also hands back
+        # the raw message (it carries the token counts), as {"raw", "parsed", "parsing_error"}:
+        # a reply that doesn't fit the schema then arrives as `parsing_error`, not as an exception.
         structured_model = self._chat_model.with_structured_output(
-            schema, **self._structured_output_options
+            schema, include_raw=True, **self._structured_output_options
         )
-        result = self._invoke(
-            structured_model, prompt, system, kind=f"structured:{schema.__name__}"
-        )
+        reply = self._invoke(structured_model, prompt, system, kind=f"structured:{schema.__name__}")
+        error = reply.get("parsing_error") if isinstance(reply, dict) else None
+        if error is not None:
+            raise LLMOutputError(f"{self.name} output did not match the schema: {error}") from error
+        result = reply.get("parsed") if isinstance(reply, dict) else None
         if not isinstance(result, schema):
             raise LLMOutputError(
                 f"{self.name} returned {type(result).__name__}, expected {schema.__name__}"
@@ -89,8 +97,10 @@ class LangChainProvider(LLMProvider):
             messages.insert(0, SystemMessage(system))
 
         started = time.perf_counter()
+        reply: Any = None
         try:
-            return runnable.invoke(messages)
+            reply = runnable.invoke(messages)
+            return reply
         except self._provider_errors as exc:
             if self._is_output_error(exc):
                 raise LLMOutputError(f"{self.name} output did not match the schema: {exc}") from exc
@@ -104,5 +114,19 @@ class LangChainProvider(LLMProvider):
                     "provider": self.name,
                     "kind": kind,
                     "duration_ms": round((time.perf_counter() - started) * 1000),
+                    **token_usage(reply),
                 },
             )
+
+
+def token_usage(reply: object) -> dict[str, int | None]:
+    """Input and output tokens of one reply (None when the provider didn't say, or it failed).
+
+    LangChain puts them on the AI message as `usage_metadata`; a structured reply carries that
+    message under "raw".
+    """
+    message = reply.get("raw") if isinstance(reply, dict) else reply
+    usage = message.usage_metadata if isinstance(message, AIMessage) else None
+    if not usage:
+        return {"input_tokens": None, "output_tokens": None}
+    return {"input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"]}

@@ -152,7 +152,13 @@ uv run python -m evals.retrieval             # does retrieval find the tables ea
 uv run python -m evals.run --suite chinook --schema-retrieval off   # the whole schema, for comparison
 uv run python -m evals.run --suite bird --limit 20 --provider gemini # BIRD benchmark (after seed_bird.py)
 uv run python -m evals.run --suite bird --references-only           # check the benchmark's own SQL, no LLM
+uv run python -m evals.rescore docs/eval-reports/<run>.json         # score a saved run again, no LLM calls
 ```
+
+Every run gives two scores: **BIRD EX**, the benchmark's official rule (the same set of rows, exactly), which is the
+one to compare with the BIRD leaderboard, and **QueryMind match**, which judges the answer the way a person would
+(column names, column order and rounding noise don't matter). Each question also records its LLM calls and tokens.
+`--report run.md` writes `run.json` too, with every question's SQL, so a run can be scored again without the LLM.
 
 ### Run the checks
 

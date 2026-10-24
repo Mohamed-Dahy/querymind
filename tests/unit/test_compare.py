@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import pytest
 
-from evals.compare import compare_results, values_equal
+from evals.compare import bird_ex, compare_results, values_equal
 from querymind.db.executor import QueryResult
 
 
@@ -167,3 +167,73 @@ def test_nulls_sort_and_match() -> None:
     expected = result(["first", "manager"], [["Andrew", None], ["Nancy", "Andrew"]])
     actual = result(["f", "m"], [["Nancy", "Andrew"], ["Andrew", None]])
     assert same(actual, expected=expected)
+
+
+# --- BIRD's official EX vs our match: where they agree and where they don't (4.2) -------------
+
+GOLD = result(["name", "points"], [["Hamilton", 413], ["Vettel", 317]])
+
+
+def official(actual: QueryResult, *, expected: QueryResult = GOLD) -> bool:
+    return bird_ex(expected=expected, actual=actual).match
+
+
+def rows(*values: list[object]) -> QueryResult:
+    """A result with GOLD's two columns."""
+    return result(GOLD.columns, values)
+
+
+def wide(*values: list[object]) -> QueryResult:
+    """A result with a third column."""
+    return result(["name", "points", "wins"], values)
+
+
+@pytest.mark.parametrize(
+    ("case", "actual", "ours", "bird"),
+    [
+        ("identical", GOLD, True, True),
+        ("other names", result(["driver", "pts"], GOLD.rows), True, True),
+        ("other row order", rows(["Vettel", 317], ["Hamilton", 413]), True, True),
+        # A set has no duplicates: BIRD ignores them, we count rows.
+        ("duplicate row", rows(["Hamilton", 413], ["Vettel", 317], ["Vettel", 317]), False, True),
+        # A row is a tuple: BIRD compares position by position.
+        ("swapped columns", rows([413, "Hamilton"], [317, "Vettel"]), True, False),
+        ("extra column", wide(["Hamilton", 413, 11], ["Vettel", 317, 5]), True, False),
+        # Exact values for BIRD; tolerance and number-as-text for us.
+        ("rounding noise", rows(["Hamilton", 413.0000001], ["Vettel", 317]), True, False),
+        ("number as text", rows(["Hamilton", "413"], ["Vettel", "317"]), True, False),
+        ("python: 413 == 413.0", rows(["Hamilton", 413.0], ["Vettel", 317.0]), True, True),
+        ("missing row", rows(["Hamilton", 413]), False, False),
+        ("wrong value", rows(["Hamilton", 400], ["Vettel", 317]), False, False),
+    ],
+)
+def test_official_ex_and_our_match(case: str, actual: QueryResult, ours: bool, bird: bool) -> None:
+    assert same(actual, expected=GOLD) is ours, case
+    assert official(actual) is bird, case
+
+
+def test_official_ex_handles_nulls_arrays_and_json() -> None:
+    gold = result(["a", "b"], [[None, [1, 2]], [{"k": 1, "j": [2]}, None]])
+    again = result(["x", "y"], [[{"j": [2], "k": 1}, None], [None, [1, 2]]])  # dict key order
+    assert official(again, expected=gold)
+    assert not official(result(["x", "y"], [[None, [2, 1]]]), expected=gold)  # array order counts
+
+
+def test_official_ex_empty_results() -> None:
+    empty = result(["name"], [])
+    assert official(empty, expected=empty)
+    assert not official(empty)
+    assert "2 expected rows missing" in bird_ex(expected=GOLD, actual=empty).reason
+
+
+def test_official_ex_says_why() -> None:
+    assert "expected 2 columns, got 3" in bird_ex(expected=GOLD, actual=wide(["H", 1, 1])).reason
+    off = rows(["Hamilton", 400], ["Vettel", 317])
+    assert bird_ex(expected=GOLD, actual=off).reason == (
+        "official EX: 1 expected rows missing, 1 unexpected rows"
+    )
+
+
+def test_official_ex_refuses_a_cut_off_result() -> None:
+    cut = QueryResult(columns=["n"], rows=[[1]], row_count=1, truncated=True, duration_ms=1)
+    assert "row cap" in bird_ex(expected=cut, actual=cut).reason

@@ -4,14 +4,13 @@ import logging
 from collections.abc import Callable, Sequence
 
 from evals.golden_set import GoldenQuestion
+from evals.report import build_report, summarize_outcomes
 from evals.run import (
     AuditCapture,
     AuditedAsk,
-    build_report,
     evaluate,
     evaluate_question,
     rerun_flags,
-    summarize_outcomes,
 )
 from querymind.agent.schemas import (
     AnswerSummary,
@@ -143,7 +142,7 @@ def test_self_corrected_answers_are_counted() -> None:
     assert summary.corrected == ["q1"]
     report = build_report(outcomes, title="t", meta={})
     assert "| Passed after self-correction (SQL retried) | 1 |" in report
-    assert "| `q1` | easy | PASS | 2 | high |" in report  # SQL tries, then confidence
+    assert "| `q1` | easy | PASS | PASS | 2 | high |" in report  # EX, SQL tries, confidence
 
 
 def test_rate_limits_are_retried_not_scored() -> None:
@@ -203,7 +202,7 @@ def test_summary_scores_by_tier_and_tag() -> None:
 
     summary = summarize_outcomes(outcomes)
     assert str(summary.accuracy) == "2/3 (66.7%)"
-    assert {tier: str(s) for tier, s in summary.by_tier.items()} == {
+    assert {tier: str(match) for tier, (match, _ex) in summary.by_tier.items()} == {
         "easy": "1/1 (100.0%)",
         "medium": "1/1 (100.0%)",
         "hard": "0/1 (0.0%)",
@@ -237,8 +236,9 @@ def test_report_shows_scores_and_failures() -> None:
     report = build_report(outcomes, title="Test eval", meta={"LLM": "fake"})
     assert report.startswith("# Test eval\n")
     assert "- **LLM:** fake" in report
-    assert "| **Execution accuracy** (extra columns allowed) | **1/2 (50.0%)** |" in report
-    assert "| `q2` | easy | FAIL | 1 | high |" in report
+    assert "| **QueryMind match** (extra columns allowed) | **1/2 (50.0%)** |" in report
+    assert "| **BIRD EX** (official: same set of rows, exactly) | **1/2 (50.0%)** |" in report
+    assert "| `q2` | easy | FAIL | FAIL | 1 | high |" in report
     assert "### `q2` (easy): wrong result" in report
     assert "```sql\nSELECT n FROM t LIMIT 1001\n```" in report  # QueryMind's SQL
 
@@ -276,3 +276,34 @@ def test_rerun_keeps_the_setup_but_not_the_question_choice() -> None:
     ]  # fmt: skip
     assert rerun_flags(argv) == "--suite bird --no-evidence --provider gemini --max-attempts 1"
     assert rerun_flags([]) == ""
+
+
+def test_official_ex_is_recorded_next_to_our_match() -> None:
+    # The agent repeats a row: our match counts rows (fail), BIRD's set rule doesn't (pass).
+    outcome = evaluate_question(
+        question("q1"), ask=asker({"q1": [[[91], [91]]]}), reference=reference
+    )
+    assert (outcome.passed, outcome.ex) == (False, True)
+    assert outcome.ex_reason == ""
+
+
+def test_audit_capture_adds_up_llm_calls_and_tokens() -> None:
+    capture = AuditCapture()
+    llm = logging.getLogger("querymind.llm.langchain_provider")
+    audit = logging.getLogger("querymind.audit")
+
+    def record(logger: logging.Logger, message: str, **extra: object) -> logging.LogRecord:
+        return logger.makeRecord(logger.name, logging.INFO, "f", 1, message, (), None, extra=extra)
+
+    capture.emit(record(llm, "llm call", input_tokens=1200, output_tokens=80))
+    capture.emit(record(llm, "llm call", input_tokens=None, output_tokens=None))  # unknown
+    capture.emit(record(llm, "llm call", input_tokens=900, output_tokens=40))
+    capture.emit(record(audit, "ask", sql="SELECT 1", sql_attempts=2, schema_mode="full"))
+    assert capture.last == AuditedAsk(
+        sql="SELECT 1",
+        sql_attempts=2,
+        schema_mode="full",
+        llm_calls=3,
+        input_tokens=2100,
+        output_tokens=120,
+    )  # the audit line didn't wipe the tokens
