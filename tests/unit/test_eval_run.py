@@ -1,13 +1,18 @@
 """The eval runner with fakes: scoring, retries, errors and the report. No DB, no LLM."""
 
 import logging
+import pickle
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 
 from evals.golden_set import GoldenQuestion
+from evals.ratelimit import FREE_TIER
 from evals.report import build_report, summarize_outcomes
 from evals.run import (
     AuditCapture,
     AuditedAsk,
+    SettingsFor,
+    _limits,
     evaluate,
     evaluate_question,
     rerun_flags,
@@ -24,6 +29,7 @@ from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProviderError
 from querymind.safety.errors import UnsafeSqlError
+from tests.unit.test_connection import settings as connection_settings
 
 HIGH = Confidence(level="high", reasons=(), points=0)
 
@@ -307,3 +313,20 @@ def test_audit_capture_adds_up_llm_calls_and_tokens() -> None:
         input_tokens=2100,
         output_tokens=120,
     )  # the audit line didn't wipe the tokens
+
+
+def test_settings_for_gives_bird_questions_their_database_and_survives_pickling() -> None:
+    base = connection_settings()
+    choose = SettingsFor(base, {"bird_1": "bird_formula_1"})
+    assert choose(question("bird_1")).postgres_db == "bird_formula_1"
+    assert choose(question("e01")) is base  # not a BIRD question: the .env database
+    # Ray sends it to every worker process this way (4.3).
+    copy = pickle.loads(pickle.dumps(choose))
+    assert copy(question("bird_1")) == choose(question("bird_1"))
+
+
+def test_rate_limits_come_from_the_provider_unless_given() -> None:
+    assert _limits("groq", rpm=None, tpm=12_000) == replace(
+        FREE_TIER["groq"], tokens_per_minute=12_000
+    )
+    assert _limits("gemini", rpm=None, tpm=None) == FREE_TIER["gemini"]

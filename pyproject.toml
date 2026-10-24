@@ -48,6 +48,17 @@ files = ["src", "tests", "data", "scripts", "ui", "evals"]
 # Teaches mypy how pydantic models and settings are built
 plugins = ["pydantic.mypy"]
 
+# Ray is in the optional `eval` group (4.3), which CI's checks job doesn't install. There mypy
+# can't find it: treat it as untyped (Any) instead of failing. Then a `type: ignore` that Ray's
+# own types need here is "unused" in CI, so evals.parallel doesn't warn about unused ones.
+[[tool.mypy.overrides]]
+module = ["ray", "ray.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["evals.parallel"]
+warn_unused_ignores = false
+
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -66,4 +77,7 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.17.1",
     "types-pyyaml>=6.0.12.20260906",
+]
+eval = [
+    "ray>=2.59.0",
 ]

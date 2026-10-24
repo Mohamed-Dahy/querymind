@@ -99,6 +99,7 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 | SQL safety | sqlglot |
 | API / UI | FastAPI, Streamlit |
 | Config | pydantic-settings |
+| Evals | BIRD Mini-Dev, own golden sets, Ray (parallel runs) |
 | Quality | ruff, mypy (strict), pytest, pre-commit |
 | CI | GitHub Actions |
 | Planned | AWS (Bedrock, ECS), Terraform |
@@ -153,12 +154,17 @@ uv run python -m evals.run --suite chinook --schema-retrieval off   # the whole 
 uv run python -m evals.run --suite bird --limit 20 --provider gemini # BIRD benchmark (after seed_bird.py)
 uv run python -m evals.run --suite bird --references-only           # check the benchmark's own SQL, no LLM
 uv run python -m evals.rescore docs/eval-reports/<run>.json         # score a saved run again, no LLM calls
+uv sync --group eval                                                 # Ray, for the parallel runs below
+uv run python -m evals.run --suite bird --provider gemini --workers 4   # 4 questions at a time
 ```
 
 Every run gives two scores: **BIRD EX**, the benchmark's official rule (the same set of rows, exactly), which is the
 one to compare with the BIRD leaderboard, and **QueryMind match**, which judges the answer the way a person would
 (column names, column order and rounding noise don't matter). Each question also records its LLM calls and tokens.
 `--report run.md` writes `run.json` too, with every question's SQL, so a run can be scored again without the LLM.
+With `--workers N`, N [Ray](https://www.ray.io/) workers answer questions at the same time, and every LLM call books
+its slot with one shared rate limiter (requests and tokens per minute), so together they stay under the provider's
+limits.
 
 ### Run the checks
 

@@ -12,6 +12,7 @@
     uv run python -m evals.run --suite bird --limit 20 --provider gemini   # BIRD benchmark (4.1)
     uv run python -m evals.run --suite bird --no-evidence           # without BIRD's hints
     uv run python -m evals.run --suite bird --references-only       # only the gold SQL, no LLM
+    uv run python -m evals.run --suite bird --provider gemini --workers 4   # in parallel (4.3)
 
 For each question: QueryMind writes and runs its own SQL (the real pipeline, real LLM), the
 reference SQL runs too, and the two RESULTS are compared (evals/compare.py). The score is the
@@ -20,6 +21,9 @@ share of questions whose results match. Uses real LLM calls: not run in CI.
 The BIRD suite (4.1) spans 11 databases: each question runs in its own (bird_<db_id>), with one
 Pipeline per database, BIRD's protocol (whole schema, no definitions of ours, evals/bird.py),
 and the evidence hint after the question unless --no-evidence.
+
+With --workers N (4.3, needs `uv sync --group eval`), N Ray workers answer questions at the same
+time and book every LLM call with one shared rate limiter (evals/parallel.py) instead of --delay.
 """
 
 import argparse
@@ -47,6 +51,7 @@ from evals.bird import (
 )
 from evals.compare import bird_ex, compare_results
 from evals.golden_set import GOLDEN_DIR, GoldenQuestion, load_golden_set
+from evals.ratelimit import FREE_TIER, Limits
 from evals.report import Outcome, modes_text, status, summarize_outcomes, write_reports
 from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest, Refusal
@@ -57,6 +62,7 @@ from querymind.db.executor import QueryResult, execute_query
 from querymind.db.schema import introspect_schema
 from querymind.llm import (
     LLMError,
+    LLMProvider,
     LLMProviderError,
     create_embedding_provider,
     create_llm_provider,
@@ -238,6 +244,42 @@ def evaluate(
 
 
 @dataclass(frozen=True)
+class SettingsFor:
+    """The settings each question runs with: a BIRD question gets its own database (4.1).
+
+    A small class rather than a closure so that Ray can send it to worker processes (4.3).
+    """
+
+    base: Settings
+    databases: dict[str, str]  # question id → Postgres database; missing = the one in .env
+
+    def __call__(self, item: GoldenQuestion) -> Settings:
+        database = self.databases.get(item.id)
+        return bird_settings(self.base, database) if database else self.base
+
+
+@dataclass(frozen=True)
+class PipelineAsk:
+    """Builds the real ask(): one Pipeline per database, all sharing one LLM client.
+
+    Called once in the main process (sequential run) or once inside each Ray worker (4.3):
+    there `wrap_llm` puts the shared rate limiter around the LLM.
+    """
+
+    items: tuple[GoldenQuestion, ...]
+    settings_for: SettingsFor
+
+    def __call__(self, wrap_llm: Callable[[LLMProvider], LLMProvider] = lambda llm: llm) -> AskFn:
+        pipelines = _pipelines(self.items, self.settings_for, wrap_llm=wrap_llm)
+
+        def ask(item: GoldenQuestion) -> AgentReply:
+            pipeline = pipelines[self.settings_for(item).postgres_db]
+            return pipeline.ask(item.question, summarize_answer=False)
+
+        return ask
+
+
+@dataclass(frozen=True)
 class Suite:
     """The questions of one run, and the database each one is about."""
 
@@ -314,6 +356,14 @@ def main() -> int:
         help="only run the reference SQL (no LLM): checks the suite itself",
     )
     parser.add_argument("--report", type=Path, help="write a markdown report to this file")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="questions at the same time, with Ray and a shared rate limiter (4.3); 1 = in turn",
+    )
+    parser.add_argument("--rpm", type=int, help="--workers: the provider's requests per minute")
+    parser.add_argument("--tpm", type=int, help="--workers: the provider's tokens per minute")
     args = parser.parse_args()
     sys.stdout.reconfigure(errors="replace")  # type: ignore[union-attr]
 
@@ -341,16 +391,16 @@ def main() -> int:
         if args.few_shot == "off":
             settings = settings.model_copy(update={"few_shot_examples": 0})
 
-        def settings_for(item: GoldenQuestion) -> Settings:
-            database = suite.databases.get(item.id)
-            return bird_settings(settings, database) if database else settings
-
+        settings_for = SettingsFor(settings, suite.databases)
         references, reference_failures = run_references(items, settings_for)
         if args.references_only:
             return _print_references(items, references, reference_failures)
         items = [item for item in items if item.id not in reference_failures]
         model, _ = settings.llm_credentials()
-        pipelines = _pipelines(items, settings_for)
+        make_ask = PipelineAsk(tuple(items), settings_for)
+        # Built here even with --workers (each worker builds its own): a config or database
+        # problem then shows as a clear error before the run, not as a crash inside a worker.
+        answer = make_ask()
     except (ConfigError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -358,33 +408,64 @@ def main() -> int:
         print(f"Error: {exc.__cause__}", file=sys.stderr)
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
-    capture = AuditCapture.attach()
-
-    def ask(item: GoldenQuestion) -> AgentReply:
-        capture.last = AuditedAsk()
-        pipeline = pipelines[settings_for(item).postgres_db]
-        return pipeline.ask(item.question, summarize_answer=False)
-
+    limits = _limits(settings.llm_provider, rpm=args.rpm, tpm=args.tpm)
     shown = settings_for(items[0])  # BIRD: what every one of its databases gets
-    databases = f"{len(pipelines)} databases, " if len(pipelines) > 1 else ""
+    database_count = len({settings_for(item).postgres_db for item in items})
+    databases = f"{database_count} databases, " if database_count > 1 else ""
+    pace = (
+        f"{args.workers} Ray workers, {_limits_text(limits)}"
+        if args.workers > 1
+        else f"one at a time, {args.delay:g} s apart"
+    )
     print(
         f"Evaluating {len(items)} questions with {settings.llm_provider} / {model}, "
         f"{databases}max {shown.max_sql_attempts} SQL attempts, "
         f"semantic layer: {_layers(shown)}, schema retrieval: {shown.schema_retrieval}, "
-        f"few-shot: {shown.few_shot_examples or 'off'}\n"
+        f"few-shot: {shown.few_shot_examples or 'off'}; {pace}\n"
     )
     if reference_failures:
         print(f"Reference SQL failed, not asked: {', '.join(sorted(reference_failures))}\n")
-    outcomes = evaluate(
-        items,
-        ask=ask,
-        last_audit=lambda: capture.last,
-        reference=lambda item: references[item.id],
-        delay_seconds=args.delay,
-        retries=args.retries,
-        backoff_seconds=args.backoff,
-        on_outcome=lambda number, o: print(_progress_line(number, len(items), o)),
-    )
+    started = time.perf_counter()
+    startup = 0.0
+
+    def progress(number: int, outcome: Outcome) -> None:
+        print(_progress_line(number, len(items), outcome))
+
+    if args.workers > 1:
+        try:
+            outcomes, startup = _evaluate_with_ray(
+                items,
+                make_ask,
+                references,
+                workers=args.workers,
+                limits=limits,
+                retries=args.retries,
+                backoff_seconds=args.backoff,
+                on_outcome=progress,
+            )
+        except ModuleNotFoundError as exc:
+            if exc.name != "ray":
+                raise
+            print("Error: --workers needs Ray: uv sync --group eval", file=sys.stderr)
+            return 1
+    else:
+        capture = AuditCapture.attach()
+
+        def ask(item: GoldenQuestion) -> AgentReply:
+            capture.last = AuditedAsk()
+            return answer(item)
+
+        outcomes = evaluate(
+            items,
+            ask=ask,
+            last_audit=lambda: capture.last,
+            reference=lambda item: references[item.id],
+            delay_seconds=args.delay,
+            retries=args.retries,
+            backoff_seconds=args.backoff,
+            on_outcome=progress,
+        )
+    wall = time.perf_counter() - started
     outcomes = [replace(o, database=settings_for(o.item).postgres_db) for o in outcomes]
 
     summary = summarize_outcomes(outcomes)
@@ -409,6 +490,7 @@ def main() -> int:
     print("  confidence → accuracy: " + "   ".join(
         f"{level}: {score}" for level, score in summary.by_confidence.items()
     ))  # fmt: skip
+    print(f"  wall time: {_wall_text(wall, startup)}")
     if summary.not_scored:
         print()
         print(f"Not scored (LLM or database unavailable): {', '.join(summary.not_scored)}")
@@ -427,6 +509,8 @@ def main() -> int:
             "Schema retrieval": f"{shown.schema_retrieval} ({shown.retrieval_mode}, "
             f"top-k {shown.retrieval_top_k}, max {shown.retrieval_max_tables} tables)",
             "Few-shot examples": str(shown.few_shot_examples or "off"),
+            "Pace": pace,
+            "Wall time": _wall_text(wall, startup),
         }
         json_path = write_reports(
             args.report,
@@ -462,8 +546,62 @@ def rerun_flags(argv: Sequence[str]) -> str:
     return " ".join(kept)
 
 
+def _evaluate_with_ray(
+    items: Sequence[GoldenQuestion],
+    make_ask: PipelineAsk,
+    references: dict[str, QueryResult],
+    *,
+    workers: int,
+    limits: Limits,
+    retries: int,
+    backoff_seconds: float,
+    on_outcome: Callable[[int, Outcome], None],
+) -> tuple[list[Outcome], float]:
+    """--workers N: the questions over N Ray workers. Also returns Ray's start-up time."""
+    from evals.parallel import evaluate_parallel, ray_running  # Ray is optional (eval group)
+
+    with ray_running(workers) as startup:
+        outcomes = evaluate_parallel(
+            items,
+            make_ask=make_ask,
+            references=references,
+            workers=workers,
+            limits=limits,
+            retries=retries,
+            backoff_seconds=backoff_seconds,
+            on_outcome=on_outcome,
+        )
+    return outcomes, startup
+
+
+def _limits(provider: str, *, rpm: int | None, tpm: int | None) -> Limits:
+    """The provider's free-tier limits, with --rpm / --tpm taking precedence."""
+    limits = FREE_TIER[provider]
+    return replace(
+        limits,
+        requests_per_minute=rpm or limits.requests_per_minute,
+        tokens_per_minute=tpm or limits.tokens_per_minute,
+    )
+
+
+def _limits_text(limits: Limits) -> str:
+    counted = "input + output" if limits.counts_output else "input only"
+    return (
+        f"limiter {limits.requests_per_minute} RPM / {limits.tokens_per_minute:,} TPM "
+        f"({counted}, {limits.headroom:.0%} used)"
+    )
+
+
+def _wall_text(seconds: float, startup: float) -> str:
+    started = f" (+ {startup:.0f} s to start Ray)" if startup else ""
+    return f"{seconds - startup:.0f} s{started}"
+
+
 def _pipelines(
-    items: Sequence[GoldenQuestion], settings_for: Callable[[GoldenQuestion], Settings]
+    items: Sequence[GoldenQuestion],
+    settings_for: Callable[[GoldenQuestion], Settings],
+    *,
+    wrap_llm: Callable[[LLMProvider], LLMProvider] = lambda llm: llm,
 ) -> dict[str, Pipeline]:
     """One Pipeline per database the questions use (BIRD: up to 11), keyed by database name.
 
@@ -471,7 +609,7 @@ def _pipelines(
     the whole schema and has no index, so its pipelines get none.
     """
     first = settings_for(items[0])
-    llm = create_llm_provider(first)
+    llm = wrap_llm(create_llm_provider(first))
     embeddings = create_embedding_provider(first)
     pipelines: dict[str, Pipeline] = {}
     for item in items:
@@ -616,4 +754,9 @@ def _git_commit() -> str:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Run main() from the importable module evals.run, not from this copy named __main__: Ray
+    # sends objects to its workers by module name (PipelineAsk...), and a worker can import
+    # evals.run but its own __main__ is Ray's worker script (4.3).
+    from evals.run import main as importable_main
+
+    sys.exit(importable_main())
