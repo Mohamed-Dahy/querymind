@@ -25,6 +25,7 @@ dist/
 .mypy_cache/
 .pytest_cache/
 .deepeval/
+ci-reports/
 .coverage
 htmlcov/
 

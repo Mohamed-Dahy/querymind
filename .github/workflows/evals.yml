@@ -1,0 +1,107 @@
+# Evals in CI (Phase 4.7): 12 fixed golden questions through the real agent and a real LLM.
+# Fails when more than one question that passed in evals/ci_baseline.json fails now.
+#
+# Only on changes that can move accuracy (it spends free-tier LLM quota: ~45K Groq tokens a run).
+# Forked PRs don't get secrets, so the job is skipped there instead of failing.
+name: Evals
+
+on:
+  pull_request:
+    paths:
+      - "src/querymind/agent/**"
+      - "src/querymind/semantic/**"
+      - "semantic_layer/**"
+      - "evals/**"
+      - ".github/workflows/evals.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/querymind/agent/**"
+      - "src/querymind/semantic/**"
+      - "semantic_layer/**"
+      - "evals/**"
+      - ".github/workflows/evals.yml"
+  workflow_dispatch: # a "Run workflow" button on the Actions tab, for a manual run
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    name: Accuracy gate (12 golden questions)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The CI-only database: throwaway values, nothing here is a real secret.
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: northwind
+      POSTGRES_ADMIN_USER: admin
+      POSTGRES_ADMIN_PASSWORD: ci-admin-password
+      ANALYST_RO_USER: analyst_ro
+      ANALYST_RO_PASSWORD: ci-readonly-password
+      # The real keys, from the repository's secrets (Settings > Secrets and variables > Actions).
+      LLM_PROVIDER: groq
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: openai/gpt-oss-120b # the app default; the gate runs evals.gate's CI_MODEL
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      # The agent settings of .env.example: the gate refuses a run whose settings differ from the baseline.
+      LLM_TEMPERATURE: 0
+      MAX_SQL_ATTEMPTS: 3
+      SEMANTIC_LAYER_PATHS: semantic_layer/northwind.yaml,semantic_layer/chinook.yaml
+      SCHEMA_RETRIEVAL: auto
+      RETRIEVAL_MIN_TABLES: 15
+      RETRIEVAL_TOP_K: 5
+      RETRIEVAL_MAX_TABLES: 8
+      RETRIEVAL_MODE: hybrid
+      FEW_SHOT_EXAMPLES: 3
+      QUERY_REWRITING: false
+      EMBEDDING_MODEL: gemini-embedding-001
+    services:
+      db:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: ci-admin-password
+          POSTGRES_DB: northwind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d northwind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (exactly as in uv.lock)
+        run: uv sync --locked
+
+      - name: Seed Northwind + Chinook and the read-only role
+        run: |
+          uv run python data/seed_northwind.py
+          uv run python data/seed_chinook.py
+
+      - name: Build the schema index (Gemini embeddings)
+        run: uv run python scripts/build_index.py
+
+      - name: Ask the 12 questions and compare with the baseline
+        run: uv run python -m evals.gate run
+
+      - name: Keep the reports (download them from the run's page)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: ci-reports/
+          if-no-files-found: ignore

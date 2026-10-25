@@ -1,0 +1,24 @@
+{
+  "llm": "groq / openai/gpt-oss-20b",
+  "settings": {
+    "Max SQL attempts": "3",
+    "Semantic layer": "northwind.yaml, chinook.yaml",
+    "Schema retrieval": "auto (hybrid, top-k 5, max 8 tables)",
+    "Few-shot examples": "3"
+  },
+  "passed": [
+    "b04_carrier_most_late",
+    "b11_key_account_turnover",
+    "c02_artist_count",
+    "c07_music_sales_2023",
+    "c13_sales_per_year",
+    "e02_discontinued_count",
+    "e07_orders_1997",
+    "h01_top5_products_revenue",
+    "h06_running_revenue_1997",
+    "m02_beverages",
+    "m05_freight_per_shipper",
+    "m10_orders_per_month_1997"
+  ],
+  "failed": []
+}
