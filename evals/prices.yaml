@@ -1,0 +1,26 @@
+# List prices in US dollars per 1 million tokens, paid tier (4.6). Our runs use the free tiers,
+# so evals/models.py reports a "list-price equivalent": what the same tokens would cost on a
+# paid plan. Keys are the "provider / model" text that eval reports record as their LLM.
+#
+# Output prices include reasoning ("thinking") tokens: both providers bill them as output, and
+# our token counts include them (Gemini: candidates + thoughts; Groq: completion tokens).
+# Check the sources again before quoting a number: prices change.
+checked: 2026-10-25
+models:
+  groq / openai/gpt-oss-120b:
+    input: 0.15
+    output: 0.60
+    source: https://console.groq.com/docs/models
+  groq / openai/gpt-oss-20b:
+    input: 0.075
+    output: 0.30
+    source: https://console.groq.com/docs/models
+  groq / qwen/qwen3.8-27b:
+    input: 0.80
+    output: 4.00
+    source: https://console.groq.com/docs/models
+    note: a preview model on Groq ("should not be used in production")
+  gemini / gemini-3.5-flash-lite:
+    input: 0.30
+    output: 2.50
+    source: https://ai.google.dev/gemini-api/docs/pricing

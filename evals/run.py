@@ -13,6 +13,7 @@
     uv run python -m evals.run --suite bird --no-evidence           # without BIRD's hints
     uv run python -m evals.run --suite bird --references-only       # only the gold SQL, no LLM
     uv run python -m evals.run --suite bird --provider gemini --workers 4   # in parallel (4.3)
+    uv run python -m evals.run --suite golden --provider groq --model openai/gpt-oss-20b   # (4.6)
 
 For each question: QueryMind writes and runs its own SQL (the real pipeline, real LLM), the
 reference SQL runs too, and the two RESULTS are compared (evals/compare.py). The score is the
@@ -319,6 +320,9 @@ def main() -> int:
     parser.add_argument("--limit", type=int, help="only the first N questions")
     parser.add_argument("--ids", nargs="+", help="only these question ids")
     parser.add_argument("--provider", choices=["groq", "gemini"], help="override LLM_PROVIDER")
+    parser.add_argument(
+        "--model", help="override the provider's model (GROQ_MODEL / GEMINI_MODEL), e.g. for 4.6"
+    )
     parser.add_argument("--delay", type=float, default=1.0, help="seconds between questions")
     parser.add_argument("--retries", type=int, default=2, help="retries after a rate limit")
     parser.add_argument(
@@ -383,6 +387,8 @@ def main() -> int:
         settings = get_settings()
         if args.provider:
             settings = settings.model_copy(update={"llm_provider": args.provider})
+        if args.model:
+            settings = settings.model_copy(update={f"{settings.llm_provider}_model": args.model})
         if args.max_attempts:
             settings = settings.model_copy(update={"max_sql_attempts": args.max_attempts})
         if args.no_semantic_layer:
