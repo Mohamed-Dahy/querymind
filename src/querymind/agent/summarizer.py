@@ -32,11 +32,11 @@ def summarize(llm: LLMProvider, *, question: str, result: QueryResult) -> Answer
         # Nothing to explain, so no LLM call (saves a request and can't hallucinate).
         return AnswerSummary(text="No data matched the question.", from_llm=False)
 
-    shown = result.rows[:SUMMARY_ROWS]
+    result_json, shown = result_for_llm(result)
     prompt = build_user_prompt(
         question=question,
-        result_json=json.dumps({"columns": result.columns, "rows": shown}, ensure_ascii=False),
-        shown=len(shown),
+        result_json=result_json,
+        shown=shown,
         total=result.row_count,
         truncated=result.truncated,
     )
@@ -48,9 +48,7 @@ def summarize(llm: LLMProvider, *, question: str, result: QueryResult) -> Answer
 
     # The prompt itself says how many rows were shown ("Showing the first 20 of 21 rows"), so
     # the LLM may repeat that number too.
-    ungrounded = find_ungrounded_numbers(
-        text, result=result, question=question, also_known=[len(shown)]
-    )
+    ungrounded = find_ungrounded_numbers(text, result=result, question=question, also_known=[shown])
     if ungrounded:
         logger.warning(
             "summary used numbers not in the result, using fallback",
@@ -58,6 +56,17 @@ def summarize(llm: LLMProvider, *, question: str, result: QueryResult) -> Answer
         )
         return AnswerSummary(text=fallback_answer(result), from_llm=False)
     return AnswerSummary(text=text, from_llm=True)
+
+
+def result_for_llm(result: QueryResult) -> tuple[str, int]:
+    """The part of `result` the LLM may see, as JSON, and how many rows that is.
+
+    Only the columns and the first SUMMARY_ROWS rows (CLAUDE.md §8.5). The answer-quality
+    eval (evals/quality.py) gives its judge exactly this, so an answer is checked against the
+    data its writer saw, not rows it was never shown.
+    """
+    shown = result.rows[:SUMMARY_ROWS]
+    return json.dumps({"columns": result.columns, "rows": shown}, ensure_ascii=False), len(shown)
 
 
 def clean_text(text: str) -> str:

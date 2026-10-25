@@ -29,10 +29,14 @@ def build_user_prompt(
     *, question: str, result_json: str, shown: int, total: int, truncated: bool
 ) -> str:
     """Fill the template. `result_json` holds the columns and the rows sent to the LLM."""
-    if truncated:
-        note = f"Showing {shown} rows; the query hit the row limit, so more rows exist."
-    elif shown < total:
-        note = f"Showing the first {shown} of {total} rows."
-    else:
-        note = f"All {total} rows are shown."
+    note = result_note(shown=shown, total=total, truncated=truncated)
     return USER_TEMPLATE.format(question=question, result=result_json, note=note)
+
+
+def result_note(*, shown: int, total: int, truncated: bool) -> str:
+    """The line under the result that says how much of it the LLM is shown."""
+    if truncated:
+        return f"Showing {shown} rows; the query hit the row limit, so more rows exist."
+    if shown < total:
+        return f"Showing the first {shown} of {total} rows."
+    return f"All {total} rows are shown."

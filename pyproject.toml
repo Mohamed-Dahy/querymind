@@ -48,15 +48,16 @@ files = ["src", "tests", "data", "scripts", "ui", "evals"]
 # Teaches mypy how pydantic models and settings are built
 plugins = ["pydantic.mypy"]
 
-# Ray is in the optional `eval` group (4.3), which CI's checks job doesn't install. There mypy
-# can't find it: treat it as untyped (Any) instead of failing. Then a `type: ignore` that Ray's
-# own types need here is "unused" in CI, so evals.parallel doesn't warn about unused ones.
+# Ray, DeepEval and RAGAS are in the optional `eval` group (4.3, 4.5), which CI's checks job
+# doesn't install. There mypy can't find them: treat them as untyped (Any) instead of failing.
+# Then a `type: ignore` that their own types need here is "unused" in CI, so the modules that
+# import them don't warn about unused ones.
 [[tool.mypy.overrides]]
-module = ["ray", "ray.*"]
+module = ["ray", "ray.*", "deepeval", "deepeval.*", "ragas", "ragas.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["evals.parallel"]
+module = ["evals.parallel", "evals.judges"]
 warn_unused_ignores = false
 
 # ---------------------------------------------------------------- pytest
@@ -65,7 +66,9 @@ testpaths = ["tests"]
 # The repo root, so tests can import top-level folders like `evals` (querymind is installed),
 # and data/, so tests can import the seed scripts the way they import each other (4.1).
 pythonpath = [".", "data"]
-addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
+# -p no:deepeval: DeepEval's pytest plugin loads wherever it is installed and hooks every
+# session (telemetry, a teardown line); our tests aren't DeepEval test runs (4.5).
+addopts = ["-ra", "--strict-markers", "--import-mode=importlib", "-p", "no:deepeval"]
 markers = [
     "integration: needs the Docker Postgres database (deselect with -m 'not integration')",
 ]
@@ -79,5 +82,8 @@ dev = [
     "types-pyyaml>=6.0.12.20260906",
 ]
 eval = [
+    "deepeval>=4.3.1",
+    "langchain-community>=0.4.1,<0.4.2",
+    "ragas>=0.4.3",
     "ray>=2.59.0",
 ]

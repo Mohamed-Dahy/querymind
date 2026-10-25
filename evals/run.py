@@ -268,13 +268,16 @@ class PipelineAsk:
 
     items: tuple[GoldenQuestion, ...]
     settings_for: SettingsFor
+    # Accuracy only scores the SQL's rows, so the summary would only cost tokens; the
+    # answer-quality eval (4.5) judges the summary, so it turns this on.
+    summarize_answer: bool = False
 
     def __call__(self, wrap_llm: Callable[[LLMProvider], LLMProvider] = lambda llm: llm) -> AskFn:
         pipelines = _pipelines(self.items, self.settings_for, wrap_llm=wrap_llm)
 
         def ask(item: GoldenQuestion) -> AgentReply:
             pipeline = pipelines[self.settings_for(item).postgres_db]
-            return pipeline.ask(item.question, summarize_answer=False)
+            return pipeline.ask(item.question, summarize_answer=self.summarize_answer)
 
         return ask
 

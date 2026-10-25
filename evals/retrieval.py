@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from evals.golden_set import GoldenQuestion, load_golden_set
 from evals.run import SUITES
-from querymind.config import ConfigError, get_settings
+from querymind.config import ConfigError, Settings, get_settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.schema import SchemaInfo, estimate_tokens, introspect_schema
@@ -181,6 +181,21 @@ def run(
     return results
 
 
+def load_catalog(settings: Settings) -> tuple[SchemaCatalog, dict[str, str]]:
+    """What retrieval picks from: the schema catalog, and each table's index document.
+
+    Raises:
+        SemanticLayerError: a semantic-layer file is invalid.
+        psycopg.Error / DatabaseUnavailableError: the database can't be read.
+    """
+    layers = load_semantic_layers(settings.semantic_layer_paths)
+    with connect_readonly(settings) as conn:
+        schema = introspect_schema(conn)
+    catalog = SchemaCatalog(schema, layers, load_all_examples(settings.semantic_layer_paths))
+    docs = index_documents(schema, layers, settings.semantic_layer_paths)
+    return catalog, {d.table: d.text for d in docs if d.kind == "table"}
+
+
 def build_report(
     results: Results,
     *,
@@ -257,9 +272,7 @@ def main() -> int:
             if "hybrid_rerank" in args.modes
             else None
         )
-        layers = load_semantic_layers(settings.semantic_layer_paths)
-        with connect_readonly(settings) as conn:
-            schema = introspect_schema(conn)
+        catalog, documents = load_catalog(settings)
     except (ConfigError, SemanticLayerError, psycopg.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -268,9 +281,6 @@ def main() -> int:
         print("Is the database running? docker compose up -d --wait", file=sys.stderr)
         return 1
 
-    catalog = SchemaCatalog(schema, layers, load_all_examples(settings.semantic_layer_paths))
-    docs = index_documents(schema, layers, settings.semantic_layer_paths)
-    documents = {d.table: d.text for d in docs if d.kind == "table"}
     embeddings = CachedEmbeddings(inner)
     retrievers = {
         (mode, k): SchemaRetriever(
