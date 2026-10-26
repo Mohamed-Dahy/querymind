@@ -1,0 +1,87 @@
+/*
+ * QueryMind design tokens: the only place colours, radii and the grid are defined.
+ * The rules behind them are in docs/ui-design-system.md.
+ *
+ * - Dark is the default. The theme is the data-theme attribute on <html>: index.html sets it before the
+ *   first paint, then src/lib/theme.ts keeps it in sync.
+ * - Components never use raw hex values, only these tokens through Tailwind classes (bg-surface, text-fg...).
+ * - src/styles/contrast.test.ts checks every text colour against every background, in both themes.
+ */
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Surfaces, darkest to lightest */
+  --bg: #0f172a; /* the page and the canvas */
+  --surface: #1b2336; /* cells, panels, dialogs */
+  --muted: #272f42; /* inputs, table stripes, hover */
+
+  /* Text */
+  --fg: #f8fafc;
+  --fg-muted: #94a3b8;
+
+  /* Lines */
+  --border: rgb(255 255 255 / 0.08); /* decorative hairlines only */
+  --input: #64748b; /* outlines of inputs and outline buttons (3:1, WCAG 1.4.11) */
+  --ring: #22d3ee; /* keyboard focus */
+
+  /* Meaning: always shown with an icon or text too, never by colour alone */
+  --signal: #22c55e; /* the one accent: the running agent, success, high confidence */
+  --on-signal: #0f172a; /* text on a --signal fill (primary buttons) */
+  --warn: #f59e0b; /* warnings, medium confidence */
+  --danger: #f87171; /* errors, refusals, low confidence */
+  --info: #22d3ee; /* agent trace steps, links */
+
+  /* Effects */
+  --grid-dot: rgb(255 255 255 / 0.06); /* the canvas dot grid */
+  --overlay: rgb(2 6 23 / 0.6); /* behind dialogs and sheets */
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --muted: #e9eef6;
+
+  --fg: #0f172a;
+  --fg-muted: #475569;
+
+  --border: #dbe3ee;
+  --input: #64748b;
+  --ring: #0e7490;
+
+  --signal: #166534;
+  --on-signal: #ffffff;
+  --warn: #92400e;
+  --danger: #b91c1c;
+  --info: #0e7490;
+
+  --grid-dot: rgb(15 23 42 / 0.07);
+  --overlay: rgb(15 23 42 / 0.45);
+}
+
+/*
+ * shadcn/ui's variable names, mapped onto ours, so the copied components in src/components/ui
+ * follow our tokens without changing their class names (bg-primary, text-muted-foreground...).
+ */
+:root {
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--surface);
+  --card-foreground: var(--fg);
+  --popover: var(--surface);
+  --popover-foreground: var(--fg);
+  --primary: var(--signal);
+  --primary-foreground: var(--on-signal);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--fg);
+  --muted-foreground: var(--fg-muted);
+  --accent: var(--muted);
+  --accent-foreground: var(--fg);
+  --destructive: var(--danger);
+
+  /* 8 px: controls. Cells use --radius-cell (12 px, in index.css). */
+  --radius: 0.5rem;
+}

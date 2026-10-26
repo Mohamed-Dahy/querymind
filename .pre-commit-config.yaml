@@ -1,5 +1,8 @@
 # Checks that run automatically on every `git commit`.
 # Install once with: uv run pre-commit install
+# Generated files are written by tools exactly as CI regenerates them; no hook may change them.
+exclude: ^web/(openapi\.json|src/api/schema\.d\.ts|src/mocks/recorded/.*|public/mockServiceWorker\.js)$
+
 repos:
   # General file hygiene and safety checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -32,4 +35,21 @@ repos:
         entry: uv run mypy
         language: system
         types: [python]
+        pass_filenames: false
+
+  # The web UI (web/): oxlint and Prettier, only when a file under web/ changes.
+  # Needs `npm --prefix web install` once.
+  - repo: local
+    hooks:
+      - id: web-lint
+        name: web lint (oxlint)
+        entry: npm --prefix web run lint
+        language: system
+        files: ^web/
+        pass_filenames: false
+      - id: web-format
+        name: web format check (prettier)
+        entry: npm --prefix web run format:check
+        language: system
+        files: ^web/
         pass_filenames: false

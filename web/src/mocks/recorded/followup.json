@@ -1,0 +1,52 @@
+{
+  "kind": "answer",
+  "question": "Now only for 1997.",
+  "conversation_id": "f62fa270-0705-42a2-b18e-8a202896009f",
+  "answer": "In 1997, the top-selling categories were Dairy Products with about 115,388 in sales and Beverages with about 103,924. Meanwhile, Produce had the lowest sales at about 54,941.",
+  "answer_from_llm": true,
+  "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id JOIN orders AS o ON o.order_id = od.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY c.category_name LIMIT 1001",
+  "explanation": "Calculates the total sales amount per product category restricted to orders placed in the year 1997.",
+  "columns": [
+    "category_name",
+    "total_sales"
+  ],
+  "rows": [
+    [
+      "Beverages",
+      103924.3050749679
+    ],
+    [
+      "Produce",
+      54940.76739317353
+    ],
+    [
+      "Condiments",
+      55368.589658400466
+    ],
+    [
+      "Grains/Cereals",
+      56871.82484497763
+    ],
+    [
+      "Meat/Poultry",
+      80975.10820996655
+    ],
+    [
+      "Dairy Products",
+      115387.63967462801
+    ],
+    [
+      "Confections",
+      82657.75058745116
+    ],
+    [
+      "Seafood",
+      66959.21694913533
+    ]
+  ],
+  "row_count": 8,
+  "truncated": false,
+  "warnings": [],
+  "confidence": "high",
+  "confidence_reasons": []
+}

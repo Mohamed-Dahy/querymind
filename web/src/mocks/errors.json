@@ -1,0 +1,25 @@
+{
+  "unsafe_sql": { "status": 422, "message": "Only SELECT queries are allowed." },
+  "invalid_request": {
+    "status": 422,
+    "message": "question: String should have at least 1 character"
+  },
+  "query_timeout": { "status": 504, "message": "The query took longer than 10 s and was stopped." },
+  "query_failed": {
+    "status": 502,
+    "message": "The database could not run the query: column \"unit_cost\" does not exist"
+  },
+  "db_unavailable": {
+    "status": 503,
+    "message": "Could not connect to the database. Please try again later."
+  },
+  "llm_unavailable": {
+    "status": 502,
+    "message": "The AI provider did not respond (network, rate limit or outage)."
+  },
+  "llm_bad_output": {
+    "status": 502,
+    "message": "The AI model declined or answered in the wrong format. Try rewording it."
+  },
+  "internal_error": { "status": 500, "message": "Something went wrong. Please try again." }
+}

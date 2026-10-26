@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc", "vitest"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  },
+  "overrides": [
+    {
+      "files": ["src/components/ui/**"],
+      "rules": { "react/only-export-components": "off" }
+    }
+  ],
+  "ignorePatterns": ["dist", "src/api/schema.d.ts", "public/mockServiceWorker.js"]
+}

@@ -1,6 +1,7 @@
 # CI: runs on every push and pull request.
 #   checks       -> ruff (lint + format), mypy, unit tests (no database, no real LLM)
 #   integration  -> real Postgres + pgvector, seeded, then the read-only role tests
+#   web          -> the React UI: lint, types, tests, build, browser smoke, OpenAPI drift check
 name: CI
 
 on:
@@ -95,3 +96,67 @@ jobs:
 
       - name: Integration tests
         run: uv run pytest -m integration
+
+  web:
+    name: Web UI (lint, types, tests, build, browser smoke, API drift)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # npm commands run in web/; the Python and git steps say `working-directory: .`.
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node (version from web/.nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install uv (the drift check runs the Python export)
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install npm packages (exactly as in package-lock.json)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit and component tests (fake API, no LLM)
+        run: npm test
+
+      # The committed schema and types must be what the API generates now. If a Pydantic model
+      # changed without `export_openapi.py` + `gen:api`, the diff is not empty and the job fails.
+      - name: OpenAPI drift check
+        working-directory: .
+        run: |
+          uv run --locked python scripts/export_openapi.py
+          npm --prefix web run gen:api
+          git diff --exit-code -- web/openapi.json web/src/api/schema.d.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: Install the Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke + accessibility (axe), against the fake API
+        run: npm run e2e
+
+      - name: Upload the Playwright report (failed runs only)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7

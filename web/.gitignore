@@ -1,0 +1,15 @@
+# npm packages (installed from package-lock.json with `npm ci`)
+node_modules
+
+# Build output (`npm run build`)
+dist
+dist-ssr
+
+# Playwright output (`npm run e2e`): traces, screenshots, the HTML report
+test-results
+playwright-report
+blob-report
+
+# Local-only env overrides, logs
+*.local
+*.log

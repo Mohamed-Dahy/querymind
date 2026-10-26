@@ -1,0 +1,13 @@
+dist
+node_modules
+package-lock.json
+# Vendored from the shadcn package: kept byte-identical for upgrades
+src/styles/shadcn-variants.css
+# Generated: scripts/export_openapi.py and npm run gen:api (CI regenerates and compares them)
+openapi.json
+src/api/schema.d.ts
+src/mocks/recorded
+# Copied from the msw package by `npx msw init public`
+public/mockServiceWorker.js
+test-results
+playwright-report

@@ -1,0 +1,431 @@
+{
+  "components": {
+    "schemas": {
+      "AskRequest": {
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Continue this conversation (from an earlier reply), so follow-ups like \"now only for 1997\" work. Leave it out to start a new one.",
+            "title": "Conversation Id"
+          },
+          "question": {
+            "description": "A question about the data, in plain language",
+            "examples": [
+              "Which 5 products are the most expensive?"
+            ],
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AskRequest",
+        "type": "object"
+      },
+      "AskResponse": {
+        "description": "The answer, plus everything needed to check it: the SQL that ran and its rows.",
+        "properties": {
+          "answer": {
+            "description": "Plain-language answer",
+            "title": "Answer",
+            "type": "string"
+          },
+          "answer_from_llm": {
+            "description": "False if the LLM's answer was replaced by a safe templated one",
+            "title": "Answer From Llm",
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "confidence": {
+            "description": "How sure QueryMind is: high, medium or low",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "confidence_reasons": {
+            "description": "Why it isn't high (empty when it is)",
+            "examples": [
+              [
+                "It needed 1 repair to get this result."
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Confidence Reasons",
+            "type": "array"
+          },
+          "conversation_id": {
+            "description": "Send it with the next question to follow up",
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "explanation": {
+            "description": "What the SQL does, in plain words",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "kind": {
+            "const": "answer",
+            "default": "answer",
+            "title": "Kind",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sql": {
+            "description": "The validated SQL that actually ran",
+            "title": "Sql",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "True if more rows existed than the row limit",
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "warnings": {
+            "default": [],
+            "description": "Signs the result may be wrong (empty, duplicated rows...)",
+            "items": {
+              "$ref": "#/components/schemas/ResultWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "conversation_id",
+          "answer",
+          "answer_from_llm",
+          "sql",
+          "explanation",
+          "columns",
+          "rows",
+          "row_count",
+          "truncated",
+          "confidence",
+          "confidence_reasons"
+        ],
+        "title": "AskResponse",
+        "type": "object"
+      },
+      "ClarificationResponse": {
+        "description": "The question had several reasonable meanings: pick one, then ask again. No SQL ran.",
+        "properties": {
+          "clarifying_question": {
+            "examples": [
+              "How would you define \"best\" customers?"
+            ],
+            "title": "Clarifying Question",
+            "type": "string"
+          },
+          "conversation_id": {
+            "description": "Send it with the next question to follow up",
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "clarification",
+            "default": "clarification",
+            "title": "Kind",
+            "type": "string"
+          },
+          "options": {
+            "examples": [
+              [
+                "by total revenue",
+                "by number of orders"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "conversation_id",
+          "clarifying_question",
+          "options"
+        ],
+        "title": "ClarificationResponse",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "Every error has the same shape: a stable code for programs, a message for people.",
+        "properties": {
+          "error": {
+            "description": "Stable error code, e.g. unsafe_sql",
+            "examples": [
+              "unsafe_sql"
+            ],
+            "title": "Error",
+            "type": "string"
+          },
+          "message": {
+            "examples": [
+              "Only SELECT queries are allowed."
+            ],
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "examples": [
+              "ok"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "RefusalResponse": {
+        "description": "QueryMind won't do this (e.g. change data). No SQL ran.",
+        "properties": {
+          "conversation_id": {
+            "description": "Send it with the next question to follow up",
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "refusal",
+            "default": "refusal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "examples": [
+              "I can only read data, not change it."
+            ],
+            "title": "Message",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "conversation_id",
+          "message"
+        ],
+        "title": "RefusalResponse",
+        "type": "object"
+      },
+      "ResultWarning": {
+        "description": "A sign that the result may be wrong although the query ran (see agent/sanity.py).",
+        "properties": {
+          "code": {
+            "examples": [
+              "duplicate_rows"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "examples": [
+              "Some rows appear more than once, which can mean a join counted things twice."
+            ],
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ResultWarning",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Ask questions about your company database in plain language.",
+    "title": "QueryMind",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/ask": {
+      "post": {
+        "description": "Answer a question about the data: the answer, the SQL that ran, and the rows.\n\nOr, with `kind` = \"clarification\", a question back with options (the question was\nambiguous), or with `kind` = \"refusal\", why QueryMind won't do it (e.g. change data).\n\nEvery reply has a `conversation_id`: send it with the next question to follow up on this\none (\"now only for 1997\"). Without one, a new conversation starts.",
+        "operationId": "ask_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "answer": "#/components/schemas/AskResponse",
+                      "clarification": "#/components/schemas/ClarificationResponse",
+                      "refusal": "#/components/schemas/RefusalResponse"
+                    },
+                    "propertyName": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AskResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ClarificationResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RefusalResponse"
+                    }
+                  ],
+                  "title": "Response Ask Ask Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid question, or unsafe generated SQL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The LLM or the database failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The database is not reachable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The query took too long"
+          }
+        },
+        "summary": "Ask",
+        "tags": [
+          "questions"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness check: the server is up. It doesn't touch the DB or LLM (see DEV_GUIDE).",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "ops"
+        ]
+      }
+    }
+  }
+}

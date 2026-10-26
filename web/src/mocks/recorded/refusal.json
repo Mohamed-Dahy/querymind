@@ -1,0 +1,6 @@
+{
+  "kind": "refusal",
+  "question": "Delete all orders from 1996.",
+  "conversation_id": "d8aee0e1-9835-4cc2-8872-5eb9e3ab10ff",
+  "message": "I can only read data and cannot delete orders."
+}

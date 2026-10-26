@@ -1,0 +1,52 @@
+{
+  "kind": "answer",
+  "question": "What is the total sales amount per category?",
+  "conversation_id": "f62fa270-0705-42a2-b18e-8a202896009f",
+  "answer": "Beverages generated the highest sales at about 267,868, followed by Dairy Products at about 234,507 and Confections at about 167,357. Grains/Cereals had the lowest sales at about 95,745.",
+  "answer_from_llm": true,
+  "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id GROUP BY c.category_name LIMIT 1001",
+  "explanation": "Calculates total sales revenue for each product category using the Northwind order details, products, and categories tables.",
+  "columns": [
+    "category_name",
+    "total_sales"
+  ],
+  "rows": [
+    [
+      "Beverages",
+      267868.17978624784
+    ],
+    [
+      "Produce",
+      99984.58007357619
+    ],
+    [
+      "Condiments",
+      106047.08460955074
+    ],
+    [
+      "Grains/Cereals",
+      95744.58735543818
+    ],
+    [
+      "Meat/Poultry",
+      163022.3602687388
+    ],
+    [
+      "Confections",
+      167357.22547338586
+    ],
+    [
+      "Dairy Products",
+      234507.2845305777
+    ],
+    [
+      "Seafood",
+      131261.7365558489
+    ]
+  ],
+  "row_count": 8,
+  "truncated": false,
+  "warnings": [],
+  "confidence": "high",
+  "confidence_reasons": []
+}
