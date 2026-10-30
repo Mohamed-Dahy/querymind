@@ -1,13 +1,14 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { lazy, StrictMode, Suspense } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { RouterProvider } from 'react-router'
 
 import { createQueryClient } from './api/queryClient.ts'
-import App from './App.tsx'
 import { Toaster } from './components/ui/sonner.tsx'
 import { TooltipProvider } from './components/ui/tooltip.tsx'
 import './index.css'
 import { initTheme } from './lib/theme.ts'
+import { createAppRouter } from './router.tsx'
 
 const root = document.getElementById('root')
 if (!root) {
@@ -24,24 +25,15 @@ if (import.meta.env.MODE === 'mock') {
 
 initTheme()
 const queryClient = createQueryClient()
-
-// The style guide exists only in dev: in a production build `import.meta.env.DEV` is `false`, so the
-// bundler drops this import and the page's code never ships. Open it at /?styleguide.
-const Styleguide = import.meta.env.DEV ? lazy(() => import('./pages/Styleguide.tsx')) : null
-const wantsStyleguide = new URLSearchParams(window.location.search).has('styleguide')
+// Every page has a URL (router.tsx); in dev the style guide is at /styleguide.
+const router = createAppRouter()
 
 // StrictMode runs effects twice in dev, to surface missing cleanups early.
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        {Styleguide && wantsStyleguide ? (
-          <Suspense fallback={null}>
-            <Styleguide />
-          </Suspense>
-        ) : (
-          <App />
-        )}
+        <RouterProvider router={router} />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

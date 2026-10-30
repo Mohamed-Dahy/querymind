@@ -37,7 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-// Dev-only page (http://localhost:5173/?styleguide): every token, type size and base component,
+// Dev-only page (http://localhost:5173/styleguide): every token, type size and base component,
 // so a design change can be checked in both themes in one place. Not included in production builds.
 
 const SURFACES = [
