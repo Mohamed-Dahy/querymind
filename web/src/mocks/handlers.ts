@@ -29,13 +29,18 @@ const AMBIGUOUS = /\b(popular|best)\b/i
 /**
  * A recorded reply that fits the question, so mock mode feels like the real API: a follow-up
  * continues, "delete…" is refused, "best…" asks back, anything else gets the recorded answer.
+ * Like the real API, a question without a conversation starts a new one with a fresh id (the
+ * recorded id would make every new conversation the same one on the canvas).
  */
 export function replyFor(request: AskRequest): AskReply {
-  const { question, conversation_id } = request
-  if (conversation_id) return { ...followup, question, conversation_id }
-  if (CHANGES_DATA.test(question)) return { ...refusal, question }
-  if (AMBIGUOUS.test(question)) return { ...clarification, question }
-  return { ...answer, question }
+  const { question } = request
+  if (request.conversation_id) {
+    return { ...followup, question, conversation_id: request.conversation_id }
+  }
+  const conversation_id = crypto.randomUUID()
+  if (CHANGES_DATA.test(question)) return { ...refusal, question, conversation_id }
+  if (AMBIGUOUS.test(question)) return { ...clarification, question, conversation_id }
+  return { ...answer, question, conversation_id }
 }
 
 export const handlers = [

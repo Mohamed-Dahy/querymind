@@ -2,6 +2,7 @@ import { Database, Gauge, LayoutGrid, Network, ScanSearch, type LucideIcon } fro
 import { useRef } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 
+import { CanvasProvider } from '@/canvas/CanvasProvider'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { cn } from '@/lib/utils'
 
@@ -49,7 +50,10 @@ export function AppShell() {
         <NavRail />
         {/* tabIndex -1: focusable by code (route change, skip link) but not a Tab stop itself. */}
         <main id="main" ref={main} tabIndex={-1} className="canvas-grid flex-1 outline-none">
-          <Outlet />
+          {/* Above the routes, so the conversations survive `/` → `/c/<id>` and a visit to Explore. */}
+          <CanvasProvider>
+            <Outlet />
+          </CanvasProvider>
         </main>
       </div>
     </div>

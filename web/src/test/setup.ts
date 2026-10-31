@@ -27,5 +27,15 @@ if (typeof window.matchMedia !== 'function') {
   })
 }
 
+// jsdom has no ResizeObserver either; Radix's tooltip and popovers measure themselves with it.
+// Nothing is laid out in jsdom, so a stand-in that never calls back is enough.
+if (typeof window.ResizeObserver !== 'function') {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+
 // Unmount what each test rendered, so tests don't see each other's DOM.
 afterEach(() => cleanup())

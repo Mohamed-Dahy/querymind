@@ -85,3 +85,21 @@
   /* 8 px: controls. Cells use --radius-cell (12 px, in index.css). */
   --radius: 0.5rem;
 }
+
+/*
+ * SQL highlighting (Shiki's CSS-variables theme, src/lib/highlight.ts), mapped onto our text tokens,
+ * so the colours follow the theme and pass the same contrast checks (contrast.test.ts).
+ */
+:root {
+  --shiki-foreground: var(--fg);
+  --shiki-background: var(--muted);
+  --shiki-token-keyword: var(--info);
+  --shiki-token-string: var(--signal);
+  --shiki-token-string-expression: var(--signal);
+  --shiki-token-constant: var(--warn);
+  --shiki-token-function: var(--fg);
+  --shiki-token-parameter: var(--fg);
+  --shiki-token-comment: var(--fg-muted);
+  --shiki-token-punctuation: var(--fg-muted);
+  --shiki-token-link: var(--info);
+}

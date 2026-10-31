@@ -5,7 +5,6 @@ import { RouterProvider } from 'react-router'
 
 import { createQueryClient } from './api/queryClient.ts'
 import { Toaster } from './components/ui/sonner.tsx'
-import { TooltipProvider } from './components/ui/tooltip.tsx'
 import './index.css'
 import { initTheme } from './lib/theme.ts'
 import { createAppRouter } from './router.tsx'
@@ -32,10 +31,8 @@ const router = createAppRouter()
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <RouterProvider router={router} />
-        <Toaster />
-      </TooltipProvider>
+      <RouterProvider router={router} />
+      <Toaster />
     </QueryClientProvider>
   </StrictMode>,
 )

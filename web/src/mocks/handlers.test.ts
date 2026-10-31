@@ -9,7 +9,19 @@ describe('mock API', () => {
   it('answers with the recorded answer, for the question that was asked', async () => {
     const reply = await ask({ question: 'Sales per country?' })
 
-    expect(reply).toEqual({ ...answer, question: 'Sales per country?' })
+    expect(reply).toEqual({
+      ...answer,
+      question: 'Sales per country?',
+      conversation_id: expect.any(String),
+    })
+  })
+
+  it('starts a new conversation, with a new id, for each question without one', async () => {
+    const first = await ask({ question: 'Sales per country?' })
+    const second = await ask({ question: 'Delete all orders' })
+
+    expect(first.conversation_id).not.toBe(second.conversation_id)
+    expect(first.conversation_id).not.toBe(answer.conversation_id)
   })
 
   it('continues a conversation with the recorded follow-up', async () => {

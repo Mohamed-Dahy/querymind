@@ -17,8 +17,14 @@ function TooltipProvider({
   )
 }
 
+// Each tooltip brings its own provider (as in current shadcn/ui), so the app needs no global one and
+// the tooltip code loads only with the parts that use it (the answer cell, the style guide).
 function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+  return (
+    <TooltipProvider>
+      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipProvider>
+  )
 }
 
 function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
