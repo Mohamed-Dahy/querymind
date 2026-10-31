@@ -1,6 +1,6 @@
 // Runs before every test file (vite.config.ts → test.setupFiles).
 import '@testing-library/jest-dom/vitest' // adds matchers like toBeInTheDocument()
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 
 import { server } from '../mocks/server'
@@ -44,6 +44,10 @@ Object.defineProperties(HTMLElement.prototype, {
   clientHeight: { configurable: true, get: () => 384 },
   clientWidth: { configurable: true, get: () => 800 },
 })
+
+// findBy… and waitFor wait 3 s, not 1 s: lazy parts (AnswerCell, the chart) are compiled by Vite the
+// first time a test file loads them, which on a busy machine can take more than a second.
+configure({ asyncUtilTimeout: 3000 })
 
 // Unmount what each test rendered, so tests don't see each other's DOM.
 afterEach(() => cleanup())

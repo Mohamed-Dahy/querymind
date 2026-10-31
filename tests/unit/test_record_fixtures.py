@@ -17,7 +17,7 @@ from querymind.agent.schemas import (
 from querymind.api.main import create_app
 from querymind.db.executor import QueryResult
 from querymind.safety.errors import UnsafeSqlError
-from scripts.record_fixtures import RECORDINGS, record, write_fixtures
+from scripts.record_fixtures import RECORDINGS, record, select, write_fixtures
 
 ANSWER = AskResult(
     question="What is the total sales amount per category?",
@@ -71,6 +71,8 @@ def test_records_every_reply_and_the_follow_up_continues_the_answer() -> None:
         "followup": "answer",
         "clarification": "clarification",
         "refusal": "refusal",
+        "monthly": "answer",
+        "single": "answer",
     }
     followup = next(r for r in RECORDINGS if r.name == "followup")
     # The follow-up was sent with the answer's conversation id, so it continues that talk.
@@ -90,7 +92,7 @@ def test_an_api_error_is_a_problem_and_its_follow_up_is_skipped() -> None:
     with client_for(scripted(answer=UnsafeSqlError("Only SELECT queries are allowed."))) as client:
         replies, problems = record(client)
 
-    assert set(replies) == {"clarification", "refusal"}
+    assert set(replies) == {"clarification", "refusal", "monthly", "single"}
     assert problems == [
         "answer: HTTP 422 unsafe_sql: Only SELECT queries are allowed.",
         "followup: skipped, 'answer' failed",
@@ -115,3 +117,25 @@ def test_every_follow_up_continues_an_earlier_recording() -> None:
     for recording in RECORDINGS:
         assert recording.follows is None or recording.follows in names
         names.add(recording.name)
+
+
+def test_select_takes_the_named_recordings_in_order() -> None:
+    assert [r.name for r in select(["single", "monthly"])] == ["monthly", "single"]
+
+
+def test_select_adds_the_recording_a_follow_up_needs() -> None:
+    # The follow-up needs the answer's conversation, so the answer is asked too (main() then
+    # writes only the follow-up's file).
+    assert [r.name for r in select(["followup"])] == ["answer", "followup"]
+
+
+def test_recording_a_selection_asks_only_those_questions() -> None:
+    pipeline = scripted()
+    with client_for(pipeline) as client:
+        replies, problems = record(client, select(["monthly", "single"]))
+
+    assert problems == []
+    assert set(replies) == {"monthly", "single"}
+    assert set(pipeline.conversation_ids) == {
+        r.question for r in RECORDINGS if r.name in {"monthly", "single"}
+    }

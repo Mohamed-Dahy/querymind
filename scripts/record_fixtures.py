@@ -2,9 +2,10 @@
 
     uv run python scripts/record_fixtures.py                   # Gemini: keeps the Groq budget free
     uv run python scripts/record_fixtures.py --provider groq
+    uv run python scripts/record_fixtures.py --only monthly single   # just these (others untouched)
 
 Needs what a real question needs: the database (`docker compose up -d --wait`), the schema index
-and the provider's API key. 4 questions, about 12K tokens.
+and the provider's API key. 6 questions, about 18K tokens (all of them).
 
 Each question says which kind of reply it must get. If the LLM answers with another kind (no
 question back for an ambiguous question, say), the script fails loudly and that fixture keeps its
@@ -44,7 +45,27 @@ RECORDINGS = (
     # Ambiguous on purpose (evals/golden/clarification.yaml c02): by units, orders or revenue?
     Recording("clarification", "Which products are the most popular?", "clarification"),
     Recording("refusal", "Delete all orders from 1996.", "refusal"),
+    # U1.5's charts: a time column (a line chart), and a single number (no chart).
+    Recording("monthly", "What were the total sales per month in 1997?", "answer"),
+    Recording("single", "How many customers are there?", "answer"),
 )
+NAMES = tuple(recording.name for recording in RECORDINGS)
+
+
+def select(names: list[str]) -> tuple[Recording, ...]:
+    """The named recordings plus every recording they follow up on, in RECORDINGS order.
+
+    A follow-up needs its parent's conversation, so the parent is asked too; main() writes only the
+    named ones, so the parent's committed file stays as it is.
+    """
+    by_name = {recording.name: recording for recording in RECORDINGS}
+    needed: set[str] = set()
+    for name in names:
+        current: str | None = name
+        while current is not None:
+            needed.add(current)
+            current = by_name[current].follows
+    return tuple(recording for recording in RECORDINGS if recording.name in needed)
 
 
 def record(
@@ -94,7 +115,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--provider", choices=["groq", "gemini"], default="gemini")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="where to write them")
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        choices=NAMES,
+        metavar="NAME",
+        help=f"record only these ({', '.join(NAMES)}); the other fixtures are left as they are",
+    )
     args = parser.parse_args()
+    wanted = set(args.only or NAMES)
 
     try:
         settings = get_settings()
@@ -110,9 +139,10 @@ def main() -> int:
     )
     # raise_server_exceptions=False: a bug comes back as the API's 500 body, like over HTTP.
     with TestClient(create_app(pipeline=pipeline), raise_server_exceptions=False) as client:
-        replies, problems = record(client)
+        replies, problems = record(client, select(sorted(wanted)))
 
-    for path in write_fixtures(replies, args.output):
+    kept = {name: reply for name, reply in replies.items() if name in wanted}
+    for path in write_fixtures(kept, args.output):
         print(f"wrote {path}")
     for problem in problems:
         print(f"FAILED {problem}", file=sys.stderr)

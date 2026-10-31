@@ -1,0 +1,68 @@
+{
+  "kind": "answer",
+  "question": "What were the total sales per month in 1997?",
+  "conversation_id": "70bd6079-6058-4584-bc20-d516cf56d658",
+  "answer": "The query returned 12 rows; see the table for the details.",
+  "answer_from_llm": false,
+  "sql": "SELECT EXTRACT(MONTH FROM o.order_date) AS month, SUM(d.unit_price * d.quantity * (1 - d.discount)) AS total_sales FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY month ORDER BY month LIMIT 1001",
+  "explanation": "Calculates total sales revenue per month for the year 1997 by joining orders and order details, applying the discount formula, and grouping by the month of the order date.",
+  "columns": [
+    "month",
+    "total_sales"
+  ],
+  "rows": [
+    [
+      1.0,
+      61258.0701679784
+    ],
+    [
+      2.0,
+      38483.6349503243
+    ],
+    [
+      3.0,
+      38547.22010972678
+    ],
+    [
+      4.0,
+      53032.95238894149
+    ],
+    [
+      5.0,
+      53781.28982514166
+    ],
+    [
+      6.0,
+      36362.80233480245
+    ],
+    [
+      7.0,
+      51020.85751860481
+    ],
+    [
+      8.0,
+      47287.66968825523
+    ],
+    [
+      9.0,
+      55629.24240174934
+    ],
+    [
+      10.0,
+      66749.22577572716
+    ],
+    [
+      11.0,
+      43533.80876756514
+    ],
+    [
+      12.0,
+      71398.42846388379
+    ]
+  ],
+  "row_count": 12,
+  "truncated": false,
+  "warnings": [],
+  "confidence": "high",
+  "confidence_reasons": []
+}

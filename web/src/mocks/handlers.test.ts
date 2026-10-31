@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ApiError, ask } from '@/api/client'
 import { ERROR_TITLES } from '@/api/errors'
-import { answer, errors, followup, type MockErrorCode } from './fixtures'
+import { answer, errors, followup, monthly, single, type MockErrorCode } from './fixtures'
 
 // The real client against the fake API: what tests and mock mode get for each kind of question.
 describe('mock API', () => {
@@ -42,6 +42,20 @@ describe('mock API', () => {
     })
     expect(await ask({ question: 'rows: 5000' })).toMatchObject({ row_count: 1000 })
     expect(await ask({ question: 'rows: 20' })).toMatchObject({ row_count: 20, truncated: false })
+  })
+
+  it('answers "per month" with the monthly sales, and "how many customers" with one number', async () => {
+    expect(await ask({ question: 'Total sales per month in 1997?' })).toMatchObject({
+      columns: monthly.columns,
+      rows: monthly.rows,
+    })
+    expect(await ask({ question: 'How many customers are there?' })).toMatchObject({
+      rows: single.rows,
+    })
+    // A Streamlit example that must still get the per-category answer (a bar chart).
+    expect(await ask({ question: 'How many orders did each country place?' })).toMatchObject({
+      columns: answer.columns,
+    })
   })
 
   it('refuses to change data and asks back on an ambiguous question', async () => {

@@ -1,17 +1,27 @@
 import { Download, Info, TriangleAlert } from 'lucide-react'
+import { lazy, Suspense, useMemo } from 'react'
 
 import type { AskResponse } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { csvFileName, downloadCsv, toCsv } from '@/lib/csv'
 
 import { CertaintyMeter } from './CertaintyMeter'
+import { pickChart } from './pickChart'
 import { ResultTable } from './ResultTable'
 import { SqlView } from './SqlView'
 
+// Recharts is big: it downloads only when a chart is first shown, not with the page.
+const ResultChart = lazy(() =>
+  import('./ResultChart').then(({ ResultChart }) => ({ default: ResultChart })),
+)
+
 /** An answer: the text, how sure it is, any warnings, then the rows and the SQL as evidence. */
 export function AnswerCell({ reply }: { reply: AskResponse }) {
+  const chart = useMemo(() => pickChart(reply.columns, reply.rows), [reply.columns, reply.rows])
+
   return (
     <div className="space-y-3">
       <p className="text-base">{reply.answer}</p>
@@ -35,11 +45,20 @@ export function AnswerCell({ reply }: { reply: AskResponse }) {
         </ul>
       )}
 
-      <Tabs defaultValue="table">
+      {/* The chart first when one fits; otherwise the table opens (one row, no numbers…). */}
+      <Tabs defaultValue={chart.kind === 'none' ? 'table' : 'chart'}>
         <TabsList aria-label="Evidence">
+          {chart.kind !== 'none' && <TabsTrigger value="chart">Chart</TabsTrigger>}
           <TabsTrigger value="table">Table</TabsTrigger>
           <TabsTrigger value="sql">SQL</TabsTrigger>
         </TabsList>
+        {chart.kind !== 'none' && (
+          <TabsContent value="chart" className="pt-2">
+            <Suspense fallback={<Skeleton className="h-64 w-full motion-reduce:animate-none" />}>
+              <ResultChart spec={chart} />
+            </Suspense>
+          </TabsContent>
+        )}
         <TabsContent value="table" className="space-y-3 pt-2">
           <RowsNote rowCount={reply.row_count} truncated={reply.truncated} />
           {reply.rows.length > 0 && (

@@ -6,7 +6,7 @@ import { apiStatusLoaded, seriousA11yIssues, THEMES, useTheme } from './helpers.
 // The canvas flow in a real browser, against the mock API. U1.8 adds follow-ups, clarifications,
 // refusals and errors to this file.
 for (const theme of THEMES) {
-  test(`${theme} theme: ask an example, get the answer cell, see the table and the SQL`, async ({
+  test(`${theme} theme: ask an example, get the answer cell, see the chart, table and SQL`, async ({
     page,
   }) => {
     await useTheme(page, theme)
@@ -24,6 +24,23 @@ for (const theme of THEMES) {
       'aria-valuetext',
       'High',
     )
+    // The chart opens first: a bar chart drawn in SVG, one image to screen readers with its summary.
+    const chart = cell.getByRole('img', {
+      name: /^Bar chart of total_sales by category_name, 8 bars/,
+    })
+    await expect(chart).toBeVisible()
+    await expect(chart.locator('.recharts-bar-rectangle')).toHaveCount(answer.rows.length)
+    // The bars use our --signal token (read from the page, so it follows the theme).
+    const signal = await page.evaluate(
+      "getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()",
+    )
+    await expect(chart.locator('.recharts-bar-rectangle path').first()).toHaveAttribute(
+      'fill',
+      String(signal),
+    )
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    await cell.getByRole('tab', { name: 'Table' }).click()
     await expect(cell.getByRole('table').getByRole('row')).toHaveCount(answer.rows.length + 1)
     expect(await seriousA11yIssues(page)).toEqual([])
 
@@ -88,4 +105,34 @@ test('1,000 rows: only a window is drawn, scrolling reaches the last row, and so
   )
   await expect(table.locator('tr[aria-rowindex="2"]')).toContainText('Category 1')
   expect(await seriousA11yIssues(page)).toEqual([])
+})
+
+test('sales per month get a line chart; one number gets no chart and opens on the table', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+
+  await box.fill('What were the total sales per month in 1997?')
+  await box.press('Control+Enter')
+  const monthly = page.getByRole('article', {
+    name: 'What were the total sales per month in 1997?',
+  })
+  const line = monthly.getByRole('img', { name: /^Line chart of total_sales by month, 12 points/ })
+  await expect(line).toBeVisible()
+  await expect(line.locator('.recharts-line-dot, .recharts-dot')).toHaveCount(12)
+  expect(await seriousA11yIssues(page)).toEqual([])
+
+  // A new conversation (a fresh page load; U1.8 adds the button): in the same one it would be a
+  // follow-up, which the mock answers with the recorded follow-up.
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  await box.fill('How many customers are there?')
+  await box.press('Control+Enter')
+  const single = page.getByRole('article', { name: 'How many customers are there?' })
+  await expect(single.getByText('There are 91 customers in total.')).toBeVisible()
+  await expect(single.getByRole('tab', { name: 'Chart' })).toHaveCount(0)
+  await expect(single.getByRole('tab', { name: 'Table' })).toHaveAttribute('aria-selected', 'true')
+  await expect(single.getByRole('table')).toBeVisible()
 })

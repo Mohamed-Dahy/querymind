@@ -1,0 +1,22 @@
+{
+  "kind": "answer",
+  "question": "How many customers are there?",
+  "conversation_id": "350e5e1b-f952-487f-86ed-ca437fb53b7c",
+  "answer": "There are 91 customers in total.",
+  "answer_from_llm": true,
+  "sql": "SELECT COUNT(*) AS customer_count FROM customers LIMIT 1001",
+  "explanation": "This query counts the total number of customers in the trading business database.",
+  "columns": [
+    "customer_count"
+  ],
+  "rows": [
+    [
+      91
+    ]
+  ],
+  "row_count": 1,
+  "truncated": false,
+  "warnings": [],
+  "confidence": "high",
+  "confidence_reasons": []
+}

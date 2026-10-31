@@ -6,6 +6,10 @@ import { sqlTokens } from './highlight'
 
 describe('sqlTokens', () => {
   it('colours the recorded SQL with our CSS variables (the grammar runs on the JS engine)', async () => {
+    // Shiki stops colouring a line after 500 ms (tokenizeTimeLimit) and leaves the rest plain. The
+    // first call also compiles the grammar, which on a busy test machine can use up that time, so
+    // warm up first: then every token of the line is coloured.
+    await sqlTokens('SELECT 1')
     const lines = await sqlTokens(answer.sql)
     const tokens = lines.flat()
 

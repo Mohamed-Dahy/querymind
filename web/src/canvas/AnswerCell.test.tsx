@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AskResponse } from '@/api/client'
 import * as csv from '@/lib/csv'
-import { answer } from '@/mocks/fixtures'
+import { answer, monthly, single } from '@/mocks/fixtures'
 
 import { AnswerCell } from './AnswerCell'
 
@@ -19,9 +19,14 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+/** The recorded answer opens on its chart; these tests look at the table. */
+async function openTable(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('tab', { name: 'Table' }))
+}
+
 describe('AnswerCell', () => {
-  it('shows the answer, high confidence, the row count and the table', () => {
-    renderAnswer()
+  it('shows the answer, high confidence, the row count and the table', async () => {
+    await openTable(renderAnswer())
 
     expect(screen.getByText(answer.answer)).toBeInTheDocument()
     expect(screen.getByRole('meter', { name: 'Confidence' })).toHaveAttribute(
@@ -70,8 +75,8 @@ describe('AnswerCell', () => {
     ).toEqual(['Some rows appear more than once.', 'The query returned no rows.'])
   })
 
-  it('says when only the first rows are shown', () => {
-    renderAnswer({ truncated: true, row_count: 1000 })
+  it('says when only the first rows are shown', async () => {
+    await openTable(renderAnswer({ truncated: true, row_count: 1000 }))
 
     expect(
       screen.getByText(
@@ -107,6 +112,7 @@ describe('AnswerCell', () => {
     const download = vi.spyOn(csv, 'downloadCsv').mockImplementation(() => {})
     const user = renderAnswer()
 
+    await openTable(user)
     await user.click(screen.getByRole('button', { name: 'Download CSV' }))
 
     expect(download).toHaveBeenCalledExactlyOnceWith(
@@ -149,5 +155,36 @@ describe('AnswerCell', () => {
     expect(
       await screen.findByText("Couldn't copy. Select the SQL and press Ctrl+C."),
     ).toBeInTheDocument()
+  })
+
+  it('opens on a bar chart for sales per category, described for screen readers', async () => {
+    renderAnswer()
+
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabs).toEqual(['Chart', 'Table', 'SQL'])
+    expect(screen.getByRole('tab', { name: 'Chart' })).toHaveAttribute('aria-selected', 'true')
+    // Recharts loads lazily; the figure is one image named by its summary.
+    expect(
+      await screen.findByRole('img', {
+        name: /^Bar chart of total_sales by category_name, 8 bars\./,
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens on a line chart for the monthly sales (a template answer, so with the badge)', async () => {
+    render(<AnswerCell reply={monthly} />)
+
+    expect(
+      await screen.findByRole('img', { name: /^Line chart of total_sales by month, 12 points/ }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Answer from a template' })).toBeInTheDocument()
+  })
+
+  it('has no Chart tab for one number, and opens on the table', () => {
+    render(<AnswerCell reply={single} />)
+
+    expect(screen.queryByRole('tab', { name: 'Chart' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Table' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('table')).toBeInTheDocument()
   })
 })

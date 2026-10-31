@@ -8,7 +8,9 @@ import {
   errors,
   followup,
   health,
+  monthly,
   refusal,
+  single,
   type MockErrorCode,
 } from './fixtures'
 
@@ -28,6 +30,10 @@ const CHANGES_DATA = /\b(delete|drop|update|insert|truncate|alter)\b/i
 const AMBIGUOUS = /\b(popular|best)\b/i
 // Mock mode only: "rows: 1000" answers with that many made-up rows, to try the table (max 1,000).
 const MANY_ROWS = /\brows:\s*(\d+)\b/i
+// The two chart cases (U1.5). Only "how many customers…": "How many orders did each country place?"
+// must still get the bar-chart answer.
+const PER_MONTH = /\bper month\b|\bmonthly\b/i
+const ONE_NUMBER = /^how many customers\b/i
 
 /**
  * A recorded reply that fits the question, so mock mode feels like the real API: a follow-up
@@ -48,6 +54,8 @@ export function replyFor(request: AskRequest): AskReply {
   const conversation_id = crypto.randomUUID()
   if (CHANGES_DATA.test(question)) return { ...refusal, question, conversation_id }
   if (AMBIGUOUS.test(question)) return { ...clarification, question, conversation_id }
+  if (PER_MONTH.test(question)) return { ...monthly, question, conversation_id }
+  if (ONE_NUMBER.test(question)) return { ...single, question, conversation_id }
   return { ...answer, question, conversation_id }
 }
 
