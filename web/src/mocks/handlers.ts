@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import type { AskReply, AskRequest } from '@/api/client'
 import {
   answer,
+  answerWithRows,
   clarification,
   errors,
   followup,
@@ -25,6 +26,8 @@ export function apiError(code: MockErrorCode) {
 const ERROR_PREFIX = /^error:\s*(\w+)$/i
 const CHANGES_DATA = /\b(delete|drop|update|insert|truncate|alter)\b/i
 const AMBIGUOUS = /\b(popular|best)\b/i
+// Mock mode only: "rows: 1000" answers with that many made-up rows, to try the table (max 1,000).
+const MANY_ROWS = /\brows:\s*(\d+)\b/i
 
 /**
  * A recorded reply that fits the question, so mock mode feels like the real API: a follow-up
@@ -34,6 +37,11 @@ const AMBIGUOUS = /\b(popular|best)\b/i
  */
 export function replyFor(request: AskRequest): AskReply {
   const { question } = request
+  const many = MANY_ROWS.exec(question)?.[1]
+  if (many) {
+    const conversation_id = request.conversation_id ?? crypto.randomUUID()
+    return { ...answerWithRows(Math.min(Number(many), 1000)), question, conversation_id }
+  }
   if (request.conversation_id) {
     return { ...followup, question, conversation_id: request.conversation_id }
   }

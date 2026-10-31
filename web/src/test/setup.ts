@@ -37,5 +37,13 @@ if (typeof window.ResizeObserver !== 'function') {
   }
 }
 
+// jsdom lays nothing out, so every element is 0 × 0 px, and a virtualized list (ResultTable) would
+// draw no rows. Give elements the size of the table's scroll area instead: a window of rows appears,
+// as in a browser.
+Object.defineProperties(HTMLElement.prototype, {
+  clientHeight: { configurable: true, get: () => 384 },
+  clientWidth: { configurable: true, get: () => 800 },
+})
+
 // Unmount what each test rendered, so tests don't see each other's DOM.
 afterEach(() => cleanup())

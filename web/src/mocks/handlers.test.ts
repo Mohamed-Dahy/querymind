@@ -34,6 +34,16 @@ describe('mock API', () => {
     })
   })
 
+  it('answers "rows: N" with that many made-up rows, at most 1,000', async () => {
+    expect(await ask({ question: 'rows: 1000' })).toMatchObject({
+      kind: 'answer',
+      row_count: 1000,
+      truncated: true,
+    })
+    expect(await ask({ question: 'rows: 5000' })).toMatchObject({ row_count: 1000 })
+    expect(await ask({ question: 'rows: 20' })).toMatchObject({ row_count: 20, truncated: false })
+  })
+
   it('refuses to change data and asks back on an ambiguous question', async () => {
     expect((await ask({ question: 'Delete all orders' })).kind).toBe('refusal')
     expect((await ask({ question: 'Who are our best customers?' })).kind).toBe('clarification')

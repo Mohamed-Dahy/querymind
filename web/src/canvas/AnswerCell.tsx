@@ -7,9 +7,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { csvFileName, downloadCsv, toCsv } from '@/lib/csv'
 
 import { CertaintyMeter } from './CertaintyMeter'
+import { ResultTable } from './ResultTable'
 import { SqlView } from './SqlView'
-
-const NUMBER = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 })
 
 /** An answer: the text, how sure it is, any warnings, then the rows and the SQL as evidence. */
 export function AnswerCell({ reply }: { reply: AskResponse }) {
@@ -43,7 +42,9 @@ export function AnswerCell({ reply }: { reply: AskResponse }) {
         </TabsList>
         <TabsContent value="table" className="space-y-3 pt-2">
           <RowsNote rowCount={reply.row_count} truncated={reply.truncated} />
-          {reply.rows.length > 0 && <SimpleTable reply={reply} />}
+          {reply.rows.length > 0 && (
+            <ResultTable columns={reply.columns} rows={reply.rows} question={reply.question} />
+          )}
           <Button
             type="button"
             variant="outline"
@@ -95,55 +96,4 @@ function RowsNote({ rowCount, truncated }: { rowCount: number; truncated: boolea
       Showing the first {rows}: more rows matched than the row limit allows.
     </p>
   )
-}
-
-/** A plain, accessible table of the rows. U1.4 replaces it (sorting, types, 1,000 rows). */
-function SimpleTable({ reply }: { reply: AskResponse }) {
-  return (
-    // A scroll area must be reachable by keyboard (tabIndex 0) to scroll it with the arrow keys.
-    <div
-      role="region"
-      aria-label="Result rows"
-      tabIndex={0}
-      className="max-h-96 overflow-auto rounded-lg border outline-none focus-visible:ring-3 focus-visible:ring-ring"
-    >
-      <table className="w-full text-sm">
-        <caption className="sr-only">Result rows for: {reply.question}</caption>
-        <thead className="sticky top-0 bg-muted">
-          <tr>
-            {reply.columns.map((column) => (
-              <th key={column} scope="col" className="px-3 py-2 text-left font-medium">
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {reply.rows.map((row, rowIndex) => (
-            <tr key={rowIndex} className="border-t">
-              {row.map((value, columnIndex) => (
-                <td
-                  key={columnIndex}
-                  className={
-                    typeof value === 'number'
-                      ? 'px-3 py-1.5 text-right tabular-nums'
-                      : 'px-3 py-1.5'
-                  }
-                >
-                  {formatValue(value)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function formatValue(value: unknown) {
-  if (value === null) return <span className="text-fg-muted italic">null</span>
-  if (typeof value === 'number') return NUMBER.format(value)
-  if (typeof value === 'string') return value
-  return JSON.stringify(value)
 }

@@ -55,3 +55,37 @@ test('the composer keeps focus while the URL changes, so the next question can b
   await page.goBack()
   await expect(page).not.toHaveURL(/\/$/)
 })
+
+test('1,000 rows: only a window is drawn, scrolling reaches the last row, and sorting works', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+  // Mock mode only: "rows: 1000" answers with 1,000 made-up rows.
+  await box.fill('rows: 1000')
+  await box.press('Control+Enter')
+
+  const cell = page.getByRole('article', { name: 'rows: 1000' })
+  await expect(cell.getByText(/Showing the first 1,000 rows/)).toBeVisible()
+  const table = cell.getByRole('table')
+  await expect(table).toHaveAttribute('aria-rowcount', '1001')
+  expect(await table.locator('tbody tr[aria-rowindex]').count()).toBeLessThan(60)
+
+  // Scroll to the bottom by keyboard (End): the last row is drawn, and still only a window of rows.
+  const area = cell.getByRole('region', { name: 'Result rows' })
+  await area.focus()
+  await page.keyboard.press('End')
+  await expect(table.locator('tr[aria-rowindex="1001"]')).toContainText('Category 1000')
+  expect(await table.locator('tbody tr[aria-rowindex]').count()).toBeLessThan(60)
+
+  // Sorting covers all 1,000 rows; the header stays readable while the rows scroll.
+  await page.keyboard.press('Home')
+  await cell.getByRole('button', { name: 'category_name' }).click()
+  await expect(cell.getByRole('columnheader', { name: 'category_name' })).toHaveAttribute(
+    'aria-sort',
+    'ascending',
+  )
+  await expect(table.locator('tr[aria-rowindex="2"]')).toContainText('Category 1')
+  expect(await seriousA11yIssues(page)).toEqual([])
+})

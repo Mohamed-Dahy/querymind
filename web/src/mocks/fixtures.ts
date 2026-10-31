@@ -19,6 +19,18 @@ export const followup = followupJson as AskResponse
 export const clarification = clarificationJson as ClarificationResponse
 export const refusal = refusalJson as RefusalResponse
 
+/**
+ * A big result for the table (U1.4): the recorded answer's shape with `count` made-up rows, and a
+ * null now and then. Built from the typed fixture, so it stays an AskResponse.
+ */
+export function answerWithRows(count: number): AskResponse {
+  const rows = Array.from({ length: count }, (_, index) => [
+    `Category ${index + 1}`,
+    index % 50 === 49 ? null : ((index * 7919) % 100_000) + 0.25,
+  ])
+  return { ...answer, rows, row_count: count, truncated: count >= 1000 }
+}
+
 // The version comes from the exported schema, so it changes with the API's.
 export const health: HealthResponse = { status: 'ok', version: openapi.info.version }
 
