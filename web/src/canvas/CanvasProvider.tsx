@@ -14,9 +14,16 @@ let lastCellId = 0
 /** Any failure as a cell error: the API's own code and message, or a generic one. */
 function cellError(error: unknown): CellError {
   if (error instanceof ApiError) {
-    return error.status === undefined
-      ? { code: error.code, message: error.message }
-      : { code: error.code, message: error.message, status: error.status }
+    const { code, message, status, retryAfterSeconds } = error
+    return {
+      code,
+      message,
+      ...(status !== undefined && { status }),
+      ...(retryAfterSeconds !== undefined && {
+        retryAfterSeconds,
+        retryAt: Date.now() + retryAfterSeconds * 1000,
+      }),
+    }
   }
   return { code: 'unexpected', message: 'Something went wrong in the browser. Please try again.' }
 }
@@ -38,17 +45,12 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     latest.current = { store, pathname }
   }, [store, pathname])
 
-  const askIn = useCallback(
-    async (key: string, question: string, parentId?: string) => {
+  // Asks the API for a cell that is already running, and dispatches what happened.
+  const send = useCallback(
+    async (key: string, cellId: string, question: string) => {
       // The id comes from the conversation, not the URL: a follow-up typed at `/` right after the
       // first answer must continue that conversation.
       const conversationId = conversationAt(latest.current.store, key).id
-      const cellId = `cell-${++lastCellId}`
-      dispatch(
-        parentId === undefined
-          ? { key, type: 'asked', cellId, question }
-          : { key, type: 'asked', cellId, question, parentId },
-      )
       try {
         const reply = await mutateAsync({ question, conversation_id: conversationId })
         dispatch({ key, type: 'replied', cellId, reply })
@@ -68,9 +70,25 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CanvasContextValue>(
     () => ({
       store,
-      ask: (key, question, parentId) => void askIn(key, question, parentId),
+      ask: (key, question, parentId) => {
+        const cellId = `cell-${++lastCellId}`
+        dispatch(
+          parentId === undefined
+            ? { key, type: 'asked', cellId, question }
+            : { key, type: 'asked', cellId, question, parentId },
+        )
+        void send(key, cellId, question)
+      },
+      retry: (key, cellId) => {
+        const cell = conversationAt(latest.current.store, key).cells.find(
+          ({ id, status }) => id === cellId && status === 'failed',
+        )
+        if (cell === undefined) return
+        dispatch({ key, type: 'retried', cellId })
+        void send(key, cellId, cell.question)
+      },
     }),
-    [store, askIn],
+    [store, send],
   )
   return <CanvasContext value={value}>{children}</CanvasContext>
 }

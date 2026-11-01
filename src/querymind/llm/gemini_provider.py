@@ -6,7 +6,37 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
 from pydantic import SecretStr
 
-from querymind.llm.langchain_provider import LangChainProvider
+from querymind.llm.langchain_provider import LangChainProvider, positive_seconds
+
+
+def _client_error(exc: Exception) -> genai_errors.ClientError | None:
+    """The SDK's error behind `exc`: LangChain wraps it and keeps it as the `__cause__`."""
+    for candidate in (exc, exc.__cause__):
+        if isinstance(candidate, genai_errors.ClientError):
+            return candidate
+    return None
+
+
+def is_rate_limit(exc: Exception) -> bool:
+    """True if Gemini said "too many requests" (RESOURCE_EXHAUSTED)."""
+    error = _client_error(exc)
+    return error is not None and error.code == 429
+
+
+def retry_after_seconds(exc: Exception) -> float | None:
+    """Gemini's wait, from the body of its 429: error.details[].retryDelay, e.g. "17s".
+
+    The body is Google's JSON, so nothing about its shape is taken for granted.
+    """
+    error = _client_error(exc)
+    body = error.details if error is not None else None
+    inner = body.get("error") if isinstance(body, dict) else None
+    details = inner.get("details") if isinstance(inner, dict) else None
+    for detail in details if isinstance(details, list) else []:
+        delay = detail.get("retryDelay") if isinstance(detail, dict) else None
+        if isinstance(delay, str):
+            return positive_seconds(delay.removesuffix("s"))
+    return None
 
 
 class GeminiProvider(LangChainProvider):
@@ -33,4 +63,6 @@ class GeminiProvider(LangChainProvider):
                 # through. Found in 4.4, when the Wi-Fi dropped and crashed a whole eval run.
                 httpx.TransportError,
             ),
+            is_rate_limit=is_rate_limit,
+            retry_after_seconds=retry_after_seconds,
         )

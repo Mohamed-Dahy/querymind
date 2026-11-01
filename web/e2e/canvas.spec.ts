@@ -210,3 +210,35 @@ test('on a phone, the sticky composer hides neither a question back nor the box 
   await expect(own).toBeFocused()
   await expect.poll(gapAbove(own)).toBeGreaterThanOrEqual(0)
 })
+
+for (const theme of THEMES) {
+  test(`${theme} theme: a rate limit counts down before Retry; unsafe SQL offers Rephrase`, async ({
+    page,
+  }) => {
+    await useTheme(page, theme)
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    const box = page.getByRole('textbox', { name: 'Your question' })
+
+    await box.fill('error: llm_rate_limited')
+    await box.press('Control+Enter')
+    const limited = page.getByRole('article', { name: 'error: llm_rate_limited' })
+    await expect(limited.getByText('The AI model has reached its usage limit.')).toBeVisible()
+    await expect(limited.getByText(/^Try again in \d+ seconds$/)).toBeVisible()
+    await expect(limited.getByRole('button', { name: 'Retry' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    await box.fill('error: unsafe_sql')
+    await box.press('Control+Enter')
+    const unsafe = page.getByRole('article', { name: 'error: unsafe_sql' })
+    await unsafe.getByRole('button', { name: 'Rephrase' }).click()
+    await expect(box).toHaveValue('error: unsafe_sql')
+    await expect(box).toBeFocused()
+    expect(await seriousA11yIssues(page)).toEqual([])
+  })
+}

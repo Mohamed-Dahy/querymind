@@ -11,6 +11,7 @@ import {
   monthly,
   refusal,
   single,
+  type MockError,
   type MockErrorCode,
 } from './fixtures'
 
@@ -20,8 +21,12 @@ export const ASK_URL = '/api/ask'
 
 /** The API's error body with its real status, e.g. apiError('db_unavailable') → 503. */
 export function apiError(code: MockErrorCode) {
-  const { status, message } = errors[code]
-  return HttpResponse.json({ error: code, message }, { status })
+  const { status, message, retry_after_seconds: wait }: MockError = errors[code]
+  if (wait === undefined) return HttpResponse.json({ error: code, message }, { status })
+  return HttpResponse.json(
+    { error: code, message, retry_after_seconds: wait },
+    { status, headers: { 'Retry-After': String(wait) } },
+  )
 }
 
 // Mock mode only: typing "error: db_unavailable" shows that error, to design the error states.

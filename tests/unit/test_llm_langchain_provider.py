@@ -3,6 +3,7 @@
 The LangChain chat model is replaced by a MagicMock, so no real LLM is ever called.
 """
 
+import pickle
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,8 +12,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from querymind.llm import LLMOutputError, LLMProviderError
-from querymind.llm.langchain_provider import LangChainProvider, token_usage
+from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
+from querymind.llm.langchain_provider import LangChainProvider, positive_seconds, token_usage
 
 
 class Answer(BaseModel):
@@ -170,3 +171,41 @@ def test_each_call_logs_its_tokens(
 def test_token_usage_unknown_or_failed() -> None:
     assert token_usage(AIMessage("no usage")) == {"input_tokens": None, "output_tokens": None}
     assert token_usage(None) == {"input_tokens": None, "output_tokens": None}  # the call failed
+
+
+def test_a_rate_limit_is_a_provider_error_that_carries_the_wait(chat_model: MagicMock) -> None:
+    provider = LangChainProvider(
+        name="test",
+        chat_model=chat_model,
+        provider_errors=(VendorDown,),
+        is_rate_limit=lambda exc: "429" in str(exc),
+        retry_after_seconds=lambda _exc: 17.0,
+    )
+    chat_model.invoke.side_effect = VendorDown("429 too many")
+    with pytest.raises(LLMRateLimitError) as info:
+        provider.generate_text("q")
+    assert isinstance(info.value, LLMProviderError)  # evals and fallbacks keep working
+    assert info.value.retry_after_seconds == 17.0
+    assert isinstance(info.value.__cause__, VendorDown)
+
+    chat_model.invoke.side_effect = VendorDown("connection refused")
+    with pytest.raises(LLMProviderError) as other:
+        provider.generate_text("q")
+    assert not isinstance(other.value, LLMRateLimitError)
+
+
+def test_a_rate_limit_error_survives_pickling() -> None:
+    # Ray sends a worker's exceptions to the main process pickled (evals --workers, 4.3).
+    copy = pickle.loads(pickle.dumps(LLMRateLimitError("429", retry_after_seconds=17.0)))
+    assert isinstance(copy, LLMRateLimitError)
+    assert str(copy) == "429"
+    assert copy.retry_after_seconds == 17.0
+
+
+@pytest.mark.parametrize(
+    ("text", "seconds"),
+    [("17", 17.0), ("1.5", 1.5), ("0", None), ("-3", None), ("soon", None), ("inf", None),
+     ("nan", None), (None, None)],
+)  # fmt: skip
+def test_positive_seconds(text: object, seconds: float | None) -> None:
+    assert positive_seconds(text) == seconds

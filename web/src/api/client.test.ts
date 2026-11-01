@@ -83,6 +83,36 @@ describe('ask', () => {
   })
 })
 
+describe('a rate limit', () => {
+  it('carries the wait from the error body', async () => {
+    stubFetch(() =>
+      Promise.resolve(
+        Response.json(
+          { error: 'llm_rate_limited', message: 'Limit reached.', retry_after_seconds: 18 },
+          { status: 429 },
+        ),
+      ),
+    )
+
+    await expect(ask({ question: 'q' })).rejects.toMatchObject({
+      code: 'llm_rate_limited',
+      status: 429,
+      retryAfterSeconds: 18,
+    })
+  })
+
+  it('has no wait when the API sent none', async () => {
+    stubFetch(() =>
+      Promise.resolve(
+        Response.json({ error: 'llm_rate_limited', message: 'Limit.' }, { status: 429 }),
+      ),
+    )
+
+    const error = await ask({ question: 'q' }).catch((e: unknown) => e)
+    expect((error as ApiError).retryAfterSeconds).toBeUndefined()
+  })
+})
+
 describe('failures without an API error body', () => {
   it('a gateway error (the dev proxy with uvicorn stopped) means the API is unreachable', async () => {
     stubFetch(async () => new Response(null, { status: 502 }))

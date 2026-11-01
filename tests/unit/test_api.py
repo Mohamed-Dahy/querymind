@@ -21,7 +21,7 @@ from querymind.api.main import create_app
 from querymind.api.schemas import AskResponse
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult
-from querymind.llm import LLMOutputError, LLMProviderError
+from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
 from querymind.logging_setup import JsonFormatter
 from querymind.safety.errors import UnsafeSqlError
 
@@ -144,7 +144,9 @@ def test_invalid_requests_get_a_clean_422(body: dict[str, object], message: str)
         (DatabaseUnavailableError("Could not connect to the database. Please try again later."),
          503, "db_unavailable", "Could not connect to the database. Please try again later."),
         (LLMProviderError("groq request failed: rate limited"), 502, "llm_unavailable",
-         "The AI provider did not respond (network, rate limit or outage)."),
+         "The AI provider did not respond (network or outage)."),
+        (LLMRateLimitError("groq rate limit: 429"), 429, "llm_rate_limited",
+         "The AI provider's usage limit was reached. Please try again later."),
         (LLMOutputError("groq output did not match the schema"), 502, "llm_bad_output",
          "The AI model declined or answered in the wrong format. Try rewording it."),
     ],
@@ -156,6 +158,28 @@ def test_known_errors_map_to_clean_responses(
         response = client.post("/ask", json={"question": "anything"})
     assert response.status_code == status
     assert response.json() == {"error": code, "message": message}
+
+
+def test_a_rate_limit_says_how_long_to_wait_rounded_up() -> None:
+    vendor = "groq rate limit: Error code: 429 - Limit 100000, Used 99000 on model openai/gpt-oss"
+    error = LLMRateLimitError(vendor, retry_after_seconds=17.2)
+    with client_for(FakePipeline(error)) as client:
+        response = client.post("/ask", json={"question": "anything"})
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "18"
+    assert response.json() == {
+        "error": "llm_rate_limited",
+        "message": "The AI provider's usage limit was reached. Please try again later.",
+        "retry_after_seconds": 18,
+    }
+    assert "groq" not in response.text and "Limit 100000" not in response.text
+
+
+def test_a_rate_limit_without_a_wait_has_no_header() -> None:
+    with client_for(FakePipeline(LLMRateLimitError("gemini rate limit"))) as client:
+        response = client.post("/ask", json={"question": "anything"})
+    assert response.status_code == 429
+    assert "retry-after" not in response.headers
 
 
 def test_llm_vendor_details_stay_in_the_server_log(caplog: pytest.LogCaptureFixture) -> None:

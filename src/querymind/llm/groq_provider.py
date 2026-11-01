@@ -4,7 +4,7 @@ import groq
 from langchain_groq import ChatGroq
 from pydantic import SecretStr
 
-from querymind.llm.langchain_provider import LangChainProvider
+from querymind.llm.langchain_provider import LangChainProvider, positive_seconds
 
 # Models with Groq's *strict* structured outputs: the server constrains decoding so the answer
 # always matches the JSON schema. With plain tool calling, gpt-oss sometimes answers in prose
@@ -23,6 +23,18 @@ def is_output_error(exc: Exception) -> bool:
         return False
     error = exc.body.get("error")  # the body is Groq's JSON: {"error": {"code": ..., ...}}
     return isinstance(error, dict) and error.get("code") in OUTPUT_ERROR_CODES
+
+
+def is_rate_limit(exc: Exception) -> bool:
+    """True if Groq said "too many requests" (tokens or requests, per minute or per day)."""
+    return isinstance(exc, groq.RateLimitError)
+
+
+def retry_after_seconds(exc: Exception) -> float | None:
+    """Groq's wait, from the `retry-after` header of its 429 response."""
+    if not isinstance(exc, groq.APIStatusError):
+        return None
+    return positive_seconds(exc.response.headers.get("retry-after"))
 
 
 class GroqProvider(LangChainProvider):
@@ -54,4 +66,6 @@ class GroqProvider(LangChainProvider):
             provider_errors=(groq.APIError,),
             structured_output_options=options,
             is_output_error=is_output_error,
+            is_rate_limit=is_rate_limit,
+            retry_after_seconds=retry_after_seconds,
         )

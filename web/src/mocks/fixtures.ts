@@ -40,6 +40,8 @@ export function answerWithRows(count: number): AskResponse {
 // The version comes from the exported schema, so it changes with the API's.
 export const health: HealthResponse = { status: 'ok', version: openapi.info.version }
 
+export type MockError = { status: number; message: string; retry_after_seconds?: number }
+
 /** Hand-made: one per error code the API sends, with its real HTTP status (api/main.py). */
-export const errors = errorsJson satisfies Record<string, { status: number; message: string }>
+export const errors = errorsJson satisfies Record<string, MockError>
 export type MockErrorCode = keyof typeof errors

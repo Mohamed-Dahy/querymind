@@ -12,7 +12,15 @@ import type { AskReply } from '@/api/client'
 export const NEW_CONVERSATION = 'new'
 
 /** Why a question failed: the API's stable code and its message for people (client.ts ApiError). */
-export type CellError = { code: string; message: string; status?: number }
+export type CellError = {
+  code: string
+  message: string
+  status?: number
+  /** A rate limit's wait, as the API said it. */
+  retryAfterSeconds?: number
+  /** When that wait ends (a timestamp, not a counter: leaving the page doesn't restart it). */
+  retryAt?: number
+}
 
 export type CellStatus = 'running' | 'done' | 'failed'
 

@@ -186,6 +186,12 @@ export interface components {
              * @example Only SELECT queries are allowed.
              */
             message: string;
+            /**
+             * Retry After Seconds
+             * @description Seconds to wait before retrying (llm_rate_limited, if the provider said)
+             * @example 18
+             */
+            retry_after_seconds?: number | null;
         };
         /** HealthResponse */
         HealthResponse: {
@@ -271,6 +277,15 @@ export interface operations {
             };
             /** @description Invalid question, or unsafe generated SQL */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The LLM provider's usage limit was reached */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

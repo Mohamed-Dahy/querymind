@@ -1,10 +1,9 @@
-import { CircleAlert } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 
-import { errorTitle } from '@/api/errors'
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { ClarificationCell } from './ClarificationCell'
+import { ErrorCell } from './ErrorCell'
 import { RefusalCell } from './RefusalCell'
 import type { Cell as CellData } from './state'
 
@@ -20,13 +19,18 @@ type CellProps = {
   busy: boolean
   /** Asks a question that continues from this cell. */
   onAsk: (question: string, parentId: string) => void
+  /** Runs this failed cell's question again, in place. */
+  onRetry: (cellId: string) => void
+  /** Puts this cell's question back in the composer, to change it. */
+  onRephrase: (question: string) => void
 }
 
 /**
  * One question on the canvas, and whatever came back for it. The frame (the question as a heading)
  * is shared; the body depends on the status and the reply's `kind`.
  */
-export function Cell({ cell, busy, onAsk }: CellProps) {
+export function Cell(props: CellProps) {
+  const { cell } = props
   const headingId = `${cell.id}-question`
   return (
     <article
@@ -37,24 +41,21 @@ export function Cell({ cell, busy, onAsk }: CellProps) {
       <h2 id={headingId} className="mb-3 text-base font-semibold">
         {cell.question}
       </h2>
-      <CellBody cell={cell} busy={busy} onAsk={onAsk} />
+      <CellBody {...props} />
     </article>
   )
 }
 
-function CellBody({ cell, busy, onAsk }: CellProps) {
+function CellBody({ cell, busy, onAsk, onRetry, onRephrase }: CellProps) {
   if (cell.status === 'running') return <RunningBody />
   if (cell.status === 'failed' || cell.reply === undefined) {
-    // U1.7 turns this into the error cell (Retry, a countdown for rate limits).
-    const error = cell.error ?? { code: 'unexpected', message: '' }
     return (
-      <div className="flex items-start gap-2 text-sm">
-        <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
-        <div>
-          <p className="font-medium">{errorTitle(error.code)}</p>
-          {error.message && <p className="text-fg-muted">{error.message}</p>}
-        </div>
-      </div>
+      <ErrorCell
+        error={cell.error ?? { code: 'unexpected', message: '' }}
+        busy={busy}
+        onRetry={() => onRetry(cell.id)}
+        onRephrase={() => onRephrase(cell.question)}
+      />
     )
   }
 

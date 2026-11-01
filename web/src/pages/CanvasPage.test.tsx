@@ -126,6 +126,76 @@ describe('CanvasPage', () => {
     expect(router.state.location.pathname).toBe('/')
   })
 
+  it('Retry runs the question again in the same cell, and the answer replaces the error', async () => {
+    const bodies: AskRequest[] = []
+    let failing = true
+    server.use(
+      http.post(ASK_URL, async ({ request }) => {
+        const body = (await request.json()) as AskRequest
+        bodies.push(body)
+        return failing ? apiError('query_failed') : HttpResponse.json(replyFor(body))
+      }),
+    )
+    const user = userEvent.setup()
+    const { router } = renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(router.state.location.pathname).toBe('/')
+
+    failing = false
+    await user.click(retry)
+
+    expect(await screen.findByText(answer.answer)).toBeInTheDocument()
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(bodies).toEqual([
+      { question: 'Sales per category?', conversation_id: null },
+      { question: 'Sales per category?', conversation_id: null },
+    ])
+    // The first success names the conversation; the focus didn't vanish with the Retry button.
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/c\//))
+    expect(screen.getByRole('textbox', { name: 'Your question' })).toHaveFocus()
+  })
+
+  it('a rate limit counts down from what the API said, then Retry works', async () => {
+    server.use(
+      http.post(ASK_URL, () =>
+        HttpResponse.json(
+          { error: 'llm_rate_limited', message: 'Limit reached.', retry_after_seconds: 1 },
+          { status: 429 },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(retry).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByText('Try again in 1 second')).toBeInTheDocument()
+    expect(
+      screen.getByText('The AI model has reached its usage limit. You can try again in 1 second.'),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('You can try again now.')).toBeInTheDocument()
+    expect(retry).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  it('unsafe SQL has no Retry: Rephrase puts the question back in the composer', async () => {
+    server.use(http.post(ASK_URL, () => apiError('unsafe_sql')))
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+    await user.click(await screen.findByRole('button', { name: 'Rephrase' }))
+
+    const box = screen.getByRole('textbox', { name: 'Your question' })
+    expect(box).toHaveValue('Sales per category?')
+    expect(box).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
   it('a click on an option asks again in the same conversation, in a new cell', async () => {
     const bodies = recordAsks()
     const user = userEvent.setup()

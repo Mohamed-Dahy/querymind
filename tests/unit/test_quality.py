@@ -41,7 +41,7 @@ from querymind.agent.schemas import (
 )
 from querymind.agent.summarizer import SUMMARY_ROWS, summarize
 from querymind.db.executor import QueryResult
-from querymind.llm import LLMOutputError, LLMProviderError
+from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
 from querymind.llm.fake import FakeLLMProvider
 from querymind.semantic.retrieval import SchemaSelection
 
@@ -207,6 +207,16 @@ def test_a_rate_limit_is_retried_then_not_scored_never_zero() -> None:
     faithfulness, hallucination = verdicts[1], verdicts[2]
     assert faithfulness.score is None and faithfulness.error == "LLMProviderError"
     assert hallucination.score is None and hallucination.error == "LLMOutputError"
+
+
+def test_a_rate_limit_is_recorded_as_provider_down_so_the_run_stops() -> None:
+    def judge(metric: str, case: AnswerCase) -> tuple[float, bool, str]:
+        raise LLMRateLimitError("429", retry_after_seconds=17.0)
+
+    verdicts = judge_case(CASE, judge=judge, retries=0, backoff_seconds=1, sleep=no_sleep)
+
+    # judge_answers stops on exactly this name.
+    assert {v.error for v in verdicts} == {"LLMProviderError"}
 
 
 def test_judge_answers_resumes_and_stops_when_the_judge_is_down() -> None:

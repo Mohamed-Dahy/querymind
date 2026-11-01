@@ -24,12 +24,15 @@ const ASK_KINDS: readonly string[] = ['answer', 'clarification', 'refusal']
 export class ApiError extends Error {
   readonly code: string
   readonly status: number | undefined
+  /** How long to wait before retrying, when the API knows (only `llm_rate_limited`). */
+  readonly retryAfterSeconds: number | undefined
 
-  constructor(code: string, message: string, status?: number) {
+  constructor(code: string, message: string, status?: number, retryAfterSeconds?: number) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -112,7 +115,9 @@ function isErrorBody(body: unknown): body is ErrorBody {
 
 /** Our API always sends {error, message}. Anything else came from something in between. */
 function errorFrom(status: number, body: unknown): ApiError {
-  if (isErrorBody(body)) return new ApiError(body.error, body.message, status)
+  if (isErrorBody(body)) {
+    return new ApiError(body.error, body.message, status, body.retry_after_seconds ?? undefined)
+  }
   // A gateway error without our body: the proxy (dev) or load balancer (prod) couldn't reach the API.
   if (status === 502 || status === 503 || status === 504) {
     return new ApiError('api_unreachable', "Can't reach the QueryMind API. Is it running?", status)

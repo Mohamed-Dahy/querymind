@@ -214,6 +214,21 @@
             ],
             "title": "Message",
             "type": "string"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds to wait before retrying (llm_rate_limited, if the provider said)",
+            "examples": [
+              18
+            ],
+            "title": "Retry After Seconds"
           }
         },
         "required": [
@@ -367,6 +382,16 @@
               }
             },
             "description": "Invalid question, or unsafe generated SQL"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The LLM provider's usage limit was reached"
           },
           "502": {
             "content": {

@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { Composer } from './Composer'
+import { Composer, type ComposerHandle } from './Composer'
 import { EmptyCanvas } from './EmptyCanvas'
 import { EXAMPLE_GROUPS } from './examples'
 
@@ -125,5 +126,36 @@ describe('EmptyCanvas', () => {
     await user.click(screen.getByRole('button', { name: 'How many customers are there?' }))
 
     expect(onAsk).not.toHaveBeenCalled()
+  })
+})
+
+describe('Composer from outside (its ref)', () => {
+  it('fill replaces the text, clears the error and puts the focus there', async () => {
+    const user = userEvent.setup()
+    const ref = createRef<ComposerHandle>()
+    render(<Composer ref={ref} onSubmit={() => {}} />)
+    const box = screen.getByRole('textbox', { name: 'Your question' })
+    await user.click(screen.getByRole('button', { name: 'Ask' }))
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    act(() => ref.current?.fill('Sales per region'))
+
+    expect(box).toHaveValue('Sales per region')
+    expect(box).toHaveFocus()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('focus keeps the text', async () => {
+    const user = userEvent.setup()
+    const ref = createRef<ComposerHandle>()
+    render(<Composer ref={ref} onSubmit={() => {}} />)
+    const box = screen.getByRole('textbox', { name: 'Your question' })
+    await user.type(box, 'half a question')
+    await user.tab()
+
+    act(() => ref.current?.focus())
+
+    expect(box).toHaveFocus()
+    expect(box).toHaveValue('half a question')
   })
 })

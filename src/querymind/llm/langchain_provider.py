@@ -9,6 +9,7 @@ for, so this line is the base of cost tracking (the eval adds them up per questi
 """
 
 import logging
+import math
 import time
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -20,7 +21,7 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel, ValidationError
 
 from querymind.llm.base import LLMProvider
-from querymind.llm.errors import LLMOutputError, LLMProviderError
+from querymind.llm.errors import LLMOutputError, LLMProviderError, LLMRateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ class LangChainProvider(LLMProvider):
         provider_errors: tuple[type[Exception], ...],
         structured_output_options: Mapping[str, Any] | None = None,
         is_output_error: Callable[[Exception], bool] | None = None,
+        is_rate_limit: Callable[[Exception], bool] | None = None,
+        retry_after_seconds: Callable[[Exception], float | None] | None = None,
     ) -> None:
         """
         Args:
@@ -48,12 +51,17 @@ class LangChainProvider(LLMProvider):
             is_output_error: picks out the provider errors that mean "the model answered, but
                 not in the requested format" (e.g. it refused in plain text); they are re-raised
                 as `LLMOutputError` instead, because retrying won't help.
+            is_rate_limit: picks out the provider errors that mean "too many requests"; they are
+                re-raised as `LLMRateLimitError`.
+            retry_after_seconds: reads the provider's wait out of a rate-limit error, if it has one.
         """
         self.name = name
         self._chat_model = chat_model
         self._provider_errors = provider_errors
         self._structured_output_options = dict(structured_output_options or {})
         self._is_output_error = is_output_error or (lambda _exc: False)
+        self._is_rate_limit = is_rate_limit or (lambda _exc: False)
+        self._retry_after_seconds = retry_after_seconds or (lambda _exc: None)
 
     def generate_text(self, prompt: str, *, system: str | None = None) -> str:
         message = self._invoke(self._chat_model, prompt, system, kind="text")
@@ -104,6 +112,11 @@ class LangChainProvider(LLMProvider):
         except self._provider_errors as exc:
             if self._is_output_error(exc):
                 raise LLMOutputError(f"{self.name} output did not match the schema: {exc}") from exc
+            if self._is_rate_limit(exc):
+                raise LLMRateLimitError(
+                    f"{self.name} rate limit: {exc}",
+                    retry_after_seconds=self._retry_after_seconds(exc),
+                ) from exc
             raise LLMProviderError(f"{self.name} request failed: {exc}") from exc
         except (OutputParserException, ValidationError) as exc:
             raise LLMOutputError(f"{self.name} output did not match the schema: {exc}") from exc
@@ -117,6 +130,15 @@ class LangChainProvider(LLMProvider):
                     **token_usage(reply),
                 },
             )
+
+
+def positive_seconds(text: object) -> float | None:
+    """A wait sent by a provider as text, or None if it isn't a usable number of seconds."""
+    try:
+        seconds = float(str(text))
+    except ValueError:
+        return None
+    return seconds if math.isfinite(seconds) and seconds > 0 else None
 
 
 def token_usage(reply: object) -> dict[str, int | None]:

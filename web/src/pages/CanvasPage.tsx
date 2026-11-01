@@ -3,16 +3,21 @@ import { useParams } from 'react-router'
 
 import { errorTitle } from '@/api/errors'
 import { Cell } from '@/canvas/Cell'
-import { Composer } from '@/canvas/Composer'
+import { Composer, type ComposerHandle } from '@/canvas/Composer'
 import { EmptyCanvas } from '@/canvas/EmptyCanvas'
 import { NEW_CONVERSATION, type Cell as CellData } from '@/canvas/state'
 import { useConversation } from '@/canvas/useConversation'
+import { formatWait } from '@/canvas/wait'
 
 /** What a screen reader hears about the latest cell (the cells themselves aren't live regions). */
 function announcement(cell: CellData | undefined): string {
   if (cell === undefined) return ''
   if (cell.status === 'running') return 'Working on your question.'
-  if (cell.status === 'failed') return errorTitle(cell.error?.code ?? 'unexpected')
+  if (cell.status === 'failed') {
+    const title = errorTitle(cell.error?.code ?? 'unexpected')
+    const wait = cell.error?.retryAfterSeconds
+    return wait === undefined ? title : `${title} You can try again in ${formatWait(wait)}.`
+  }
   switch (cell.reply?.kind) {
     case 'clarification':
       return 'QueryMind has a question for you.'
@@ -27,8 +32,9 @@ function announcement(cell: CellData | undefined): string {
 export function CanvasPage() {
   // `/` is the new conversation; `/c/<id>` is the conversation with that id.
   const { conversationId } = useParams()
-  const { conversation, busy, ask } = useConversation(conversationId ?? NEW_CONVERSATION)
+  const { conversation, busy, ask, retry } = useConversation(conversationId ?? NEW_CONVERSATION)
   const { cells } = conversation
+  const composer = useRef<ComposerHandle>(null)
 
   // Bring the latest cell into view when it is added, and again when its reply makes it taller.
   const lastCell = useRef<HTMLLIElement>(null)
@@ -58,7 +64,17 @@ export function CanvasPage() {
           <ol aria-label="Questions and answers" className="space-y-4 [&_*]:scroll-mb-56">
             {cells.map((cell, index) => (
               <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
-                <Cell cell={cell} busy={busy} onAsk={ask} />
+                <Cell
+                  cell={cell}
+                  busy={busy}
+                  onAsk={ask}
+                  onRetry={(cellId) => {
+                    retry(cellId)
+                    // The Retry button is about to go away: don't lose the keyboard focus with it.
+                    composer.current?.focus()
+                  }}
+                  onRephrase={(question) => composer.current?.fill(question)}
+                />
               </li>
             ))}
           </ol>
@@ -70,7 +86,7 @@ export function CanvasPage() {
         <p aria-live="polite" className="sr-only">
           {announcement(cells.at(-1))}
         </p>
-        <Composer onSubmit={ask} busy={busy} />
+        <Composer ref={composer} onSubmit={ask} busy={busy} />
       </div>
     </div>
   )

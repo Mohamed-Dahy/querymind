@@ -10,10 +10,12 @@ that every request shares.
 
 Every error becomes the same small JSON shape, `{"error": code, "message": text}`, with a
 fitting HTTP status. Stack traces and raw driver or LLM-vendor messages never reach the
-client (§9).
+client (§9). A rate limit also says how long to wait, when the provider told us: the field
+`retry_after_seconds` and the standard `Retry-After` header.
 """
 
 import logging
+import math
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -31,6 +33,7 @@ from querymind.llm import (
     LLMError,
     LLMOutputError,
     LLMProviderError,
+    LLMRateLimitError,
     create_embedding_provider,
     create_llm_provider,
 )
@@ -40,12 +43,14 @@ from querymind.safety.errors import UnsafeSqlError
 logger = logging.getLogger(__name__)
 
 # Our exceptions → (HTTP status, stable error code). The message is the exception's own text,
-# which our safety and database errors word for end users.
+# which our safety and database errors word for end users. Searched in order, so a subclass
+# comes before its parent.
 _ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     UnsafeSqlError: (422, "unsafe_sql"),
     QueryTimeoutError: (504, "query_timeout"),
     QueryExecutionError: (502, "query_failed"),
     DatabaseUnavailableError: (503, "db_unavailable"),
+    LLMRateLimitError: (429, "llm_rate_limited"),
     LLMProviderError: (502, "llm_unavailable"),
     LLMOutputError: (502, "llm_bad_output"),
 }
@@ -53,7 +58,8 @@ _ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a
 # fixed message instead and the details go to the server log only.
 _LLM_MESSAGES: dict[type[Exception], str] = {
-    LLMProviderError: "The AI provider did not respond (network, rate limit or outage).",
+    LLMRateLimitError: "The AI provider's usage limit was reached. Please try again later.",
+    LLMProviderError: "The AI provider did not respond (network or outage).",
     LLMOutputError: "The AI model declined or answered in the wrong format. Try rewording it.",
 }
 
@@ -97,8 +103,17 @@ def create_app(pipeline: AnswersQuestions | None = None) -> FastAPI:
     return app
 
 
-def _error(status: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": code, "message": message})
+def _error(
+    status: int, code: str, message: str, *, retry_after_seconds: float | None = None
+) -> JSONResponse:
+    content: dict[str, str | int] = {"error": code, "message": message}
+    headers: dict[str, str] = {}
+    if retry_after_seconds is not None:
+        # Whole seconds, as the header requires. Rounded up, so a retry is never too early.
+        seconds = math.ceil(retry_after_seconds)
+        content["retry_after_seconds"] = seconds
+        headers["Retry-After"] = str(seconds)
+    return JSONResponse(status_code=status, content=content, headers=headers)
 
 
 async def _handle_known_error(request: Request, exc: Exception) -> JSONResponse:
@@ -113,7 +128,8 @@ async def _handle_known_error(request: Request, exc: Exception) -> JSONResponse:
         message = next(text for kind, text in _LLM_MESSAGES.items() if isinstance(exc, kind))
     else:
         message = str(exc)
-    return _error(status, code, message)
+    wait = exc.retry_after_seconds if isinstance(exc, LLMRateLimitError) else None
+    return _error(status, code, message, retry_after_seconds=wait)
 
 
 async def _handle_invalid_request(request: Request, exc: Exception) -> JSONResponse:

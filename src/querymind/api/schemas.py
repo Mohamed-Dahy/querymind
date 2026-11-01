@@ -132,6 +132,11 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(description="Stable error code, e.g. unsafe_sql", examples=["unsafe_sql"])
     message: str = Field(examples=["Only SELECT queries are allowed."])
+    retry_after_seconds: int | None = Field(
+        default=None,
+        description="Seconds to wait before retrying (llm_rate_limited, if the provider said)",
+        examples=[18],
+    )
 
 
 class HealthResponse(BaseModel):

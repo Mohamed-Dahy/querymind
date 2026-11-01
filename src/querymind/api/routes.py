@@ -23,6 +23,7 @@ router = APIRouter()
 # Documented in OpenAPI so API users know every error shape in advance (handlers in main.py).
 _ERRORS: dict[int | str, dict[str, Any]] = {
     422: {"model": ErrorResponse, "description": "Invalid question, or unsafe generated SQL"},
+    429: {"model": ErrorResponse, "description": "The LLM provider's usage limit was reached"},
     502: {"model": ErrorResponse, "description": "The LLM or the database failed"},
     503: {"model": ErrorResponse, "description": "The database is not reachable"},
     504: {"model": ErrorResponse, "description": "The query took too long"},

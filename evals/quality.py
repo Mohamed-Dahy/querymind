@@ -263,11 +263,12 @@ def judge_case(
         for attempt in range(retries + 1):
             try:
                 score, passed, reason = judge(metric, case)
-            except LLMProviderError as exc:
+            except LLMProviderError:
                 if attempt < retries:
                     sleep(backoff_seconds * (attempt + 1))
                     continue
-                verdicts.append(Verdict(metric=metric, error=type(exc).__name__))
+                # The base name, even for a rate limit: judge_answers stops on it.
+                verdicts.append(Verdict(metric=metric, error=LLMProviderError.__name__))
             except Exception as exc:  # see the docstring: never a verdict about the answer
                 verdicts.append(Verdict(metric=metric, error=type(exc).__name__, reason=str(exc)))
             else:

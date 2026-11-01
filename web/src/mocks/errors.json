@@ -13,9 +13,14 @@
     "status": 503,
     "message": "Could not connect to the database. Please try again later."
   },
+  "llm_rate_limited": {
+    "status": 429,
+    "message": "The AI provider's usage limit was reached. Please try again later.",
+    "retry_after_seconds": 20
+  },
   "llm_unavailable": {
     "status": 502,
-    "message": "The AI provider did not respond (network, rate limit or outage)."
+    "message": "The AI provider did not respond (network or outage)."
   },
   "llm_bad_output": {
     "status": 502,

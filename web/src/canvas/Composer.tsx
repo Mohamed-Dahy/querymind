@@ -1,5 +1,13 @@
 import { CircleAlert, LoaderCircle, SendHorizontal } from 'lucide-react'
-import { useId, useState, type FormEvent, type KeyboardEvent } from 'react'
+import {
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type Ref,
+} from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -10,12 +18,20 @@ import { checkQuestion, limitAnnouncement, MAX_QUESTION_LENGTH, questionLength }
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform)
 const MODIFIER = IS_MAC ? '⌘' : 'Ctrl'
 
+/** What the page can do to the composer from outside (React's `ref` on a component). */
+export type ComposerHandle = {
+  focus: () => void
+  /** Replaces the text and puts the focus there, ready to edit. */
+  fill: (text: string) => void
+}
+
 type ComposerProps = {
   /** Called with the trimmed question, only when it passes the checks in question.ts. */
   onSubmit: (question: string) => void
   /** A question is being answered: sending waits, typing the next one doesn't. */
   busy?: boolean
   placeholder?: string
+  ref?: Ref<ComposerHandle>
 }
 
 /** The question box: grows as you type, Ctrl/⌘ + Enter sends, and it says why it won't send. */
@@ -23,10 +39,24 @@ export function Composer({
   onSubmit,
   busy = false,
   placeholder = 'e.g. Which category sold the most in 1997?',
+  ref,
 }: ComposerProps) {
   const id = useId()
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const box = useRef<HTMLTextAreaElement>(null)
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => box.current?.focus(),
+      fill: (next) => {
+        setText(next)
+        setError(null)
+        box.current?.focus()
+      },
+    }),
+    [],
+  )
 
   const length = questionLength(text)
   const tooLong = length > MAX_QUESTION_LENGTH
@@ -70,6 +100,7 @@ export function Composer({
         Your question
       </label>
       <textarea
+        ref={box}
         id={inputId}
         value={text}
         onChange={(event) => {
