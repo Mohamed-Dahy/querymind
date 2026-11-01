@@ -125,6 +125,17 @@ class Confidence(BaseModel):
     points: int
 
 
+class ShownSchema(BaseModel):
+    """Which tables the LLM saw, for people. SchemaSelection's raw fallback `reason` stays out."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mode: Literal["full", "retrieved", "fallback"]
+    tables: list[str]  # in the prompt
+    total_tables: int  # in the database: "retrieved 4 of 13 tables"
+    search: str = ""  # the search that ran: vector, keyword, hybrid, hybrid_rerank
+
+
 class AskResult(BaseModel):
     """Everything one question produced: what ran, what came back, and the answer."""
 
@@ -140,6 +151,13 @@ class AskResult(BaseModel):
     sql_attempts: int = 1  # SQL queries tried for this answer, including the one shown
     warnings: tuple[SanityWarning, ...] = ()  # signs the result may still be wrong
     confidence: Confidence
+    # How it got here (U2.1), for the "Show your work" drawer.
+    schema_selection: ShownSchema | None = None
+    search_question: str | None = (
+        None  # the follow-up as a standalone question, if it was rewritten
+    )
+    example_questions: tuple[str, ...] = ()  # the solved examples shown to the LLM
+    duration_ms: int | None = None
 
 
 class ClarificationRequest(BaseModel):

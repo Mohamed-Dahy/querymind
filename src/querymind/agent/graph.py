@@ -36,6 +36,9 @@ then ends before any SQL, and `Pipeline.ask` returns a ClarificationRequest or a
 If every try fails and no result exists, the run ends and `Pipeline.ask` raises the last
 error. LLM errors and an unreachable database end the run at once (the caller retries those).
 
+Live trace (U2.1): `Pipeline.stream` reports each node starting and finishing. Validating and
+running stay one node, so the only hint from inside it is a signal that the query passed.
+
 Conversations (2.6): every way of ending passes through `remember`, which adds this turn to
 `history` (question, SQL, result shape; no rows). With a checkpointer, LangGraph saves the
 state per `thread_id`, so the next turn of that conversation starts from it: the LLM sees the
@@ -51,6 +54,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 
+from querymind.agent.events import VALIDATED_SIGNAL
 from querymind.agent.rewriter import rewrite_question
 from querymind.agent.sanity import RETRY_CODES, check_result
 from querymind.agent.schemas import AnswerSummary, SqlAttempt, Turn
@@ -177,6 +181,9 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
     try:
         query = validate_sql(sql, allowed_tables=state["table_names"], max_rows=settings.max_rows)
         sql = query.sql
+        runtime.stream_writer(
+            VALIDATED_SIGNAL
+        )  # only reaches Pipeline.stream; nothing else reads it
         with runtime.context.connect(settings) as conn:
             result = execute_query(conn, query, timeout_seconds=settings.query_timeout_seconds)
     except FIXABLE_ERRORS as exc:

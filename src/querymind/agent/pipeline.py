@@ -7,6 +7,8 @@
 One object per app (the API keeps one): it reads the schema once and reuses it, builds the
 agent graph once (agent/graph.py), and runs the graph for each question. The API, the eval
 runner and scripts/ask.py only see `ask()`, so the graph can grow without changing them.
+`stream()` is the same run, reporting each step as it happens (UI U2.1); `ask()` consumes it,
+so both share the audit log, the conversation memory and the error handling.
 
 Conversations (2.6): `ask(question, conversation_id="...")` continues that conversation, so a
 follow-up like "now only for 1997" works. LangGraph's in-memory checkpointer keeps each
@@ -29,8 +31,9 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable
-from typing import cast
+from collections.abc import Callable, Generator
+from contextlib import AbstractContextManager, closing, nullcontext
+from typing import Any, cast
 
 import psycopg
 from langchain_core.runnables import RunnableConfig
@@ -38,6 +41,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from querymind.agent.confidence import score_confidence
+from querymind.agent.events import AgentEvent, Finished, TraceBuilder, shown_schema
 from querymind.agent.graph import build_graph
 from querymind.agent.schemas import (
     AgentReply,
@@ -65,6 +69,7 @@ logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("querymind.audit")
 
 MAX_CONVERSATIONS = 100  # saved conversations; the least recently used is forgotten first
+RUN_LOCKS = 64  # see Pipeline._one_run_at_a_time
 
 
 class Pipeline:
@@ -107,6 +112,7 @@ class Pipeline:
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
         self._conversations: OrderedDict[str, None] = OrderedDict()  # least recent first
         self._conversations_lock = threading.Lock()
+        self._run_locks = [threading.Lock() for _ in range(RUN_LOCKS)]
 
     def ask(
         self, question: str, *, conversation_id: str | None = None, summarize_answer: bool = True
@@ -126,47 +132,110 @@ class Pipeline:
                 (up to `settings.max_sql_attempts`); the error is the last attempt's.
             DatabaseUnavailableError: the database could not be reached.
         """
+        run = self.stream(
+            question, conversation_id=conversation_id, summarize_answer=summarize_answer
+        )
+        with closing(run) as events:
+            for event in events:
+                if isinstance(event, Finished):
+                    return event.reply
+        raise RuntimeError("the run ended without a reply")  # stream() always ends with one
+
+    def stream(
+        self, question: str, *, conversation_id: str | None = None, summarize_answer: bool = True
+    ) -> Generator[AgentEvent | Finished]:
+        """The same run as `ask()`, reporting as it goes. The last item is `Finished(reply)`.
+
+        Raises what `ask()` raises, after the events so far. Closing the generator stops the run
+        after the node that is working now: a node can't be interrupted, so an LLM call already
+        made still finishes. A stopped run is audited too, and leaves the conversation as it was.
+        """
         started = time.perf_counter()
         state: AgentState = {"question": question}
         # A standalone question still needs a thread for the checkpointer: a throwaway one.
         thread_id = conversation_id or f"standalone-{uuid.uuid4()}"
-        try:
-            catalog, retriever = self._schema_info()
-            start = new_turn(
-                question=question,
-                schema_text=catalog.full_text,  # retrieve_schema narrows it when it can
-                table_names=sorted(catalog.schema.table_names),
-            )
-            context = AgentContext(
-                llm=self._llm,
-                settings=self._settings,
-                connect=self._connect,
-                summarize_answer=summarize_answer,
-                retriever=retriever,
-            )
-            # stream(mode="values") yields the whole state after each node. Keeping the last
-            # one means that if a node fails, we still know the SQL it was given (for the audit).
-            # durability="exit": save the state once, when the turn ends, not after every node.
-            for snapshot in self._graph.stream(
-                start,
-                {"configurable": {"thread_id": thread_id}},
-                context=context,
-                stream_mode="values",
-                durability="exit",
-            ):
-                state = cast(AgentState, snapshot)  # LangGraph types this loosely as dict
-            reply = _reply_without_result(question, state)
-        except Exception as exc:
-            self._audit(
-                question,
-                state,
-                outcome=type(exc).__name__,
-                started=started,
-                conversation_id=conversation_id,
-            )
-            raise
-        finally:
-            self._keep_or_forget(thread_id, keep=conversation_id is not None)
+        with self._one_run_at_a_time(conversation_id):
+            try:
+                catalog, retriever = self._schema_info()
+                start = new_turn(
+                    question=question,
+                    schema_text=catalog.full_text,  # retrieve_schema narrows it when it can
+                    table_names=sorted(catalog.schema.table_names),
+                )
+                context = AgentContext(
+                    llm=self._llm,
+                    settings=self._settings,
+                    connect=self._connect,
+                    summarize_answer=summarize_answer,
+                    retriever=retriever,
+                )
+                trace = TraceBuilder(total_tables=len(catalog.schema.table_names))
+                # Three views of the same run. "values": the whole state after each node; keeping
+                # the last one means that if a node fails, we still know the SQL it was given (for
+                # the audit). "tasks": a node's start and end. "custom": the validator's signal.
+                # durability="exit": save the state once, when the turn ends, not after every node.
+                chunks = cast(
+                    Generator[tuple[str, Any]],  # with several modes: (mode, chunk)
+                    self._graph.stream(
+                        start,
+                        {"configurable": {"thread_id": thread_id}},
+                        context=context,
+                        stream_mode=["values", "tasks", "custom"],
+                        durability="exit",
+                    ),
+                )
+                # closing: a stop must end LangGraph's generator now, not when it is collected.
+                with closing(chunks):
+                    for mode, chunk in chunks:
+                        if mode == "values":
+                            state = cast(AgentState, chunk)  # LangGraph types it loosely as dict
+                        else:
+                            yield from trace.events(mode, chunk)
+                reply = _reply_without_result(question, state)
+            except GeneratorExit:
+                # Not an Exception, so the branch below wouldn't see it. The caller stopped the
+                # run (the browser went away), and every question must still be audited (§8.7).
+                self._audit(
+                    question,
+                    state,
+                    outcome="cancelled",
+                    started=started,
+                    conversation_id=conversation_id,
+                )
+                raise
+            except Exception as exc:
+                self._audit(
+                    question,
+                    state,
+                    outcome=type(exc).__name__,
+                    started=started,
+                    conversation_id=conversation_id,
+                )
+                raise
+            finally:
+                self._keep_or_forget(thread_id, keep=conversation_id is not None)
+        yield Finished(self._finish(question, state, reply, started, conversation_id))
+
+    def _one_run_at_a_time(self, conversation_id: str | None) -> AbstractContextManager[object]:
+        """One run per conversation: the next one waits until the last has ended.
+
+        Stop, then ask again at once, would otherwise put two runs on one thread, and the first
+        run's clean-up (`_keep_or_forget`) would delete the second run's state. A fixed set of
+        locks needs no clean-up; two conversations sharing one only wait for each other.
+        """
+        if conversation_id is None:
+            return nullcontext()  # its thread is its own
+        return self._run_locks[hash(conversation_id) % len(self._run_locks)]
+
+    def _finish(
+        self,
+        question: str,
+        state: AgentState,
+        reply: AgentReply | None,
+        started: float,
+        conversation_id: str | None,
+    ) -> AgentReply:
+        """The audit line of a run that ended normally, and its reply."""
         if reply is not None:
             outcome = "refusal" if isinstance(reply, Refusal) else "clarification"
             self._audit(
@@ -188,6 +257,7 @@ class Pipeline:
             conversation_id=conversation_id,
             confidence=confidence.level,
         )
+        selection = state.get("schema_selection")
         return AskResult(
             question=question,
             sql=require(state.get("sql"), "sql"),
@@ -198,6 +268,14 @@ class Pipeline:
             sql_attempts=_queries_run(state),
             warnings=tuple(state.get("warnings", [])),
             confidence=confidence,
+            schema_selection=(
+                shown_schema(selection, total_tables=len(state.get("table_names", [])))
+                if selection is not None
+                else None
+            ),
+            search_question=state.get("search_question"),
+            example_questions=tuple(e.question for e in state.get("examples", [])),
+            duration_ms=round((time.perf_counter() - started) * 1000),
         )
 
     def _schema_info(self) -> tuple[SchemaCatalog, SchemaRetriever | None]:
