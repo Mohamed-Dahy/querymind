@@ -6,10 +6,17 @@ export type CanvasContextValue = {
   store: CanvasStore
   ask: (key: string, question: string, parentId?: string) => void
   retry: (key: string, cellId: string) => void
+  newConversation: () => void
 }
 
 /** Filled by CanvasProvider (AppShell), above the routes, so `/` → `/c/<id>` keeps the state. */
 export const CanvasContext = createContext<CanvasContextValue | null>(null)
+
+function useCanvas(): CanvasContextValue {
+  const canvas = useContext(CanvasContext)
+  if (canvas === null) throw new Error('This must be used inside <CanvasProvider>')
+  return canvas
+}
 
 export type ConversationView = {
   conversation: Conversation
@@ -22,9 +29,7 @@ export type ConversationView = {
 
 /** One conversation (`key` = NEW_CONVERSATION or a conversation id), and a way to ask in it. */
 export function useConversation(key: string): ConversationView {
-  const canvas = useContext(CanvasContext)
-  if (canvas === null) throw new Error('useConversation must be used inside <CanvasProvider>')
-  const { store, ask: askIn, retry: retryIn } = canvas
+  const { store, ask: askIn, retry: retryIn } = useCanvas()
 
   const conversation = conversationAt(store, key)
   const busy = conversation.cells.some((cell) => cell.status === 'running')
@@ -34,4 +39,9 @@ export function useConversation(key: string): ConversationView {
   )
   const retry = useCallback((cellId: string) => retryIn(key, cellId), [retryIn, key])
   return { conversation, busy, ask, retry }
+}
+
+/** Starts over at an empty `/`. The old conversation stays at its own URL. */
+export function useNewConversation(): () => void {
+  return useCanvas().newConversation
 }

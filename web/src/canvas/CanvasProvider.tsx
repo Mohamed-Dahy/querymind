@@ -37,7 +37,12 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   // Asking is never retried automatically (queryClient.ts): every try spends LLM quota.
-  const { mutateAsync } = useMutation({ mutationFn: (body: AskRequest) => ask(body) })
+  const { mutateAsync } = useMutation({
+    mutationFn: ({ body, signal }: { body: AskRequest; signal: AbortSignal | undefined }) =>
+      ask(body, signal),
+  })
+  // The question running in the conversation without an id, if any: "New conversation" cancels it.
+  const runningNew = useRef<AbortController | null>(null)
 
   // The latest store and path, for code that runs after an await (when the render's values are old).
   const latest = useRef({ store, pathname })
@@ -51,9 +56,16 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       // The id comes from the conversation, not the URL: a follow-up typed at `/` right after the
       // first answer must continue that conversation.
       const conversationId = conversationAt(latest.current.store, key).id
+      // Its id, not `key`: `new` may mean another conversation by the time the reply arrives.
+      const target = conversationId ?? key
+      const controller = conversationId === null ? new AbortController() : null
+      if (controller !== null) runningNew.current = controller
       try {
-        const reply = await mutateAsync({ question, conversation_id: conversationId })
-        dispatch({ key, type: 'replied', cellId, reply })
+        const reply = await mutateAsync({
+          body: { question, conversation_id: conversationId },
+          signal: controller?.signal,
+        })
+        dispatch({ key: target, type: 'replied', cellId, reply })
         // The first reply named the conversation: put that name in the URL, so it can be
         // bookmarked and shared. Replace (Back skips the empty `/`), keep focus in the composer,
         // and only if the user is still on `/` (not if they went to Explore meanwhile).
@@ -61,7 +73,9 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
           void navigate(`/c/${reply.conversation_id}`, { replace: true, state: KEEP_FOCUS })
         }
       } catch (error) {
-        dispatch({ key, type: 'failed', cellId, error: cellError(error) })
+        // Cancelled by "New conversation": its cell is gone, so there is nothing to report.
+        if (controller?.signal.aborted) return
+        dispatch({ key: target, type: 'failed', cellId, error: cellError(error) })
       }
     },
     [mutateAsync, navigate],
@@ -87,8 +101,17 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         dispatch({ key, type: 'retried', cellId })
         void send(key, cellId, cell.question)
       },
+      newConversation: () => {
+        // A question with no conversation has nowhere to land after this, so it is cancelled. One
+        // in a named conversation goes on: its answer waits at that URL (Back finds it), and
+        // throwing it away wouldn't save the quota it has already spent.
+        runningNew.current?.abort()
+        runningNew.current = null
+        dispatch({ type: 'reset' })
+        void navigate('/')
+      },
     }),
-    [store, send],
+    [store, send, navigate],
   )
   return <CanvasContext value={value}>{children}</CanvasContext>
 }

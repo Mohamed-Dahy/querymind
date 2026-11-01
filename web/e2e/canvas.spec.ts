@@ -242,3 +242,82 @@ for (const theme of THEMES) {
     expect(await seriousA11yIssues(page)).toEqual([])
   })
 }
+
+// Milestone U1: everything the Streamlit app does, in one sitting, on the fake API.
+for (const theme of THEMES) {
+  test(`${theme} theme: the whole flow, from an example to a new conversation`, async ({
+    page,
+  }) => {
+    await useTheme(page, theme)
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    const box = page.getByRole('textbox', { name: 'Your question' })
+    const newConversation = page.getByRole('button', { name: 'New conversation' })
+
+    // An example question: the chart, the table and the SQL.
+    const example = 'What is the total sales amount per category?'
+    await page.getByRole('button', { name: example }).click()
+    const first = page.getByRole('article', { name: example })
+    await expect(first.getByRole('img', { name: /^Bar chart/ })).toBeVisible()
+    await first.getByRole('tab', { name: 'Table' }).click()
+    await expect(first.getByRole('table')).toBeVisible()
+    await first.getByRole('tab', { name: 'SQL' }).click()
+    await expect(first.getByText('SELECT', { exact: true }).first()).toBeVisible()
+    await expect(page).toHaveURL(/\/c\/[0-9a-f-]{36}$/)
+    const conversationUrl = page.url()
+
+    // A follow-up: a linked cell, the same conversation.
+    await first.getByRole('button', { name: 'Follow up' }).click()
+    await expect(box).toBeFocused()
+    await expect(page.getByText(`Following up on: ${example}`)).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+    const asked = page.waitForRequest((request) => request.url().endsWith('/api/ask'))
+    await box.fill('Now only for 1997')
+    await box.press('Control+Enter')
+    expect((await asked).postDataJSON()).toEqual({
+      question: 'Now only for 1997',
+      conversation_id: conversationUrl.split('/').at(-1),
+    })
+    const linked = page.getByRole('article', { name: 'Now only for 1997' })
+    await expect(linked.getByText(`Following up on: ${example}`)).toBeVisible()
+    await expect(linked.getByRole('tab', { name: 'SQL' })).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    // New conversation: empty canvas, and Back still finds the old one.
+    await newConversation.click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('article')).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Northwind shop' })).toBeVisible()
+    await page.goBack()
+    await expect(page.getByRole('article')).toHaveCount(2)
+
+    // A question back, answered with an option.
+    await newConversation.click()
+    await box.fill('Which products are the most popular?')
+    await box.press('Control+Enter')
+    await page.getByRole('button', { name: 'by total revenue' }).click()
+    await expect(
+      page.getByRole('article', {
+        name: 'Which products are the most popular? (by total revenue)',
+      }),
+    ).toBeVisible()
+
+    // A refusal.
+    await newConversation.click()
+    await box.fill('Delete all orders from 1996')
+    await box.press('Control+Enter')
+    await expect(page.getByText('Nothing in the database was changed.')).toBeVisible()
+
+    // A rate limit: its countdown.
+    await newConversation.click()
+    await box.fill('error: llm_rate_limited')
+    await box.press('Control+Enter')
+    await expect(page.getByText(/^Try again in \d+ seconds$/)).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    // A reload: nothing is saved yet, and the page says so.
+    await page.goto(conversationUrl)
+    await expect(page.getByText(/isn't saved in this browser yet/)).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+  })
+}

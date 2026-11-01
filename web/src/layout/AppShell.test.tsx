@@ -41,7 +41,7 @@ describe('API status in the top bar', () => {
 describe('routes', () => {
   it.each([
     ['/', 'Ask about your data', 'Canvas · QueryMind'],
-    ['/c/3f2a', 'Ask about your data', 'Canvas · QueryMind'],
+    ['/c/3f2a9c1e-0000-4000-8000-000000000000', 'Ask about your data', 'Canvas · QueryMind'],
     ['/explore', 'Data explorer', 'Data explorer · QueryMind'],
     ['/evals', 'Evals lab', 'Evals lab · QueryMind'],
     ['/no/such/page', 'Page not found', 'Page not found · QueryMind'],
@@ -61,7 +61,7 @@ describe('routes', () => {
 
   it.each([
     ['/', 'Canvas'],
-    ['/c/3f2a', 'Canvas'],
+    ['/c/3f2a9c1e-0000-4000-8000-000000000000', 'Canvas'],
     ['/explore', 'Explore'],
     ['/evals', 'Evals'],
   ])('at %s the rail marks %s as the current page', async (path, current) => {

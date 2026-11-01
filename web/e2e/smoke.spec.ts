@@ -5,7 +5,11 @@ import { apiStatusLoaded, seriousA11yIssues, THEMES, useTheme } from './helpers.
 // Every route, with its page heading and tab title. /styleguide exists because this is a dev server.
 const ROUTES = [
   { path: '/', heading: 'Ask about your data', title: 'Canvas · QueryMind' },
-  { path: '/c/3f2a9c1e', heading: 'Ask about your data', title: 'Canvas · QueryMind' },
+  {
+    path: '/c/3f2a9c1e-0000-4000-8000-000000000000',
+    heading: 'Ask about your data',
+    title: 'Canvas · QueryMind',
+  },
   { path: '/explore', heading: 'Data explorer', title: 'Data explorer · QueryMind' },
   { path: '/evals', heading: 'Evals lab', title: 'Evals lab · QueryMind' },
   { path: '/no/such/page', heading: 'Page not found', title: 'Page not found · QueryMind' },
@@ -56,13 +60,14 @@ test('keyboard only: skip link first, then every control, and Enter navigates', 
 
   // Walk the page with Tab and write down what gets focus, in order.
   const stops: string[] = []
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 9; i++) {
     await page.keyboard.press('Tab')
     stops.push((await page.locator(':focus').innerText()).trim())
   }
   expect(stops).toEqual([
     'Skip to content',
     'QueryMind',
+    'New conversation',
     'Dark',
     'Light',
     'System',

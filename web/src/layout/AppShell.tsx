@@ -1,9 +1,19 @@
-import { Database, Gauge, LayoutGrid, Network, ScanSearch, type LucideIcon } from 'lucide-react'
+import {
+  Database,
+  Gauge,
+  LayoutGrid,
+  Network,
+  ScanSearch,
+  SquarePen,
+  type LucideIcon,
+} from 'lucide-react'
 import { useRef } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 
 import { CanvasProvider } from '@/canvas/CanvasProvider'
+import { useNewConversation } from '@/canvas/useConversation'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { ApiStatus } from './ApiStatus'
@@ -25,38 +35,50 @@ export function AppShell() {
   useFocusOnRouteChange(main)
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <SkipLink target={main} />
+    // Above the routes, so the conversations survive `/` → `/c/<id>` and a visit to Explore; and
+    // above the top bar, for its "New conversation" button.
+    <CanvasProvider>
+      <div className="flex min-h-dvh flex-col">
+        <SkipLink target={main} />
 
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b bg-surface px-4 py-2">
-        <Link
-          to="/"
-          className="flex min-h-11 items-center gap-2 rounded-lg font-heading text-lg font-semibold"
-        >
-          <ScanSearch aria-hidden="true" className="size-5 text-signal" />
-          QueryMind
-        </Link>
-        <span className="flex items-center gap-1.5 text-sm text-fg-muted">
-          <Database aria-hidden="true" className="size-4" />
-          Northwind + Chinook
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
-          <ApiStatus />
-          <ThemeSwitcher />
-        </div>
-      </header>
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b bg-surface px-4 py-2">
+          <Link
+            to="/"
+            className="flex min-h-11 items-center gap-2 rounded-lg font-heading text-lg font-semibold"
+          >
+            <ScanSearch aria-hidden="true" className="size-5 text-signal" />
+            QueryMind
+          </Link>
+          <span className="flex items-center gap-1.5 text-sm text-fg-muted">
+            <Database aria-hidden="true" className="size-4" />
+            Northwind + Chinook
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+            <NewConversationButton />
+            <ApiStatus />
+            <ThemeSwitcher />
+          </div>
+        </header>
 
-      <div className="flex flex-1 flex-col md:flex-row">
-        <NavRail />
-        {/* tabIndex -1: focusable by code (route change, skip link) but not a Tab stop itself. */}
-        <main id="main" ref={main} tabIndex={-1} className="canvas-grid flex-1 outline-none">
-          {/* Above the routes, so the conversations survive `/` → `/c/<id>` and a visit to Explore. */}
-          <CanvasProvider>
+        <div className="flex flex-1 flex-col md:flex-row">
+          <NavRail />
+          {/* tabIndex -1: focusable by code (route change, skip link) but not a Tab stop itself. */}
+          <main id="main" ref={main} tabIndex={-1} className="canvas-grid flex-1 outline-none">
             <Outlet />
-          </CanvasProvider>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
+    </CanvasProvider>
+  )
+}
+
+function NewConversationButton() {
+  const newConversation = useNewConversation()
+  return (
+    <Button type="button" variant="outline" onClick={newConversation}>
+      <SquarePen aria-hidden="true" />
+      New conversation
+    </Button>
   )
 }
 

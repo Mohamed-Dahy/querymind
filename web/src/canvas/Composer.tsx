@@ -32,6 +32,8 @@ type ComposerProps = {
   busy?: boolean
   placeholder?: string
   ref?: Ref<ComposerHandle>
+  /** The id of text that says more about this question (e.g. what it follows up on). */
+  describedBy?: string | undefined
 }
 
 /** The question box: grows as you type, Ctrl/⌘ + Enter sends, and it says why it won't send. */
@@ -40,6 +42,7 @@ export function Composer({
   busy = false,
   placeholder = 'e.g. Which category sold the most in 1997?',
   ref,
+  describedBy,
 }: ComposerProps) {
   const id = useId()
   const [text, setText] = useState('')
@@ -111,7 +114,7 @@ export function Composer({
         placeholder={placeholder}
         rows={2}
         aria-invalid={error !== null || tooLong}
-        aria-describedby={error ? `${hintId} ${errorId}` : hintId}
+        aria-describedby={[describedBy, hintId, error && errorId].filter(Boolean).join(' ')}
         // field-sizing-content: the box grows with the text, up to max-h-60, then scrolls.
         className={cn(
           'mt-1.5 field-sizing-content max-h-60 min-h-16 w-full resize-none overflow-y-auto rounded-lg border',

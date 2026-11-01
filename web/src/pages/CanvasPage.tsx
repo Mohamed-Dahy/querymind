@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { CornerDownRight, Info } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 
 import { errorTitle } from '@/api/errors'
@@ -8,6 +9,9 @@ import { EmptyCanvas } from '@/canvas/EmptyCanvas'
 import { NEW_CONVERSATION, type Cell as CellData } from '@/canvas/state'
 import { useConversation } from '@/canvas/useConversation'
 import { formatWait } from '@/canvas/wait'
+import { Button } from '@/components/ui/button'
+
+import { NotFoundPage } from './NotFoundPage'
 
 /** What a screen reader hears about the latest cell (the cells themselves aren't live regions). */
 function announcement(cell: CellData | undefined): string {
@@ -28,13 +32,28 @@ function announcement(cell: CellData | undefined): string {
   }
 }
 
-/** The canvas: example questions or the conversation's cells, and the composer at the bottom. */
+// The API only takes a UUID as a conversation id, so anything else can't be a conversation.
+const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** `/` is the new conversation; `/c/<id>` is the conversation with that id. */
 export function CanvasPage() {
-  // `/` is the new conversation; `/c/<id>` is the conversation with that id.
   const { conversationId } = useParams()
+  if (conversationId !== undefined && !CONVERSATION_ID.test(conversationId)) {
+    return <NotFoundPage />
+  }
+  return <Canvas conversationId={conversationId} />
+}
+
+/** The canvas: example questions or the conversation's cells, and the composer at the bottom. */
+function Canvas({ conversationId }: { conversationId: string | undefined }) {
   const { conversation, busy, ask, retry } = useConversation(conversationId ?? NEW_CONVERSATION)
   const { cells } = conversation
   const composer = useRef<ComposerHandle>(null)
+  const followUpNoteId = useId()
+
+  // Looked up in this conversation's cells, so it ends by itself when the conversation changes.
+  const [followingUpId, setFollowingUpId] = useState<string | null>(null)
+  const followingUp = cells.find((cell) => cell.id === followingUpId)
 
   // Bring the latest cell into view when it is added, and again when its reply makes it taller.
   const lastCell = useRef<HTMLLIElement>(null)
@@ -57,7 +76,10 @@ export function CanvasPage() {
 
       <div className="mt-8 flex-1">
         {cells.length === 0 ? (
-          <EmptyCanvas onAsk={ask} busy={busy} />
+          <>
+            {conversationId !== undefined && <NotSavedNotice />}
+            <EmptyCanvas onAsk={ask} busy={busy} />
+          </>
         ) : (
           // scroll-mb: when the browser scrolls a cell or a focused control into view, it stops
           // above the sticky composer (about 200 px tall on a phone) instead of behind it.
@@ -66,6 +88,7 @@ export function CanvasPage() {
               <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
                 <Cell
                   cell={cell}
+                  parentQuestion={cells.find(({ id }) => id === cell.parentId)?.question}
                   busy={busy}
                   onAsk={ask}
                   onRetry={(cellId) => {
@@ -74,6 +97,10 @@ export function CanvasPage() {
                     composer.current?.focus()
                   }}
                   onRephrase={(question) => composer.current?.fill(question)}
+                  onFollowUp={(cellId) => {
+                    setFollowingUpId(cellId)
+                    composer.current?.focus()
+                  }}
                 />
               </li>
             ))}
@@ -86,8 +113,46 @@ export function CanvasPage() {
         <p aria-live="polite" className="sr-only">
           {announcement(cells.at(-1))}
         </p>
-        <Composer ref={composer} onSubmit={ask} busy={busy} />
+        {followingUp && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border bg-surface px-3 py-1.5 text-sm">
+            <CornerDownRight aria-hidden="true" className="size-4 shrink-0 text-signal" />
+            <p id={followUpNoteId} className="min-w-0 flex-1 truncate">
+              Following up on: {followingUp.question}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFollowingUpId(null)
+                composer.current?.focus()
+              }}
+            >
+              Cancel follow-up
+            </Button>
+          </div>
+        )}
+        <Composer
+          ref={composer}
+          describedBy={followingUp && followUpNoteId}
+          onSubmit={(question) => {
+            ask(question, followingUp?.id)
+            setFollowingUpId(null)
+          }}
+          busy={busy}
+        />
       </div>
     </div>
+  )
+}
+
+/** `/c/<id>` with no cells: after a reload, or a shared link. Saved history arrives in U3. */
+function NotSavedNotice() {
+  return (
+    <p className="mb-4 flex items-start gap-2 rounded-lg border bg-surface px-3 py-2 text-sm">
+      <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
+      This conversation isn&apos;t saved in this browser yet, so its earlier questions can&apos;t be
+      shown. You can still ask here: the server may remember them for a while.
+    </p>
   )
 }
