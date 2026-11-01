@@ -179,6 +179,21 @@ describe('AnswerCell', () => {
     ).toBeInTheDocument()
   })
 
+  it('Show your work opens the drawer, and Escape gives the focus back', async () => {
+    const user = renderAnswer()
+    const button = screen.getByRole('button', { name: 'Show your work' })
+
+    await user.click(button)
+
+    const dialog = await screen.findByRole('dialog', { name: 'How this answer was made' })
+    expect(within(dialog).getByText(answer.question)).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(button).toHaveFocus())
+  })
+
   it('has no Chart tab for one number, and opens on the table', () => {
     render(<AnswerCell reply={single} />)
 

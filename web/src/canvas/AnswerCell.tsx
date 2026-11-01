@@ -1,5 +1,5 @@
-import { Download, Info, TriangleAlert } from 'lucide-react'
-import { lazy, Suspense, useMemo } from 'react'
+import { Download, Info, ListChecks, TriangleAlert } from 'lucide-react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 
 import type { AskResponse } from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -18,9 +18,18 @@ const ResultChart = lazy(() =>
   import('./ResultChart').then(({ ResultChart }) => ({ default: ResultChart })),
 )
 
+// Most answers never open it, so it downloads on the first click.
+const ShowYourWork = lazy(() =>
+  import('./ShowYourWork').then(({ ShowYourWork }) => ({ default: ShowYourWork })),
+)
+
 /** An answer: the text, how sure it is, any warnings, then the rows and the SQL as evidence. */
 export function AnswerCell({ reply }: { reply: AskResponse }) {
   const chart = useMemo(() => pickChart(reply.columns, reply.rows), [reply.columns, reply.rows])
+  const [workOpen, setWorkOpen] = useState(false)
+  // Stays mounted after the first open, so closing it can animate and give the focus back.
+  const [workLoaded, setWorkLoaded] = useState(false)
+  const workButton = useRef<HTMLButtonElement>(null)
 
   return (
     <div className="space-y-3">
@@ -29,7 +38,31 @@ export function AnswerCell({ reply }: { reply: AskResponse }) {
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <CertaintyMeter level={reply.confidence} reasons={reply.confidence_reasons} />
         {!reply.answer_from_llm && <TemplateBadge />}
+        <Button
+          ref={workButton}
+          type="button"
+          variant="outline"
+          aria-haspopup="dialog"
+          className="ml-auto"
+          onClick={() => {
+            setWorkLoaded(true)
+            setWorkOpen(true)
+          }}
+        >
+          <ListChecks aria-hidden="true" />
+          Show your work
+        </Button>
       </div>
+      {workLoaded && (
+        <Suspense fallback={null}>
+          <ShowYourWork
+            reply={reply}
+            open={workOpen}
+            onOpenChange={setWorkOpen}
+            opener={workButton}
+          />
+        </Suspense>
+      )}
 
       {reply.warnings.length > 0 && (
         <ul aria-label="Warnings" className="space-y-1.5">

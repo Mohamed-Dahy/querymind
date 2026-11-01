@@ -3,7 +3,7 @@ import {
   Circle,
   CircleSlash,
   LoaderCircle,
-  Minus,
+  CircleDashed,
   Square,
   X,
   type LucideIcon,
@@ -40,7 +40,7 @@ const STATES: Record<RailStepState, { Icon: LucideIcon; colour: string; words: s
   running: { Icon: LoaderCircle, colour: 'text-info', words: 'running' },
   done: { Icon: Check, colour: 'text-signal', words: 'done' },
   failed: { Icon: X, colour: 'text-danger', words: 'failed' },
-  skipped: { Icon: Minus, colour: 'text-fg-muted', words: 'skipped' },
+  skipped: { Icon: CircleDashed, colour: 'text-fg-muted', words: 'skipped' },
   stopped: { Icon: CircleSlash, colour: 'text-fg-muted', words: 'stopped' },
 }
 

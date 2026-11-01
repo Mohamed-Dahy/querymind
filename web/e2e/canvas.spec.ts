@@ -427,3 +427,57 @@ test('on a phone the rail wraps without a sideways scroll, and Stop is reachable
   await expect(page.getByRole('article').getByText('You stopped this question.')).toBeVisible()
   expect(await seriousA11yIssues(page)).toEqual([])
 })
+
+// U2.5: the drawer, on the recorded repair.
+for (const theme of THEMES) {
+  test(`${theme} theme: "Show your work" shows every try, with what changed`, async ({ page }) => {
+    await useTheme(page, theme)
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    const box = page.getByRole('textbox', { name: 'Your question' })
+
+    await box.fill('How many customers are there in each country?')
+    await box.press('Control+Enter')
+    const button = page.getByRole('button', { name: 'Show your work' })
+    await button.click()
+
+    const drawer = page.getByRole('dialog', { name: 'How this answer was made' })
+    await expect(drawer.getByText(/^Retrieved \d+ of \d+ tables/)).toBeVisible()
+    await expect(drawer.getByRole('heading', { name: 'The SQL, 2 tries' })).toBeVisible()
+    await expect(drawer.getByText(/The database rejected it\./)).toBeVisible()
+    await expect(drawer.locator('del')).toContainText('region')
+    await expect(drawer.locator('ins').first()).toContainText('country')
+    await expect(drawer.getByText('It needed 1 repair to get this result.')).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    await page.keyboard.press('Escape')
+    await expect(drawer).toHaveCount(0)
+    await expect(button).toBeFocused()
+  })
+}
+
+test('on a phone the drawer fills the screen and scrolls, without a sideways scroll', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+
+  await box.fill('How many customers are there in each country?')
+  await box.press('Control+Enter')
+  await page.getByRole('button', { name: 'Show your work' }).click()
+
+  const drawer = page.getByRole('dialog', { name: 'How this answer was made' })
+  // Waits for the drawer's own code to download first, then measures.
+  await expect(drawer.getByRole('heading', { name: 'The SQL, 2 tries' })).toBeVisible()
+  const size = await drawer.boundingBox()
+  expect(size?.width).toBe(375)
+  const sideways = await page.evaluate(
+    "(() => { const el = document.querySelector('[role=dialog]'); return el.scrollWidth - el.clientWidth })()",
+  )
+  expect(sideways).toBeLessThanOrEqual(0)
+  await drawer.getByText('It needed 1 repair to get this result.').scrollIntoViewIfNeeded()
+  await expect(drawer.getByText('It needed 1 repair to get this result.')).toBeInViewport()
+  expect(await seriousA11yIssues(page)).toEqual([])
+})
