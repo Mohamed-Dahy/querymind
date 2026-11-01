@@ -2,7 +2,8 @@ import { useMutation } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { ApiError, ask, type AskRequest } from '@/api/client'
+import { ApiError, type AskRequest } from '@/api/client'
+import { askStream, type AskStreamOptions } from '@/api/stream'
 import { KEEP_FOCUS } from '@/layout/useFocusOnRouteChange'
 
 import { canvasReducer, conversationAt, EMPTY_STORE, type CellError } from './state'
@@ -30,7 +31,8 @@ function cellError(error: unknown): CellError {
 
 /**
  * Holds every conversation of this page load, and does the side effects the reducer can't:
- * it calls POST /api/ask, dispatches what happened, and puts a new conversation's id in the URL.
+ * it asks the API (POST /api/ask/stream), dispatches each step and the end, and puts a new
+ * conversation's id in the URL.
  */
 export function CanvasProvider({ children }: { children: ReactNode }) {
   const [store, dispatch] = useReducer(canvasReducer, EMPTY_STORE)
@@ -38,11 +40,11 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   // Asking is never retried automatically (queryClient.ts): every try spends LLM quota.
   const { mutateAsync } = useMutation({
-    mutationFn: ({ body, signal }: { body: AskRequest; signal: AbortSignal | undefined }) =>
-      ask(body, signal),
+    mutationFn: ({ body, options }: { body: AskRequest; options: AskStreamOptions }) =>
+      askStream(body, options),
   })
-  // The question running in the conversation without an id, if any: "New conversation" cancels it.
-  const runningNew = useRef<AbortController | null>(null)
+  // Every running question, to cancel it. `named`: its conversation has an id already.
+  const running = useRef(new Map<string, { controller: AbortController; named: boolean }>())
 
   // The latest store and path, for code that runs after an await (when the render's values are old).
   const latest = useRef({ store, pathname })
@@ -58,12 +60,15 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       const conversationId = conversationAt(latest.current.store, key).id
       // Its id, not `key`: `new` may mean another conversation by the time the reply arrives.
       const target = conversationId ?? key
-      const controller = conversationId === null ? new AbortController() : null
-      if (controller !== null) runningNew.current = controller
+      const controller = new AbortController()
+      running.current.set(cellId, { controller, named: conversationId !== null })
       try {
         const reply = await mutateAsync({
           body: { question, conversation_id: conversationId },
-          signal: controller?.signal,
+          options: {
+            signal: controller.signal,
+            onEvent: (event) => dispatch({ key: target, type: 'traced', cellId, event }),
+          },
         })
         dispatch({ key: target, type: 'replied', cellId, reply })
         // The first reply named the conversation: put that name in the URL, so it can be
@@ -74,8 +79,10 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         // Cancelled by "New conversation": its cell is gone, so there is nothing to report.
-        if (controller?.signal.aborted) return
+        if (controller.signal.aborted) return
         dispatch({ key: target, type: 'failed', cellId, error: cellError(error) })
+      } finally {
+        running.current.delete(cellId)
       }
     },
     [mutateAsync, navigate],
@@ -105,8 +112,9 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         // A question with no conversation has nowhere to land after this, so it is cancelled. One
         // in a named conversation goes on: its answer waits at that URL (Back finds it), and
         // throwing it away wouldn't save the quota it has already spent.
-        runningNew.current?.abort()
-        runningNew.current = null
+        for (const { controller, named } of running.current.values()) {
+          if (!named) controller.abort()
+        }
         dispatch({ type: 'reset' })
         void navigate('/')
       },

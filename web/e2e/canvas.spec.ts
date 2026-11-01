@@ -271,7 +271,7 @@ for (const theme of THEMES) {
     await expect(box).toBeFocused()
     await expect(page.getByText(`Following up on: ${example}`)).toBeVisible()
     expect(await seriousA11yIssues(page)).toEqual([])
-    const asked = page.waitForRequest((request) => request.url().endsWith('/api/ask'))
+    const asked = page.waitForRequest((request) => request.url().endsWith('/api/ask/stream'))
     await box.fill('Now only for 1997')
     await box.press('Control+Enter')
     expect((await asked).postDataJSON()).toEqual({
@@ -321,3 +321,30 @@ for (const theme of THEMES) {
     expect(await seriousA11yIssues(page)).toEqual([])
   })
 }
+
+test('the app asks through the stream, and falls back to POST /ask when it breaks', async ({
+  page,
+}) => {
+  const paths: string[] = []
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url())
+    if (pathname.startsWith('/api/ask')) paths.push(pathname)
+  })
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+
+  await box.fill('What is the total sales amount per category?')
+  await box.press('Control+Enter')
+  await expect(page.getByText(answer.answer)).toBeVisible()
+  expect(paths).toEqual(['/api/ask/stream'])
+
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  paths.length = 0
+  await box.fill('stream: broken')
+  await box.press('Control+Enter')
+  await expect(
+    page.getByRole('article', { name: 'stream: broken' }).getByText(answer.answer),
+  ).toBeVisible()
+  expect(paths).toEqual(['/api/ask/stream', '/api/ask'])
+})

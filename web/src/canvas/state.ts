@@ -7,6 +7,7 @@
  * U2's streaming events will become more actions on the same cells.
  */
 import type { AskReply } from '@/api/client'
+import type { TraceEvent } from '@/api/stream'
 
 /** The key of the conversation that has no id yet: the canvas at `/`. */
 export const NEW_CONVERSATION = 'new'
@@ -35,6 +36,8 @@ export type Cell = {
   reply?: AskReply
   /** Set when status is 'failed'. */
   error?: CellError
+  /** What the agent reported so far: kept after the end, to show how it got there. */
+  trace?: TraceEvent[]
 }
 
 /** `id` is null until the server's first reply gives the conversation one. */
@@ -42,6 +45,7 @@ export type Conversation = { id: string | null; cells: Cell[] }
 
 export type ConversationAction =
   | { type: 'asked'; cellId: string; question: string; parentId?: string }
+  | { type: 'traced'; cellId: string; event: TraceEvent }
   | { type: 'replied'; cellId: string; reply: AskReply }
   | { type: 'failed'; cellId: string; error: CellError }
   | { type: 'retried'; cellId: string }
@@ -55,6 +59,11 @@ export function conversationReducer(state: Conversation, action: ConversationAct
       if (parentId !== undefined) cell.parentId = parentId
       return { ...state, cells: [...state.cells, cell] }
     }
+    case 'traced':
+      return updateCell(state, action.cellId, 'running', (cell) => ({
+        ...cell,
+        trace: [...(cell.trace ?? []), action.event],
+      }))
     case 'replied': {
       const next = updateCell(state, action.cellId, 'running', (cell) => ({
         ...withoutResult(cell),
@@ -73,10 +82,10 @@ export function conversationReducer(state: Conversation, action: ConversationAct
       }))
     case 'retried':
       // Same cell, same place on the canvas: it runs again instead of a new cell being added.
-      return updateCell(state, action.cellId, 'failed', (cell) => ({
-        ...withoutResult(cell),
-        status: 'running',
-      }))
+      return updateCell(state, action.cellId, 'failed', (cell) => {
+        const { trace: _oldRun, ...rest } = withoutResult(cell)
+        return { ...rest, status: 'running' }
+      })
   }
 }
 

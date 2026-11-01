@@ -32,6 +32,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     // CSS is skipped in tests by default (imports come back empty); contrast.test.ts reads the tokens.
     css: { include: [/tokens\.css/] },
+    // The first test to reach a lazy part (AnswerCell, the chart) also waits for Vite to compile it.
+    testTimeout: 15_000,
     // Each test starts with the real `fetch` again, even if a test stubbed it.
     unstubGlobals: true,
   },

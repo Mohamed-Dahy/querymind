@@ -4,6 +4,7 @@ import type {
   HealthResponse,
   RefusalResponse,
 } from '@/api/client'
+import type { TraceEvent } from '@/api/stream'
 import openapi from '../../openapi.json'
 import errorsJson from './errors.json'
 import answerJson from './recorded/answer.json'
@@ -11,7 +12,15 @@ import clarificationJson from './recorded/clarification.json'
 import followupJson from './recorded/followup.json'
 import monthlyJson from './recorded/monthly.json'
 import refusalJson from './recorded/refusal.json'
+import repairJson from './recorded/repair.json'
 import singleJson from './recorded/single.json'
+import answerStreamJson from './recorded/streams/answer.json'
+import clarificationStreamJson from './recorded/streams/clarification.json'
+import followupStreamJson from './recorded/streams/followup.json'
+import monthlyStreamJson from './recorded/streams/monthly.json'
+import refusalStreamJson from './recorded/streams/refusal.json'
+import repairStreamJson from './recorded/streams/repair.json'
+import singleStreamJson from './recorded/streams/single.json'
 
 // Real POST /ask replies, recorded once by scripts/record_fixtures.py. JSON imports get loose types
 // (`kind: string`), so they are cast; tests/unit/test_web_fixtures.py checks every file against the
@@ -24,6 +33,17 @@ export const refusal = refusalJson as RefusalResponse
 // number (no chart).
 export const monthly = monthlyJson as AskResponse
 export const single = singleJson as AskResponse
+// A repair, from a scripted LLM on the real pipeline and database (scripts/record_fixtures.py).
+export const repair = repairJson as AskResponse
+
+// The events before each reply: what POST /ask/stream sent. The same tests check these files.
+export const answerStream = answerStreamJson as TraceEvent[]
+export const followupStream = followupStreamJson as TraceEvent[]
+export const clarificationStream = clarificationStreamJson as TraceEvent[]
+export const refusalStream = refusalStreamJson as TraceEvent[]
+export const monthlyStream = monthlyStreamJson as TraceEvent[]
+export const singleStream = singleStreamJson as TraceEvent[]
+export const repairStream = repairStreamJson as TraceEvent[]
 
 /**
  * A big result for the table (U1.4): the recorded answer's shape with `count` made-up rows, and a

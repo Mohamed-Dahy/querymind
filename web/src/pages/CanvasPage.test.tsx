@@ -4,8 +4,8 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
 import type { AskRequest } from '@/api/client'
-import { answer, clarification, followup, refusal } from '@/mocks/fixtures'
-import { apiError, ASK_URL, replyFor } from '@/mocks/handlers'
+import { answer, answerStream, clarification, followup, refusal } from '@/mocks/fixtures'
+import { ASK_URL, errorStream, replyFor, replyStream, STREAM_URL, streamOf } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
 
@@ -13,10 +13,10 @@ import { renderApp } from '@/test/render'
 function recordAsks(): AskRequest[] {
   const bodies: AskRequest[] = []
   server.use(
-    http.post(ASK_URL, async ({ request }) => {
+    http.post(STREAM_URL, async ({ request }) => {
       const body = (await request.json()) as AskRequest
       bodies.push(body)
-      return HttpResponse.json(replyFor(body))
+      return replyStream(body)
     }),
   )
   return bodies
@@ -33,9 +33,9 @@ describe('CanvasPage', () => {
     let release = () => {}
     const replied = new Promise<void>((resolve) => (release = resolve))
     server.use(
-      http.post(ASK_URL, async ({ request }) => {
+      http.post(STREAM_URL, async ({ request }) => {
         await replied
-        return HttpResponse.json(replyFor((await request.json()) as AskRequest))
+        return replyStream((await request.json()) as AskRequest)
       }),
     )
     const user = userEvent.setup()
@@ -113,7 +113,7 @@ describe('CanvasPage', () => {
   })
 
   it('does not change the URL when the first question fails', async () => {
-    server.use(http.post(ASK_URL, () => apiError('db_unavailable')))
+    server.use(http.post(STREAM_URL, () => errorStream('db_unavailable')))
     const user = userEvent.setup()
     const { router } = renderApp('/')
 
@@ -130,10 +130,10 @@ describe('CanvasPage', () => {
     const bodies: AskRequest[] = []
     let failing = true
     server.use(
-      http.post(ASK_URL, async ({ request }) => {
+      http.post(STREAM_URL, async ({ request }) => {
         const body = (await request.json()) as AskRequest
         bodies.push(body)
-        return failing ? apiError('query_failed') : HttpResponse.json(replyFor(body))
+        return failing ? errorStream('query_failed') : replyStream(body)
       }),
     )
     const user = userEvent.setup()
@@ -160,11 +160,13 @@ describe('CanvasPage', () => {
 
   it('a rate limit counts down from what the API said, then Retry works', async () => {
     server.use(
-      http.post(ASK_URL, () =>
-        HttpResponse.json(
-          { error: 'llm_rate_limited', message: 'Limit reached.', retry_after_seconds: 1 },
-          { status: 429 },
-        ),
+      http.post(STREAM_URL, () =>
+        streamOf([
+          {
+            type: 'error',
+            error: { error: 'llm_rate_limited', message: 'Limit reached.', retry_after_seconds: 1 },
+          },
+        ]),
       ),
     )
     const user = userEvent.setup()
@@ -183,7 +185,7 @@ describe('CanvasPage', () => {
   })
 
   it('unsafe SQL has no Retry: Rephrase puts the question back in the composer', async () => {
-    server.use(http.post(ASK_URL, () => apiError('unsafe_sql')))
+    server.use(http.post(STREAM_URL, () => errorStream('unsafe_sql')))
     const user = userEvent.setup()
     renderApp('/')
 
@@ -194,6 +196,44 @@ describe('CanvasPage', () => {
     expect(box).toHaveValue('Sales per category?')
     expect(box).toHaveFocus()
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('a stream that breaks before any event falls back to POST /ask, and answers', async () => {
+    let plain = 0
+    server.use(
+      http.post(STREAM_URL, () => HttpResponse.error()),
+      http.post(ASK_URL, async ({ request }) => {
+        plain += 1
+        return HttpResponse.json(replyFor((await request.json()) as AskRequest))
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+
+    expect(await screen.findByText(answer.answer)).toBeInTheDocument()
+    expect(plain).toBe(1)
+  })
+
+  it('a stream cut off after it started is an error cell with Retry, and no second question', async () => {
+    let plain = 0
+    server.use(
+      http.post(STREAM_URL, () => streamOf(answerStream.slice(0, 3))),
+      http.post(ASK_URL, () => {
+        plain += 1
+        return HttpResponse.json(answer)
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+
+    const cell = await screen.findByRole('article', { name: 'Sales per category?' })
+    expect(await within(cell).findByText('The connection to the API was lost.')).toBeInTheDocument()
+    expect(within(cell).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(plain).toBe(0)
   })
 
   it('Follow up links the next question to that cell, in the same conversation', async () => {
@@ -272,10 +312,10 @@ describe('CanvasPage', () => {
     let release = () => {}
     const replied = new Promise<void>((resolve) => (release = resolve))
     server.use(
-      http.post(ASK_URL, async ({ request }) => {
+      http.post(STREAM_URL, async ({ request }) => {
         signals.push(request.signal)
         await replied
-        return HttpResponse.json(replyFor((await request.json()) as AskRequest))
+        return replyStream((await request.json()) as AskRequest)
       }),
     )
     const user = userEvent.setup()
@@ -307,9 +347,9 @@ describe('CanvasPage', () => {
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/c\//))
     const oldPath = router.state.location.pathname
     server.use(
-      http.post(ASK_URL, async ({ request }) => {
+      http.post(STREAM_URL, async ({ request }) => {
         await replied
-        return HttpResponse.json(replyFor((await request.json()) as AskRequest))
+        return replyStream((await request.json()) as AskRequest)
       }),
     )
     await askByKeyboard(user, 'Now only for 1997')

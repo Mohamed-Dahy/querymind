@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { answer, clarification, followup, refusal } from '@/mocks/fixtures'
+import type { TraceEvent } from '@/api/stream'
+import { answer, clarification, followup, refusal, repairStream } from '@/mocks/fixtures'
 
 import {
   canvasReducer,
@@ -64,6 +65,31 @@ describe('conversationReducer', () => {
     })
 
     expect(next.id).toBe('conv-1')
+  })
+
+  it('collects the events while a cell runs, and keeps them after it ends', () => {
+    const [first, second] = repairStream as [TraceEvent, TraceEvent]
+    const traced = [first, second].reduce(
+      (state, event) => conversationReducer(state, { type: 'traced', cellId: 'c1', event }),
+      asked(EMPTY),
+    )
+    expect(traced.cells[0]?.trace).toEqual([first, second])
+
+    const done = conversationReducer(traced, { type: 'replied', cellId: 'c1', reply: answer })
+    expect(done.cells[0]?.trace).toEqual([first, second])
+
+    // The cell has ended: a late event changes nothing.
+    expect(conversationReducer(done, { type: 'traced', cellId: 'c1', event: first })).toBe(done)
+  })
+
+  it('a failure keeps what happened before it; a retry starts a fresh trace', () => {
+    const [first] = repairStream as [TraceEvent]
+    const traced = conversationReducer(asked(EMPTY), { type: 'traced', cellId: 'c1', event: first })
+    const failed = conversationReducer(traced, { type: 'failed', cellId: 'c1', error: ERROR })
+    expect(failed.cells[0]?.trace).toEqual([first])
+
+    const retried = conversationReducer(failed, { type: 'retried', cellId: 'c1' })
+    expect(retried.cells[0]?.trace).toBeUndefined()
   })
 
   it('marks a failure, and a retry runs the same cell again in its place', () => {

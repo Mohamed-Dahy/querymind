@@ -2,7 +2,19 @@ import { describe, expect, it } from 'vitest'
 
 import { ApiError, ask } from '@/api/client'
 import { ERROR_TITLES } from '@/api/errors'
-import { answer, errors, followup, monthly, single, type MockErrorCode } from './fixtures'
+import { askStream, type TraceEvent } from '@/api/stream'
+import {
+  answer,
+  answerStream,
+  errors,
+  followup,
+  followupStream,
+  monthly,
+  repair,
+  repairStream,
+  single,
+  type MockErrorCode,
+} from './fixtures'
 
 // The real client against the fake API: what tests and mock mode get for each kind of question.
 describe('mock API', () => {
@@ -74,4 +86,62 @@ describe('mock API', () => {
       expect(ERROR_TITLES).toHaveProperty(code)
     },
   )
+})
+
+// The same, for POST /ask/stream: the steps, then the same answer.
+describe('mock API, streaming', () => {
+  async function stream(question: string, conversation_id?: string) {
+    const events: TraceEvent[] = []
+    const reply = await askStream(
+      conversation_id === undefined ? { question } : { question, conversation_id },
+      { onEvent: (event) => events.push(event) },
+    )
+    return { events, reply }
+  }
+
+  it('replays the recorded events, then the answer for the question that was asked', async () => {
+    const { events, reply } = await stream('Sales per country?')
+
+    expect(events).toEqual(answerStream)
+    expect(reply).toEqual({
+      ...answer,
+      question: 'Sales per country?',
+      conversation_id: expect.any(String),
+    })
+  })
+
+  it('a follow-up gets the follow-up events, in its conversation', async () => {
+    const { events, reply } = await stream('Only 1997', answer.conversation_id)
+
+    expect(events).toEqual(followupStream)
+    expect(reply.conversation_id).toBe(answer.conversation_id)
+  })
+
+  it('"in each country" gets the repair; a Streamlit example does not', async () => {
+    const repaired = await stream('How many customers are there in each country?')
+    expect(repaired.events).toEqual(repairStream)
+    expect(repaired.reply).toMatchObject({ attempts: repair.attempts, sql_attempts: 2 })
+
+    const plain = await stream('How many orders did each country place?')
+    expect(plain.events).toEqual(answerStream)
+  })
+
+  it.each(Object.keys(errors) as MockErrorCode[])(
+    '"error: %s" sends the first steps, then fails with that code',
+    async (code) => {
+      const events: TraceEvent[] = []
+
+      await expect(
+        askStream({ question: `error: ${code}` }, { onEvent: (event) => events.push(event) }),
+      ).rejects.toMatchObject({ code, message: errors[code].message })
+      expect(events).toEqual(answerStream.slice(0, 4))
+    },
+  )
+
+  it('"stream: broken" fails at once, so the answer comes from POST /ask', async () => {
+    const { events, reply } = await stream('stream: broken')
+
+    expect(events).toEqual([])
+    expect(reply).toMatchObject({ kind: 'answer', question: 'stream: broken' })
+  })
 })

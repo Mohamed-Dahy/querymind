@@ -36,10 +36,13 @@ export class ApiError extends Error {
   }
 }
 
+// Absolute, because `new Request()` needs a full URL outside the browser (tests). Same origin:
+// in dev Vite's proxy forwards /api/* to uvicorn (vite.config.ts).
+const API_BASE = `${window.location.origin}/api`
+export const ASK_URL = `${API_BASE}/ask`
+
 const api = createClient<paths>({
-  // Absolute, because `new Request()` needs a full URL outside the browser (tests). Same origin:
-  // in dev Vite's proxy forwards /api/* to uvicorn (vite.config.ts).
-  baseUrl: `${window.location.origin}/api`,
+  baseUrl: API_BASE,
   // Look up fetch on every call (not once at start-up), so test stubs and MSW (U0.5) are used.
   fetch: (request) => globalThis.fetch(request),
 })
@@ -52,7 +55,11 @@ export function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
 /** POST /ask: an answer, a question back, or a refusal (see `kind`). Never retried: each try costs LLM quota. */
 export async function ask(body: AskRequest, signal?: AbortSignal): Promise<AskReply> {
   const reply = await call(ASK_TIMEOUT_MS, signal, (s) => api.POST('/ask', { body, signal: s }))
-  // The UI switches on `kind`; a reply without a known one can't be shown.
+  return checkedReply(reply)
+}
+
+/** The UI switches on `kind`; a reply without a known one can't be shown. */
+export function checkedReply(reply: AskReply): AskReply {
   if (!ASK_KINDS.includes(reply.kind)) {
     throw new ApiError('bad_response', 'The API sent an unexpected response.')
   }
@@ -104,7 +111,7 @@ async function call<T>(
   return data
 }
 
-function isErrorBody(body: unknown): body is ErrorBody {
+export function isErrorBody(body: unknown): body is ErrorBody {
   return (
     typeof body === 'object' &&
     body !== null &&
@@ -114,7 +121,7 @@ function isErrorBody(body: unknown): body is ErrorBody {
 }
 
 /** Our API always sends {error, message}. Anything else came from something in between. */
-function errorFrom(status: number, body: unknown): ApiError {
+export function errorFrom(status: number, body: unknown): ApiError {
   if (isErrorBody(body)) {
     return new ApiError(body.error, body.message, status, body.retry_after_seconds ?? undefined)
   }
