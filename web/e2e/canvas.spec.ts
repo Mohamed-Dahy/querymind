@@ -1,10 +1,10 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 
 import answer from '../src/mocks/recorded/answer.json' with { type: 'json' }
 import { apiStatusLoaded, seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
 
-// The canvas flow in a real browser, against the mock API. U1.8 adds follow-ups, clarifications,
-// refusals and errors to this file.
+// The canvas flow in a real browser, against the mock API. U1.7 and U1.8 add errors and follow-ups
+// to this file.
 for (const theme of THEMES) {
   test(`${theme} theme: ask an example, get the answer cell, see the chart, table and SQL`, async ({
     page,
@@ -135,4 +135,78 @@ test('sales per month get a line chart; one number gets no chart and opens on th
   await expect(single.getByRole('tab', { name: 'Chart' })).toHaveCount(0)
   await expect(single.getByRole('tab', { name: 'Table' })).toHaveAttribute('aria-selected', 'true')
   await expect(single.getByRole('table')).toBeVisible()
+})
+
+for (const theme of THEMES) {
+  test(`${theme} theme: a question back, answered by a click and in your own words; a refusal`, async ({
+    page,
+  }) => {
+    await useTheme(page, theme)
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    const box = page.getByRole('textbox', { name: 'Your question' })
+
+    await box.fill('Which products are the most popular?')
+    await box.press('Control+Enter')
+    const asked = page.getByRole('article', {
+      name: 'Which products are the most popular?',
+      exact: true,
+    })
+    const option = asked.getByRole('button', { name: 'by total revenue' })
+    await expect(option).toBeVisible()
+    await expect(page).toHaveURL(/\/c\/[0-9a-f-]{36}$/)
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    await option.click()
+    const answered = page.getByRole('article', {
+      name: 'Which products are the most popular? (by total revenue)',
+    })
+    await expect(answered.getByRole('tab', { name: 'SQL' })).toBeVisible()
+
+    await asked.getByRole('button', { name: 'Something else…' }).click()
+    const own = asked.getByRole('textbox', { name: 'Your answer' })
+    await expect(own).toBeFocused()
+    expect(await seriousA11yIssues(page)).toEqual([])
+    await own.fill('by returns')
+    await own.press('Enter')
+    await expect(
+      page.getByRole('article', { name: 'Which products are the most popular? (by returns)' }),
+    ).toBeVisible()
+    await expect(page.getByRole('article')).toHaveCount(3)
+
+    // A new conversation, since the fake API only refuses a first question.
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    await box.fill('Delete all orders from 1996')
+    await box.press('Control+Enter')
+    const refused = page.getByRole('article', { name: 'Delete all orders from 1996' })
+    await expect(refused.getByText('Nothing in the database was changed.')).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+  })
+}
+
+test('on a phone, the sticky composer hides neither a question back nor the box that takes focus', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+  const composer = page.locator('form').filter({ has: box })
+  // Pixels between the bottom of the target and the top of the composer; negative means hidden.
+  const gapAbove = (target: Locator) => async () => {
+    const [own, sticky] = await Promise.all([target.boundingBox(), composer.boundingBox()])
+    return own && sticky ? sticky.y - (own.y + own.height) : -1
+  }
+
+  await box.fill('Which products are the most popular?')
+  await box.press('Control+Enter')
+  const toggle = page.getByRole('button', { name: 'Something else…' })
+  await expect(toggle).toBeVisible()
+  await expect.poll(gapAbove(toggle)).toBeGreaterThanOrEqual(0)
+
+  await toggle.press('Enter')
+  const own = page.getByRole('textbox', { name: 'Your answer' })
+  await expect(own).toBeFocused()
+  await expect.poll(gapAbove(own)).toBeGreaterThanOrEqual(0)
 })

@@ -1,9 +1,11 @@
-import { CircleAlert, MessageCircleQuestion, ShieldBan } from 'lucide-react'
+import { CircleAlert } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 
 import { errorTitle } from '@/api/errors'
 import { Skeleton } from '@/components/ui/skeleton'
 
+import { ClarificationCell } from './ClarificationCell'
+import { RefusalCell } from './RefusalCell'
 import type { Cell as CellData } from './state'
 
 // Loaded with the first answer, not with the page: the tabs and tooltip it uses (Radix) then stay
@@ -12,11 +14,19 @@ const AnswerCell = lazy(() =>
   import('./AnswerCell').then(({ AnswerCell }) => ({ default: AnswerCell })),
 )
 
+type CellProps = {
+  cell: CellData
+  /** A question is running in this conversation: anything that would ask another one waits. */
+  busy: boolean
+  /** Asks a question that continues from this cell. */
+  onAsk: (question: string, parentId: string) => void
+}
+
 /**
  * One question on the canvas, and whatever came back for it. The frame (the question as a heading)
  * is shared; the body depends on the status and the reply's `kind`.
  */
-export function Cell({ cell }: { cell: CellData }) {
+export function Cell({ cell, busy, onAsk }: CellProps) {
   const headingId = `${cell.id}-question`
   return (
     <article
@@ -27,12 +37,12 @@ export function Cell({ cell }: { cell: CellData }) {
       <h2 id={headingId} className="mb-3 text-base font-semibold">
         {cell.question}
       </h2>
-      <CellBody cell={cell} />
+      <CellBody cell={cell} busy={busy} onAsk={onAsk} />
     </article>
   )
 }
 
-function CellBody({ cell }: { cell: CellData }) {
+function CellBody({ cell, busy, onAsk }: CellProps) {
   if (cell.status === 'running') return <RunningBody />
   if (cell.status === 'failed' || cell.reply === undefined) {
     // U1.7 turns this into the error cell (Retry, a countdown for rate limits).
@@ -57,31 +67,15 @@ function CellBody({ cell }: { cell: CellData }) {
         </Suspense>
       )
     case 'clarification':
-      // U1.6 makes the options buttons that ask again in the same conversation.
       return (
-        <div className="flex items-start gap-2 text-sm">
-          <MessageCircleQuestion aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
-          <div>
-            <p className="font-medium">{reply.clarifying_question}</p>
-            <ul className="mt-1 ml-4 list-disc text-fg-muted">
-              {reply.options.map((option) => (
-                <li key={option}>{option}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <ClarificationCell
+          reply={reply}
+          busy={busy}
+          onAnswer={(question) => onAsk(question, cell.id)}
+        />
       )
     case 'refusal':
-      // U1.6 gives refusals their own calm cell.
-      return (
-        <div className="flex items-start gap-2 text-sm">
-          <ShieldBan aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-muted" />
-          <div>
-            <p>{reply.message}</p>
-            <p className="text-fg-muted">No SQL ran.</p>
-          </div>
-        </div>
-      )
+      return <RefusalCell reply={reply} />
   }
 }
 

@@ -30,15 +30,16 @@ export function CanvasPage() {
   const { conversation, busy, ask } = useConversation(conversationId ?? NEW_CONVERSATION)
   const { cells } = conversation
 
-  // Bring a new cell into view (the composer stays at the bottom of the screen).
+  // Bring the latest cell into view when it is added, and again when its reply makes it taller.
   const lastCell = useRef<HTMLLIElement>(null)
+  const lastStatus = cells.at(-1)?.status
   useEffect(() => {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     lastCell.current?.scrollIntoView?.({
       block: 'nearest',
       behavior: reduceMotion ? 'auto' : 'smooth',
     })
-  }, [cells.length])
+  }, [cells.length, lastStatus])
 
   return (
     <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 pt-10">
@@ -52,10 +53,12 @@ export function CanvasPage() {
         {cells.length === 0 ? (
           <EmptyCanvas onAsk={ask} busy={busy} />
         ) : (
-          <ol aria-label="Questions and answers" className="space-y-4">
+          // scroll-mb: when the browser scrolls a cell or a focused control into view, it stops
+          // above the sticky composer (about 200 px tall on a phone) instead of behind it.
+          <ol aria-label="Questions and answers" className="space-y-4 [&_*]:scroll-mb-56">
             {cells.map((cell, index) => (
               <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
-                <Cell cell={cell} />
+                <Cell cell={cell} busy={busy} onAsk={ask} />
               </li>
             ))}
           </ol>

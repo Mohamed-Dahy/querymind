@@ -30,6 +30,16 @@ export function checkQuestion(text: string): QuestionCheck {
   return { ok: true, question }
 }
 
+/**
+ * What to ask after a clarifying question: the original question with the choice in brackets, so it
+ * stands on its own (Streamlit does the same). If that goes over the limit, just the choice: the
+ * conversation's history on the server still holds the original question.
+ */
+export function clarifiedQuestion(question: string, choice: string): string {
+  const both = `${question} (${choice.trim()})`
+  return questionLength(both) <= MAX_QUESTION_LENGTH ? both : choice.trim()
+}
+
 // Screen readers hear the counter only at these points, not on every key press.
 const ANNOUNCE_AT = [10, 50, 100]
 

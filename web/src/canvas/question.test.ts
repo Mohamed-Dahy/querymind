@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import openapi from '../../openapi.json'
 import { EXAMPLE_GROUPS } from './examples'
-import { checkQuestion, limitAnnouncement, MAX_QUESTION_LENGTH, questionLength } from './question'
+import {
+  checkQuestion,
+  clarifiedQuestion,
+  limitAnnouncement,
+  MAX_QUESTION_LENGTH,
+  questionLength,
+} from './question'
 
 describe('the question limit', () => {
   it("matches the API's AskRequest.question maxLength", () => {
@@ -62,5 +68,19 @@ describe('the example questions', () => {
   it('are all sendable and different', () => {
     expect(all.every((question) => checkQuestion(question).ok)).toBe(true)
     expect(new Set(all).size).toBe(all.length)
+  })
+})
+
+describe('clarifiedQuestion', () => {
+  it('puts the choice in brackets after the question, trimmed', () => {
+    expect(clarifiedQuestion('Best customers?', '  by revenue ')).toBe(
+      'Best customers? (by revenue)',
+    )
+  })
+
+  it('sends just the choice when both together would pass the limit', () => {
+    const long = 'x'.repeat(MAX_QUESTION_LENGTH - 5)
+    expect(clarifiedQuestion(long, 'ab')).toBe(`${long} (ab)`)
+    expect(clarifiedQuestion(long, 'abcdef')).toBe('abcdef')
   })
 })

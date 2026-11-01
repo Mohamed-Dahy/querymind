@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
 import type { AskRequest } from '@/api/client'
-import { answer, followup } from '@/mocks/fixtures'
+import { answer, clarification, followup, refusal } from '@/mocks/fixtures'
 import { apiError, ASK_URL, replyFor } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
@@ -126,12 +126,70 @@ describe('CanvasPage', () => {
     expect(router.state.location.pathname).toBe('/')
   })
 
-  it('shows a question back and a refusal (their full cells arrive in U1.6)', async () => {
+  it('a click on an option asks again in the same conversation, in a new cell', async () => {
+    const bodies = recordAsks()
+    const user = userEvent.setup()
+    const { router } = renderApp('/')
+
+    await askByKeyboard(user, 'Which products are the most popular?')
+    const button = await screen.findByRole('button', { name: 'by total revenue' })
+    expect(screen.getByText('QueryMind has a question for you.')).toBeInTheDocument()
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/c\//))
+    await user.click(button)
+
+    expect(await screen.findByText(followup.answer)).toBeInTheDocument()
+    const id = router.state.location.pathname.slice('/c/'.length)
+    expect(bodies).toEqual([
+      { question: 'Which products are the most popular?', conversation_id: null },
+      {
+        question: 'Which products are the most popular? (by total revenue)',
+        conversation_id: id,
+      },
+    ])
+    // The question back stays on the canvas, above its answer.
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+    expect(screen.getByText(clarification.clarifying_question)).toBeInTheDocument()
+  })
+
+  it('an option picked before the URL changes still continues that conversation', async () => {
+    const bodies = recordAsks()
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Which products are the most popular?')
+    await user.click(await screen.findByRole('button', { name: 'by total revenue' }))
+
+    await screen.findByText(followup.answer)
+    expect(bodies[1]?.conversation_id).toEqual(expect.any(String))
+  })
+
+  it('"Something else…" sends the typed answer in the same conversation', async () => {
+    const bodies = recordAsks()
+    const user = userEvent.setup()
+    const { router } = renderApp('/')
+
+    await askByKeyboard(user, 'Which products are the most popular?')
+    await user.click(await screen.findByRole('button', { name: 'Something else…' }))
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/c\//))
+    await user.type(screen.getByRole('textbox', { name: 'Your answer' }), 'by returns{Enter}')
+
+    await screen.findByText(followup.answer)
+    expect(bodies[1]).toEqual({
+      question: 'Which products are the most popular? (by returns)',
+      conversation_id: router.state.location.pathname.slice('/c/'.length),
+    })
+  })
+
+  it('a refusal shows its message calmly, with nothing to run or look at', async () => {
     const user = userEvent.setup()
     renderApp('/')
 
     await askByKeyboard(user, 'Delete all orders from 1996')
-    expect(await screen.findByText('No SQL ran.')).toBeInTheDocument()
+
+    const cell = await screen.findByRole('article', { name: 'Delete all orders from 1996' })
+    expect(await within(cell).findByText(refusal.message)).toBeInTheDocument()
+    expect(within(cell).getByText('Nothing in the database was changed.')).toBeInTheDocument()
+    expect(within(cell).queryByRole('tab')).not.toBeInTheDocument()
     expect(screen.getByText('QueryMind declined this question.')).toBeInTheDocument()
   })
 })
