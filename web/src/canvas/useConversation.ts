@@ -6,6 +6,7 @@ export type CanvasContextValue = {
   store: CanvasStore
   ask: (key: string, question: string, parentId?: string) => void
   retry: (key: string, cellId: string) => void
+  stop: (cellId: string) => void
   newConversation: () => void
 }
 
@@ -25,11 +26,13 @@ export type ConversationView = {
   ask: (question: string, parentId?: string) => void
   /** Runs a failed cell's question again, in that cell. */
   retry: (cellId: string) => void
+  /** Stops a running cell's question. */
+  stop: (cellId: string) => void
 }
 
 /** One conversation (`key` = NEW_CONVERSATION or a conversation id), and a way to ask in it. */
 export function useConversation(key: string): ConversationView {
-  const { store, ask: askIn, retry: retryIn } = useCanvas()
+  const { store, ask: askIn, retry: retryIn, stop } = useCanvas()
 
   const conversation = conversationAt(store, key)
   const busy = conversation.cells.some((cell) => cell.status === 'running')
@@ -38,7 +41,7 @@ export function useConversation(key: string): ConversationView {
     [askIn, key],
   )
   const retry = useCallback((cellId: string) => retryIn(key, cellId), [retryIn, key])
-  return { conversation, busy, ask, retry }
+  return { conversation, busy, ask, retry, stop }
 }
 
 /** Starts over at an empty `/`. The old conversation stays at its own URL. */

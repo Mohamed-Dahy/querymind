@@ -1,10 +1,12 @@
 import { CornerDownRight } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 
+import type { TraceEvent } from '@/api/stream'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
+import { AgentRail } from './AgentRail'
 import { ClarificationCell } from './ClarificationCell'
 import { ErrorCell } from './ErrorCell'
 import { RefusalCell } from './RefusalCell'
@@ -15,6 +17,8 @@ import type { Cell as CellData } from './state'
 const AnswerCell = lazy(() =>
   import('./AnswerCell').then(({ AnswerCell }) => ({ default: AnswerCell })),
 )
+
+const NO_EVENTS: readonly TraceEvent[] = []
 
 type CellProps = {
   cell: CellData
@@ -30,6 +34,8 @@ type CellProps = {
   onRephrase: (question: string) => void
   /** Sets up the composer to follow up on this cell. */
   onFollowUp: (cellId: string) => void
+  /** Stops this cell's question while it runs. */
+  onStop: (cellId: string) => void
 }
 
 /**
@@ -37,7 +43,7 @@ type CellProps = {
  * is shared; the body depends on the status and the reply's `kind`.
  */
 export function Cell(props: CellProps) {
-  const { cell, parentQuestion } = props
+  const { cell, parentQuestion, onStop } = props
   const headingId = `${cell.id}-question`
   const isFollowUp = parentQuestion !== undefined
   return (
@@ -60,6 +66,16 @@ export function Cell(props: CellProps) {
       <h2 id={headingId} className="mb-3 text-base font-semibold">
         {cell.question}
       </h2>
+      {/* Not after a fallback to POST /ask, which sends no steps: the answer is complete anyway. */}
+      {(cell.status === 'running' || cell.trace !== undefined) && (
+        <AgentRail
+          trace={cell.trace ?? NO_EVENTS}
+          status={cell.status}
+          stopped={cell.error?.code === 'stopped'}
+          onStop={() => onStop(cell.id)}
+          describedBy={headingId}
+        />
+      )}
       <CellBody {...props} />
     </article>
   )
@@ -114,7 +130,6 @@ function CellBody({ cell, busy, onAsk, onRetry, onRephrase, onFollowUp }: CellPr
 function RunningBody() {
   return (
     <div className="space-y-2">
-      <p className="text-sm text-fg-muted">Working on it… this usually takes a few seconds.</p>
       <Skeleton className="h-4 w-3/4 motion-reduce:animate-none" />
       <Skeleton className="h-4 w-1/2 motion-reduce:animate-none" />
       <Skeleton className="h-24 w-full motion-reduce:animate-none" />

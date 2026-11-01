@@ -4,7 +4,14 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
 import type { AskRequest } from '@/api/client'
-import { answer, answerStream, clarification, followup, refusal } from '@/mocks/fixtures'
+import {
+  answer,
+  answerStream,
+  clarification,
+  followup,
+  refusal,
+  repairStream,
+} from '@/mocks/fixtures'
 import { ASK_URL, errorStream, replyFor, replyStream, STREAM_URL, streamOf } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
@@ -196,6 +203,119 @@ describe('CanvasPage', () => {
     expect(box).toHaveValue('Sales per category?')
     expect(box).toHaveFocus()
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('shows the steps while it works, and keeps them with the answer', async () => {
+    let release = () => {}
+    const replied = new Promise<void>((resolve) => (release = resolve))
+    server.use(
+      http.post(STREAM_URL, async ({ request }) => {
+        const body = (await request.json()) as AskRequest
+        const encoder = new TextEncoder()
+        const line = (event: unknown) => encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+        return new HttpResponse(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              for (const event of answerStream.slice(0, 5)) controller.enqueue(line(event))
+              await replied
+              for (const event of answerStream.slice(5)) controller.enqueue(line(event))
+              controller.enqueue(line({ type: 'final', reply: replyFor(body) }))
+              controller.close()
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+
+    const cell = screen.getByRole('article', { name: 'Sales per category?' })
+    const steps = within(cell).getByRole('list', { name: 'Agent steps' })
+    await waitFor(() =>
+      expect(within(steps).getByText('Write SQL').closest('li')).toHaveAttribute(
+        'aria-current',
+        'step',
+      ),
+    )
+    expect(screen.getByText('Working on your question.')).toBeInTheDocument()
+
+    release()
+    expect(await within(cell).findByText(answer.answer)).toBeInTheDocument()
+    expect(within(steps).getByText('Summarize').closest('li')).not.toHaveTextContent('waiting')
+    expect(within(cell).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+  })
+
+  it('a repair is announced while it happens, and the rail shows it', async () => {
+    const repairing = repairStream.findIndex(
+      (event) => event.type === 'step' && event.node === 'repair_sql',
+    )
+    server.use(
+      http.post(STREAM_URL, () => streamOf(repairStream.slice(0, repairing + 1), { stuck: true })),
+    )
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'How many customers are there in each country?')
+
+    expect(await screen.findByText('SQL try 1 failed, repairing.')).toBeInTheDocument()
+    expect(screen.getByText(/^Try 1 failed: /)).toBeInTheDocument()
+    expect(screen.getByText('2 tries', { exact: false })).toBeInTheDocument()
+  })
+
+  it('Stop ends the question: an error cell with Retry, and the focus in the composer', async () => {
+    server.use(http.post(STREAM_URL, () => streamOf(answerStream.slice(0, 5), { stuck: true })))
+    const user = userEvent.setup()
+    const { router } = renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+    const cell = screen.getByRole('article', { name: 'Sales per category?' })
+    await user.click(await within(cell).findByRole('button', { name: 'Stop' }))
+
+    expect(await within(cell).findByText('You stopped this question.')).toBeInTheDocument()
+    expect(within(cell).getByText(/may still finish on the server/)).toBeInTheDocument()
+    expect(within(cell).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(within(cell).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+    expect(within(cell).getByText('Write SQL').closest('li')).toHaveTextContent('stopped')
+    expect(screen.getByRole('textbox', { name: 'Your question' })).toHaveFocus()
+    expect(router.state.location.pathname).toBe('/')
+    // Not busy any more: a new question can go at once.
+    expect(screen.getByRole('button', { name: 'Ask' })).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  it('Retry after Stop runs again with fresh steps, and answers', async () => {
+    let stuck = true
+    server.use(
+      http.post(STREAM_URL, async ({ request }) =>
+        stuck
+          ? streamOf(answerStream.slice(0, 5), { stuck: true })
+          : replyStream((await request.json()) as AskRequest),
+      ),
+    )
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
+    stuck = false
+    await user.click(await screen.findByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText(answer.answer)).toBeInTheDocument()
+    expect(screen.getByText('Write SQL').closest('li')).not.toHaveTextContent('stopped')
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+  })
+
+  it('an answer from the fallback has no rail: there were no steps to show', async () => {
+    server.use(http.post(STREAM_URL, () => HttpResponse.error()))
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await askByKeyboard(user, 'Sales per category?')
+
+    await screen.findByText(answer.answer)
+    expect(screen.queryByRole('list', { name: 'Agent steps' })).not.toBeInTheDocument()
   })
 
   it('a stream that breaks before any event falls back to POST /ask, and answers', async () => {

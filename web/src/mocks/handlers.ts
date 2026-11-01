@@ -56,6 +56,8 @@ const ONE_NUMBER = /^how many customers\b/i
 const NEEDS_REPAIR = /\bin each country\b/i
 // Mock mode only: "stream: broken" makes the stream fail at once, so the UI falls back to POST /ask.
 const BROKEN_STREAM = /\bstream:\s*broken\b/i
+// Mock mode only: "stream: stuck" sends a few steps and then waits forever, to try the Stop button.
+const STUCK_STREAM = /\bstream:\s*stuck\b/i
 
 /**
  * A recorded reply and its events that fit the question, so mock mode feels like the real API: a
@@ -92,8 +94,11 @@ export function replyFor(request: AskRequest): AskReply {
   return recordedFor(request).reply
 }
 
-/** These events as POST /ask/stream sends them: one `data:` line each, then a blank line. */
-export function streamOf(events: readonly StreamEvent[]) {
+/**
+ * These events as POST /ask/stream sends them: one `data:` line each, then a blank line. `stuck`: it
+ * stays open afterwards, like a step that is taking a long time.
+ */
+export function streamOf(events: readonly StreamEvent[], { stuck = false } = {}) {
   const encoder = new TextEncoder()
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -101,7 +106,7 @@ export function streamOf(events: readonly StreamEvent[]) {
         if (EVENT_DELAY_MS > 0) await delay(EVENT_DELAY_MS)
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
       }
-      controller.close()
+      if (!stuck) controller.close()
     },
   })
   return new HttpResponse(body, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } })
@@ -130,6 +135,7 @@ export const handlers = [
   http.post(STREAM_URL, async ({ request }) => {
     const body = (await request.json()) as AskRequest
     if (BROKEN_STREAM.test(body.question)) return HttpResponse.error()
+    if (STUCK_STREAM.test(body.question)) return streamOf(answerStream.slice(0, 5), { stuck: true })
     const code = ERROR_PREFIX.exec(body.question)?.[1]?.toLowerCase()
     if (code && code in errors) return errorStream(code as MockErrorCode)
     return replyStream(body)

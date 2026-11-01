@@ -12,6 +12,11 @@ import { CanvasContext, type CanvasContextValue } from './useConversation'
 // Cell ids only need to be unique on this page load (crypto.randomUUID needs HTTPS off localhost).
 let lastCellId = 0
 
+const STOPPED: CellError = {
+  code: 'stopped',
+  message: 'A step that was already running may still finish on the server.',
+}
+
 /** Any failure as a cell error: the API's own code and message, or a generic one. */
 function cellError(error: unknown): CellError {
   if (error instanceof ApiError) {
@@ -44,7 +49,10 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       askStream(body, options),
   })
   // Every running question, to cancel it. `named`: its conversation has an id already.
-  const running = useRef(new Map<string, { controller: AbortController; named: boolean }>())
+  // `stopped`: the user pressed Stop, so the cell stays and says so.
+  const running = useRef(
+    new Map<string, { controller: AbortController; named: boolean; stopped: boolean }>(),
+  )
 
   // The latest store and path, for code that runs after an await (when the render's values are old).
   const latest = useRef({ store, pathname })
@@ -61,7 +69,8 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       // Its id, not `key`: `new` may mean another conversation by the time the reply arrives.
       const target = conversationId ?? key
       const controller = new AbortController()
-      running.current.set(cellId, { controller, named: conversationId !== null })
+      const run = { controller, named: conversationId !== null, stopped: false }
+      running.current.set(cellId, run)
       try {
         const reply = await mutateAsync({
           body: { question, conversation_id: conversationId },
@@ -79,8 +88,13 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         // Cancelled by "New conversation": its cell is gone, so there is nothing to report.
-        if (controller.signal.aborted) return
-        dispatch({ key: target, type: 'failed', cellId, error: cellError(error) })
+        if (controller.signal.aborted && !run.stopped) return
+        dispatch({
+          key: target,
+          type: 'failed',
+          cellId,
+          error: run.stopped ? STOPPED : cellError(error),
+        })
       } finally {
         running.current.delete(cellId)
       }
@@ -107,6 +121,12 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         if (cell === undefined) return
         dispatch({ key, type: 'retried', cellId })
         void send(key, cellId, cell.question)
+      },
+      stop: (cellId) => {
+        const run = running.current.get(cellId)
+        if (run === undefined) return
+        run.stopped = true
+        run.controller.abort()
       },
       newConversation: () => {
         // A question with no conversation has nowhere to land after this, so it is cancelled. One

@@ -348,3 +348,82 @@ test('the app asks through the stream, and falls back to POST /ask when it break
   ).toBeVisible()
   expect(paths).toEqual(['/api/ask/stream', '/api/ask'])
 })
+
+// U2.4: the agent rail, live.
+for (const theme of THEMES) {
+  test(`${theme} theme: the rail shows the repair loop, and Stop ends a run`, async ({ page }) => {
+    await useTheme(page, theme)
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    const box = page.getByRole('textbox', { name: 'Your question' })
+
+    const question = 'How many customers are there in each country?'
+    await box.fill(question)
+    await box.press('Control+Enter')
+    const repaired = page.getByRole('article', { name: question })
+    const steps = repaired.getByRole('list', { name: 'Agent steps' })
+    // Caught while it runs: the rail is there before the answer, and it moves.
+    await expect(steps.locator('[aria-current="step"]')).toHaveCount(1)
+    expect(await seriousA11yIssues(page)).toEqual([])
+    await expect(repaired.getByText('The USA has the most customers, with 13.')).toBeVisible()
+    await expect(repaired.getByText('2 tries')).toBeVisible()
+    await expect(repaired.getByText(/^Try 1 failed: .*GROUP BY/)).toBeVisible()
+    await expect(steps.locator('[aria-current="step"]')).toHaveCount(0)
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    await page.getByRole('button', { name: 'New conversation' }).click()
+    await box.fill('stream: stuck')
+    await box.press('Control+Enter')
+    const stuck = page.getByRole('article', { name: 'stream: stuck' })
+    await expect(stuck.locator('[aria-current="step"]')).toContainText('Write SQL')
+    expect(await seriousA11yIssues(page)).toEqual([])
+    await stuck.getByRole('button', { name: 'Stop' }).click()
+    await expect(stuck.getByText('You stopped this question.')).toBeVisible()
+    await expect(stuck.getByRole('button', { name: 'Retry' })).toBeVisible()
+    await expect(box).toBeFocused()
+    expect(await seriousA11yIssues(page)).toEqual([])
+  })
+}
+
+test('under reduced motion the rail is still: no spinning, and the words say what is running', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+
+  await box.fill('stream: stuck')
+  await box.press('Control+Enter')
+
+  const running = page.getByRole('article').locator('[aria-current="step"]')
+  await expect(running).toContainText('running')
+  const animation = await page.evaluate(
+    "getComputedStyle(document.querySelector('[aria-current=step] svg')).animationName",
+  )
+  expect(animation).toBe('none')
+})
+
+test('on a phone the rail wraps without a sideways scroll, and Stop is reachable', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+
+  await box.fill('How many customers are there in each country?')
+  await box.press('Control+Enter')
+  await expect(page.getByText(/^Try 1 failed: /)).toBeVisible()
+  const overflow = await page.evaluate(
+    'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+  )
+  expect(overflow).toBeLessThanOrEqual(0)
+
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  await box.fill('stream: stuck')
+  await box.press('Control+Enter')
+  await page.getByRole('button', { name: 'Stop' }).click()
+  await expect(page.getByRole('article').getByText('You stopped this question.')).toBeVisible()
+  expect(await seriousA11yIssues(page)).toEqual([])
+})

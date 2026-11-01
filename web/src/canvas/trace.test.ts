@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest'
 import type { TraceEvent } from '@/api/stream'
 import { answerStream, clarificationStream, repairStream } from '@/mocks/fixtures'
 
-import { railFrom, repairAnnouncement, type RailStepId, type RailStepState } from './trace'
+import {
+  formatDuration,
+  railFrom,
+  repairAnnouncement,
+  type RailStepId,
+  type RailStepState,
+} from './trace'
 
 function states(events: readonly TraceEvent[], ended = false) {
   const { steps } = railFrom(events, { ended })
@@ -146,6 +152,17 @@ describe('other endings', () => {
     const newer = { type: 'something_new' } as unknown as TraceEvent
 
     expect(states([newer])).toMatchObject({ write: 'waiting' })
+  })
+})
+
+describe('formatDuration', () => {
+  it.each([
+    [56, '56 ms'],
+    [999, '999 ms'],
+    [1000, '1.0 s'],
+    [1439, '1.4 s'],
+  ])('%i ms is "%s"', (milliseconds, text) => {
+    expect(formatDuration(milliseconds)).toBe(text)
   })
 })
 

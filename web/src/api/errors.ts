@@ -13,6 +13,7 @@ export const ERROR_TITLES = {
   api_unreachable: "The QueryMind API isn't reachable.",
   api_timeout: 'The API took too long to answer.',
   stream_interrupted: 'The connection to the API was lost.',
+  stopped: 'You stopped this question.',
   bad_response: 'The API sent an unexpected response.',
   internal_error: 'Something went wrong on the server.',
 } as const satisfies Record<string, string>

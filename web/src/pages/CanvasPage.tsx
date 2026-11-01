@@ -7,6 +7,7 @@ import { Cell } from '@/canvas/Cell'
 import { Composer, type ComposerHandle } from '@/canvas/Composer'
 import { EmptyCanvas } from '@/canvas/EmptyCanvas'
 import { NEW_CONVERSATION, type Cell as CellData } from '@/canvas/state'
+import { railFrom, repairAnnouncement } from '@/canvas/trace'
 import { useConversation } from '@/canvas/useConversation'
 import { formatWait } from '@/canvas/wait'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,10 @@ import { NotFoundPage } from './NotFoundPage'
 /** What a screen reader hears about the latest cell (the cells themselves aren't live regions). */
 function announcement(cell: CellData | undefined): string {
   if (cell === undefined) return ''
-  if (cell.status === 'running') return 'Working on your question.'
+  if (cell.status === 'running') {
+    const repairing = repairAnnouncement(railFrom(cell.trace ?? [], { ended: false }))
+    return repairing || 'Working on your question.'
+  }
   if (cell.status === 'failed') {
     const title = errorTitle(cell.error?.code ?? 'unexpected')
     const wait = cell.error?.retryAfterSeconds
@@ -46,7 +50,9 @@ export function CanvasPage() {
 
 /** The canvas: example questions or the conversation's cells, and the composer at the bottom. */
 function Canvas({ conversationId }: { conversationId: string | undefined }) {
-  const { conversation, busy, ask, retry } = useConversation(conversationId ?? NEW_CONVERSATION)
+  const { conversation, busy, ask, retry, stop } = useConversation(
+    conversationId ?? NEW_CONVERSATION,
+  )
   const { cells } = conversation
   const composer = useRef<ComposerHandle>(null)
   const followUpNoteId = useId()
@@ -97,6 +103,11 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
                     composer.current?.focus()
                   }}
                   onRephrase={(question) => composer.current?.fill(question)}
+                  onStop={(cellId) => {
+                    stop(cellId)
+                    // The Stop button goes away too.
+                    composer.current?.focus()
+                  }}
                   onFollowUp={(cellId) => {
                     setFollowingUpId(cellId)
                     composer.current?.focus()

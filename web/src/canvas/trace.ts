@@ -16,7 +16,7 @@ export const RAIL_STEPS = [
 ] as const
 export type RailStepId = (typeof RAIL_STEPS)[number]
 
-export type RailStepState = 'waiting' | 'running' | 'done' | 'failed' | 'skipped'
+export type RailStepState = 'waiting' | 'running' | 'done' | 'failed' | 'skipped' | 'stopped'
 export type RailStep = { state: RailStepState; durationMs: number }
 
 type StepEvent = Extract<TraceEvent, { type: 'step' }>
@@ -60,10 +60,14 @@ function startingSteps(): Rail['steps'] {
 }
 
 /**
- * `ended`: the run is over, so what never ran was skipped, and what was still running was cut off.
+ * `ended`: the run is over, so what never ran was skipped, and what was still running was cut off
+ * (`stopped`: by the user; otherwise it failed).
  * A later try replaces an earlier one's state (it runs again), and the times add up.
  */
-export function railFrom(events: readonly TraceEvent[], { ended }: { ended: boolean }): Rail {
+export function railFrom(
+  events: readonly TraceEvent[],
+  { ended, stopped = false }: { ended: boolean; stopped?: boolean },
+): Rail {
   const steps = startingSteps()
   const tries: SqlTry[] = []
   let repairs = 0
@@ -130,10 +134,15 @@ export function railFrom(events: readonly TraceEvent[], { ended }: { ended: bool
   if (ended) {
     for (const step of Object.values(steps)) {
       if (step.state === 'waiting') step.state = 'skipped'
-      if (step.state === 'running') step.state = 'failed'
+      if (step.state === 'running') step.state = stopped ? 'stopped' : 'failed'
     }
   }
   return { steps, tries, repairs }
+}
+
+/** A step's time: "56 ms", "1.4 s". */
+export function formatDuration(milliseconds: number): string {
+  return milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(1)} s`
 }
 
 /** What a screen reader should hear during a run: only a repair, never every step. */
