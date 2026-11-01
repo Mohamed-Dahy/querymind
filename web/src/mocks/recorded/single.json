@@ -1,7 +1,7 @@
 {
   "kind": "answer",
   "question": "How many customers are there?",
-  "conversation_id": "350e5e1b-f952-487f-86ed-ca437fb53b7c",
+  "conversation_id": "d70adda6-bcbd-4871-a69d-f1aeee8125a7",
   "answer": "There are 91 customers in total.",
   "answer_from_llm": true,
   "sql": "SELECT COUNT(*) AS customer_count FROM customers LIMIT 1001",
@@ -18,5 +18,28 @@
   "truncated": false,
   "warnings": [],
   "confidence": "high",
-  "confidence_reasons": []
+  "confidence_reasons": [],
+  "attempts": [],
+  "schema_selection": {
+    "mode": "retrieved",
+    "tables": [
+      "customers",
+      "customer_customer_demo",
+      "customer",
+      "customer_demographics",
+      "orders",
+      "invoice",
+      "order_details"
+    ],
+    "total_tables": 25,
+    "search": "hybrid"
+  },
+  "search_question": null,
+  "example_questions": [
+    "Which customers placed more than 20 orders? Return the company name and the number of orders.",
+    "How many orders were shipped to France?",
+    "When did each customer from Germany first buy something? Return the first and last name and the date."
+  ],
+  "sql_attempts": 1,
+  "duration_ms": 2074
 }

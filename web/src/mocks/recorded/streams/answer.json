@@ -1,0 +1,99 @@
+[
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "schema",
+    "schema_selection": {
+      "mode": "retrieved",
+      "tables": [
+        "order_details",
+        "invoice_line",
+        "categories",
+        "products",
+        "invoice"
+      ],
+      "total_tables": 25,
+      "search": "hybrid"
+    }
+  },
+  {
+    "type": "examples",
+    "questions": [
+      "What is the value of the stock in each category (unit price times units in stock)? Return the category name and the stock value.",
+      "How many invoices were issued in each month of 2024? Return the month (1-12) and the count.",
+      "What is the average invoice total in each billing country with more than 10 invoices? Return the country and the average."
+    ]
+  },
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "finished",
+    "duration_ms": 602
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "sql",
+    "attempt": 1,
+    "sql": "SELECT c.category_name, sum(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id GROUP BY c.category_name",
+    "explanation": "Calculates total sales revenue for each product category using order line details and discounts."
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "finished",
+    "duration_ms": 1371
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "validated",
+    "attempt": 1
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "finished",
+    "duration_ms": 48
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "checked",
+    "warnings": []
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "finished",
+    "duration_ms": 3
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "finished",
+    "duration_ms": 778
+  }
+]

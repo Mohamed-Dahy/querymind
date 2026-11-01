@@ -1,0 +1,135 @@
+{
+  "kind": "answer",
+  "question": "How many customers are there in each country?",
+  "conversation_id": "eebd08a8-6db7-4a17-bba9-f2bd49ecf838",
+  "answer": "The USA has the most customers, with 13.",
+  "answer_from_llm": true,
+  "sql": "SELECT country, COUNT(*) AS customer_count FROM customers GROUP BY country ORDER BY customer_count DESC LIMIT 1001",
+  "explanation": "Counts the customers in each country, biggest first.",
+  "columns": [
+    "country",
+    "customer_count"
+  ],
+  "rows": [
+    [
+      "USA",
+      13
+    ],
+    [
+      "Germany",
+      11
+    ],
+    [
+      "France",
+      11
+    ],
+    [
+      "Brazil",
+      9
+    ],
+    [
+      "UK",
+      7
+    ],
+    [
+      "Mexico",
+      5
+    ],
+    [
+      "Spain",
+      5
+    ],
+    [
+      "Venezuela",
+      4
+    ],
+    [
+      "Argentina",
+      3
+    ],
+    [
+      "Italy",
+      3
+    ],
+    [
+      "Canada",
+      3
+    ],
+    [
+      "Sweden",
+      2
+    ],
+    [
+      "Austria",
+      2
+    ],
+    [
+      "Denmark",
+      2
+    ],
+    [
+      "Portugal",
+      2
+    ],
+    [
+      "Finland",
+      2
+    ],
+    [
+      "Belgium",
+      2
+    ],
+    [
+      "Switzerland",
+      2
+    ],
+    [
+      "Poland",
+      1
+    ],
+    [
+      "Norway",
+      1
+    ],
+    [
+      "Ireland",
+      1
+    ]
+  ],
+  "row_count": 21,
+  "truncated": false,
+  "warnings": [],
+  "confidence": "medium",
+  "confidence_reasons": [
+    "It needed 1 repair to get this result."
+  ],
+  "attempts": [
+    {
+      "sql": "SELECT country, COUNT(*) AS customer_count FROM customers GROUP BY region LIMIT 1001",
+      "kind": "db_error",
+      "message": "The database could not run the query: column \"customers.country\" must appear in the GROUP BY clause or be used in an aggregate function"
+    }
+  ],
+  "schema_selection": {
+    "mode": "retrieved",
+    "tables": [
+      "customers",
+      "customer",
+      "customer_customer_demo",
+      "customer_demographics",
+      "orders",
+      "invoice",
+      "order_details"
+    ],
+    "total_tables": 25,
+    "search": "hybrid"
+  },
+  "search_question": null,
+  "example_questions": [
+    "How many open orders are going to each country? Return the destination country and the count.",
+    "Which customers placed more than 20 orders? Return the company name and the number of orders.",
+    "What is the average invoice total in each billing country with more than 10 invoices? Return the country and the average."
+  ],
+  "sql_attempts": 2,
+  "duration_ms": 1039
+}

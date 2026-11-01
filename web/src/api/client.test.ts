@@ -16,6 +16,8 @@ const ANSWER: AskResponse = {
   question: 'How many customers are there?',
   conversation_id: '7f0c5a52-3c1e-4c55-9a59-0d4c3c1f6a01',
   answer: 'There are 91 customers.',
+  attempts: [],
+  example_questions: [],
   answer_from_llm: true,
   sql: 'SELECT count(*) FROM customers LIMIT 1000',
   explanation: 'Counts the rows in customers.',

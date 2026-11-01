@@ -1,11 +1,11 @@
 {
   "kind": "answer",
   "question": "Now only for 1997.",
-  "conversation_id": "f62fa270-0705-42a2-b18e-8a202896009f",
-  "answer": "In 1997, the top-selling categories were Dairy Products with about 115,388 in sales and Beverages with about 103,924. Meanwhile, Produce had the lowest sales at about 54,941.",
+  "conversation_id": "e5ea7b4c-392d-42ad-8b2d-5b93ae0b7480",
+  "answer": "In 1997, the top-selling categories were Dairy Products at about 115,387.64 and Beverages at about 103,924.31. Produce had the lowest sales at about 54,940.77.",
   "answer_from_llm": true,
-  "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id JOIN orders AS o ON o.order_id = od.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY c.category_name LIMIT 1001",
-  "explanation": "Calculates the total sales amount per product category restricted to orders placed in the year 1997.",
+  "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id JOIN orders AS o ON od.order_id = o.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY c.category_name LIMIT 1001",
+  "explanation": "Calculates the total sales amount per category filtered specifically for orders placed in the year 1997.",
   "columns": [
     "category_name",
     "total_sales"
@@ -48,5 +48,28 @@
   "truncated": false,
   "warnings": [],
   "confidence": "high",
-  "confidence_reasons": []
+  "confidence_reasons": [],
+  "attempts": [],
+  "schema_selection": {
+    "mode": "retrieved",
+    "tables": [
+      "customers",
+      "order_details",
+      "products",
+      "invoice",
+      "employees",
+      "categories",
+      "orders"
+    ],
+    "total_tables": 25,
+    "search": "hybrid"
+  },
+  "search_question": null,
+  "example_questions": [
+    "What was the sales revenue in each quarter of 1997? Return the quarter (1-4) and the revenue.",
+    "Which customers bought Seafood products in 1997? Return their company names.",
+    "How much sales revenue did each employee bring in from orders placed in 1996? Return the employee's first and last name and the revenue."
+  ],
+  "sql_attempts": 1,
+  "duration_ms": 2585
 }

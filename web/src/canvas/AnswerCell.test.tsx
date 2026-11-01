@@ -171,13 +171,12 @@ describe('AnswerCell', () => {
     ).toBeInTheDocument()
   })
 
-  it('opens on a line chart for the monthly sales (a template answer, so with the badge)', async () => {
+  it('opens on a line chart for the monthly sales', async () => {
     render(<AnswerCell reply={monthly} />)
 
     expect(
       await screen.findByRole('img', { name: /^Line chart of total_sales by month, 12 points/ }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Answer from a template' })).toBeInTheDocument()
   })
 
   it('has no Chart tab for one number, and opens on the table', () => {

@@ -1,11 +1,11 @@
 {
   "kind": "answer",
   "question": "What were the total sales per month in 1997?",
-  "conversation_id": "70bd6079-6058-4584-bc20-d516cf56d658",
-  "answer": "The query returned 12 rows; see the table for the details.",
-  "answer_from_llm": false,
+  "conversation_id": "04d5d38b-8872-4efe-99bb-e655c54e6f99",
+  "answer": "In 1997, monthly sales ranged from about 36,362.80 in June to about 71,398.43 in December. The strongest months for sales were October, with about 66,749.23, and January, with about 61,258.07.",
+  "answer_from_llm": true,
   "sql": "SELECT EXTRACT(MONTH FROM o.order_date) AS month, SUM(d.unit_price * d.quantity * (1 - d.discount)) AS total_sales FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY month ORDER BY month LIMIT 1001",
-  "explanation": "Calculates total sales revenue per month for the year 1997 by joining orders and order details, applying the discount formula, and grouping by the month of the order date.",
+  "explanation": "Calculates total sales revenue per month for the year 1997 using orders and order details.",
   "columns": [
     "month",
     "total_sales"
@@ -64,5 +64,27 @@
   "truncated": false,
   "warnings": [],
   "confidence": "high",
-  "confidence_reasons": []
+  "confidence_reasons": [],
+  "attempts": [],
+  "schema_selection": {
+    "mode": "retrieved",
+    "tables": [
+      "invoice_line",
+      "order_details",
+      "employees",
+      "invoice",
+      "customer",
+      "orders"
+    ],
+    "total_tables": 25,
+    "search": "hybrid"
+  },
+  "search_question": null,
+  "example_questions": [
+    "What was the sales revenue in each quarter of 1997? Return the quarter (1-4) and the revenue.",
+    "How much sales revenue did each employee bring in from orders placed in 1996? Return the employee's first and last name and the revenue.",
+    "How many invoices were issued in each month of 2024? Return the month (1-12) and the count."
+  ],
+  "sql_attempts": 1,
+  "duration_ms": 2758
 }

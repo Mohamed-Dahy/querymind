@@ -1,0 +1,141 @@
+[
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "schema",
+    "schema_selection": {
+      "mode": "retrieved",
+      "tables": [
+        "customers",
+        "customer",
+        "customer_customer_demo",
+        "customer_demographics",
+        "orders",
+        "invoice",
+        "order_details"
+      ],
+      "total_tables": 25,
+      "search": "hybrid"
+    }
+  },
+  {
+    "type": "examples",
+    "questions": [
+      "How many open orders are going to each country? Return the destination country and the count.",
+      "Which customers placed more than 20 orders? Return the company name and the number of orders.",
+      "What is the average invoice total in each billing country with more than 10 invoices? Return the country and the average."
+    ]
+  },
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "finished",
+    "duration_ms": 577
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "sql",
+    "attempt": 1,
+    "sql": "SELECT country, COUNT(*) AS customer_count FROM customers GROUP BY region",
+    "explanation": "Counts the customers in each country."
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "finished",
+    "duration_ms": 2
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "validated",
+    "attempt": 1
+  },
+  {
+    "type": "attempt_failed",
+    "attempt": 1,
+    "kind": "db_error",
+    "message": "The database could not run the query: column \"customers.country\" must appear in the GROUP BY clause or be used in an aggregate function"
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "finished",
+    "duration_ms": 28
+  },
+  {
+    "type": "step",
+    "node": "repair_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "sql",
+    "attempt": 2,
+    "sql": "SELECT country, COUNT(*) AS customer_count FROM customers GROUP BY country ORDER BY customer_count DESC",
+    "explanation": "Counts the customers in each country, biggest first."
+  },
+  {
+    "type": "step",
+    "node": "repair_sql",
+    "status": "finished",
+    "duration_ms": 3
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "validated",
+    "attempt": 2
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "finished",
+    "duration_ms": 26
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "checked",
+    "warnings": []
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "finished",
+    "duration_ms": 2
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "finished",
+    "duration_ms": 2
+  }
+]

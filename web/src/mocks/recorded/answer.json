@@ -1,11 +1,11 @@
 {
   "kind": "answer",
   "question": "What is the total sales amount per category?",
-  "conversation_id": "f62fa270-0705-42a2-b18e-8a202896009f",
-  "answer": "Beverages generated the highest sales at about 267,868, followed by Dairy Products at about 234,507 and Confections at about 167,357. Grains/Cereals had the lowest sales at about 95,745.",
+  "conversation_id": "e5ea7b4c-392d-42ad-8b2d-5b93ae0b7480",
+  "answer": "Beverages led with the highest total sales at about 267,868.18, followed by Dairy Products at about 234,507.28. Grains/Cereals had the lowest sales at about 95,744.59.",
   "answer_from_llm": true,
   "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id GROUP BY c.category_name LIMIT 1001",
-  "explanation": "Calculates total sales revenue for each product category using the Northwind order details, products, and categories tables.",
+  "explanation": "Calculates total sales revenue for each product category using order line details and discounts.",
   "columns": [
     "category_name",
     "total_sales"
@@ -48,5 +48,26 @@
   "truncated": false,
   "warnings": [],
   "confidence": "high",
-  "confidence_reasons": []
+  "confidence_reasons": [],
+  "attempts": [],
+  "schema_selection": {
+    "mode": "retrieved",
+    "tables": [
+      "order_details",
+      "invoice_line",
+      "categories",
+      "products",
+      "invoice"
+    ],
+    "total_tables": 25,
+    "search": "hybrid"
+  },
+  "search_question": null,
+  "example_questions": [
+    "What is the value of the stock in each category (unit price times units in stock)? Return the category name and the stock value.",
+    "How many invoices were issued in each month of 2024? Return the month (1-12) and the count.",
+    "What is the average invoice total in each billing country with more than 10 invoices? Return the country and the average."
+  ],
+  "sql_attempts": 1,
+  "duration_ms": 3138
 }

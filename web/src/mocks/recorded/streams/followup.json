@@ -1,0 +1,101 @@
+[
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "schema",
+    "schema_selection": {
+      "mode": "retrieved",
+      "tables": [
+        "customers",
+        "order_details",
+        "products",
+        "invoice",
+        "employees",
+        "categories",
+        "orders"
+      ],
+      "total_tables": 25,
+      "search": "hybrid"
+    }
+  },
+  {
+    "type": "examples",
+    "questions": [
+      "What was the sales revenue in each quarter of 1997? Return the quarter (1-4) and the revenue.",
+      "Which customers bought Seafood products in 1997? Return their company names.",
+      "How much sales revenue did each employee bring in from orders placed in 1996? Return the employee's first and last name and the revenue."
+    ]
+  },
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "finished",
+    "duration_ms": 423
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "sql",
+    "attempt": 1,
+    "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id JOIN orders AS o ON od.order_id = o.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY c.category_name",
+    "explanation": "Calculates the total sales amount per category filtered specifically for orders placed in the year 1997."
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "finished",
+    "duration_ms": 1244
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "validated",
+    "attempt": 1
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "finished",
+    "duration_ms": 44
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "checked",
+    "warnings": []
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "finished",
+    "duration_ms": 2
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "finished",
+    "duration_ms": 850
+  }
+]

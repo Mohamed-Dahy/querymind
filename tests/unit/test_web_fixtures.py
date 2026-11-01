@@ -11,8 +11,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from querymind.api.main import _ERROR_MAP, _LLM_MESSAGES
-from querymind.api.schemas import AskReply
+from querymind.api.errors import ERROR_MAP, LLM_MESSAGES
+from querymind.api.schemas import AskReply, StreamEvent
 from scripts.record_fixtures import DEFAULT_OUTPUT, RECORDINGS, Recording
 
 MOCKS = Path(__file__).resolve().parents[2] / "web" / "src" / "mocks"
@@ -40,9 +40,32 @@ def test_recorded_reply_matches_the_api_models_exactly(recording: Recording) -> 
     assert set(data) == set(type(reply).model_fields)
 
 
+@pytest.mark.parametrize("recording", RECORDINGS, ids=lambda r: r.name)
+def test_recorded_stream_holds_valid_events_and_nothing_private(recording: Recording) -> None:
+    path = DEFAULT_OUTPUT / "streams" / f"{recording.name}.json"
+    events = load(path)
+
+    parsed = [TypeAdapter(StreamEvent).validate_python(event) for event in events]
+
+    assert parsed[0].model_dump()["type"] == "step"
+    # Only the steps before the end: the reply itself is the <name>.json file.
+    assert not {"final", "error"} & {event["type"] for event in events}
+    text = path.read_text(encoding="utf-8")
+    assert '"detail"' not in text and '"reason"' not in text and '"schema_text"' not in text
+
+
+def test_the_repair_recording_really_repaired() -> None:
+    reply = load(DEFAULT_OUTPUT / "repair.json")
+    events = load(DEFAULT_OUTPUT / "streams" / "repair.json")
+
+    assert [attempt["kind"] for attempt in reply["attempts"]] == ["db_error"]
+    assert reply["sql_attempts"] == 2
+    assert "repair_sql" in {event.get("node") for event in events}
+
+
 def test_there_is_an_error_fixture_for_every_code_with_its_real_status() -> None:
     errors = load(MOCKS / "errors.json")
-    real = {code: status for status, code in _ERROR_MAP.values()} | OTHER_ERRORS
+    real = {code: status for status, code in ERROR_MAP.values()} | OTHER_ERRORS
 
     assert {code: e["status"] for code, e in errors.items()} == real
     assert all(isinstance(e["message"], str) and e["message"] for e in errors.values())
@@ -50,7 +73,7 @@ def test_there_is_an_error_fixture_for_every_code_with_its_real_status() -> None
 
 def test_llm_error_fixtures_use_the_fixed_messages_the_api_sends() -> None:
     errors = load(MOCKS / "errors.json")
-    codes = {error_type: code for error_type, (_, code) in _ERROR_MAP.items()}
+    codes = {error_type: code for error_type, (_, code) in ERROR_MAP.items()}
 
-    for error_type, message in _LLM_MESSAGES.items():
+    for error_type, message in LLM_MESSAGES.items():
         assert errors[codes[error_type]]["message"] == message

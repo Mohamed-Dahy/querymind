@@ -5,7 +5,23 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from querymind.agent.schemas import AgentReply, AskResult, ClarificationRequest, ConfidenceLevel
+from querymind.agent.events import (
+    AttemptFailedEvent,
+    CheckedEvent,
+    ExamplesEvent,
+    RewriteEvent,
+    SchemaEvent,
+    SqlEvent,
+    StepEvent,
+    ValidatedEvent,
+)
+from querymind.agent.schemas import (
+    AgentReply,
+    AskResult,
+    ClarificationRequest,
+    ConfidenceLevel,
+    ShownSchema,
+)
 
 
 class AskRequest(BaseModel):
@@ -33,6 +49,14 @@ class ResultWarning(BaseModel):
     )
 
 
+class FailedAttempt(BaseModel):
+    """A SQL try that failed or looked wrong before the answer. No hint written for the LLM."""
+
+    sql: str
+    kind: Literal["unsafe", "db_error", "timeout", "suspicious"]
+    message: str
+
+
 class AskResponse(BaseModel):
     """The answer, plus everything needed to check it: the SQL that ran and its rows."""
 
@@ -57,6 +81,19 @@ class AskResponse(BaseModel):
         description="Why it isn't high (empty when it is)",
         examples=[["It needed 1 repair to get this result."]],
     )
+    # How it got here: what the "Show your work" drawer shows (UI U2).
+    attempts: list[FailedAttempt] = Field(default=[], description="The tries before this answer")
+    schema_selection: ShownSchema | None = Field(
+        default=None, description="Which tables the LLM was shown"
+    )
+    search_question: str | None = Field(
+        default=None, description="A follow-up as the standalone question that was searched"
+    )
+    example_questions: list[str] = Field(
+        default=[], description="The solved example questions shown to the LLM"
+    )
+    sql_attempts: int | None = Field(default=None, description="SQL queries tried, this one too")
+    duration_ms: int | None = Field(default=None, description="How long the whole run took")
 
     @classmethod
     def from_result(cls, result: AskResult, *, conversation_id: UUID) -> "AskResponse":
@@ -75,11 +112,20 @@ class AskResponse(BaseModel):
             warnings=[ResultWarning(code=w.code, message=w.message) for w in result.warnings],
             confidence=result.confidence.level,
             confidence_reasons=list(result.confidence.reasons),
+            attempts=[
+                FailedAttempt(sql=a.sql, kind=a.error_kind, message=a.message)
+                for a in result.failed_attempts
+            ],
+            schema_selection=result.schema_selection,
+            search_question=result.search_question,
+            example_questions=list(result.example_questions),
+            sql_attempts=result.sql_attempts,
+            duration_ms=result.duration_ms,
         )
 
 
 class ClarificationResponse(BaseModel):
-    """The question had several reasonable meanings: pick one, then ask again. No SQL ran."""
+    """The question had several reasonable meanings: pick one, then ask again."""
 
     kind: Literal["clarification"] = "clarification"
     question: str
@@ -100,7 +146,7 @@ class ClarificationResponse(BaseModel):
 
 
 class RefusalResponse(BaseModel):
-    """QueryMind won't do this (e.g. change data). No SQL ran."""
+    """QueryMind won't do this (e.g. change data). Nothing in the database was changed."""
 
     kind: Literal["refusal"] = "refusal"
     question: str
@@ -137,6 +183,36 @@ class ErrorResponse(BaseModel):
         description="Seconds to wait before retrying (llm_rate_limited, if the provider said)",
         examples=[18],
     )
+
+
+class FinalEvent(BaseModel):
+    """The last event of a good run: exactly what `POST /ask` replies."""
+
+    type: Literal["final"] = "final"
+    reply: AskReply
+
+
+class ErrorEvent(BaseModel):
+    """The last event of a failed run: exactly what `POST /ask` sends with its error status."""
+
+    type: Literal["error"] = "error"
+    error: ErrorResponse
+
+
+# One line of `POST /ask/stream`: `type` tells which it is. It ends with `final` or `error`.
+StreamEvent = Annotated[
+    StepEvent
+    | SchemaEvent
+    | RewriteEvent
+    | ExamplesEvent
+    | SqlEvent
+    | ValidatedEvent
+    | AttemptFailedEvent
+    | CheckedEvent
+    | FinalEvent
+    | ErrorEvent,
+    Field(discriminator="type"),
+]
 
 
 class HealthResponse(BaseModel):

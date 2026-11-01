@@ -84,6 +84,13 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         "warnings": [],
         "confidence": "high",
         "confidence_reasons": [],
+        # Added for the web UI's drawer (U2.2); optional, so other clients aren't affected.
+        "attempts": [],
+        "schema_selection": None,
+        "search_question": None,
+        "example_questions": [],
+        "sql_attempts": 1,
+        "duration_ms": None,
     }
     assert pipeline.questions == ["How many customers are there?"]  # whitespace stripped
 
@@ -209,7 +216,7 @@ def test_openapi_docs_describe_the_endpoints() -> None:
         spec = client.get("/openapi.json").json()
         docs_page = client.get("/docs")
     assert docs_page.status_code == 200
-    assert set(spec["paths"]) == {"/ask", "/health"}
+    assert set(spec["paths"]) == {"/ask", "/ask/stream", "/health"}
     assert set(spec["paths"]["/ask"]["post"]["responses"]) >= {"200", "422", "502", "504"}
 
 

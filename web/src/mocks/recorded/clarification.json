@@ -1,11 +1,11 @@
 {
   "kind": "clarification",
   "question": "Which products are the most popular?",
-  "conversation_id": "6c6b61c9-cc02-4c69-9e2a-d97d843b5379",
+  "conversation_id": "601016c3-36a3-4b58-8220-76b3906d81fb",
   "clarifying_question": "How would you like to measure product popularity?",
   "options": [
-    "by total units sold",
     "by total revenue",
+    "by units sold",
     "by number of orders"
   ]
 }

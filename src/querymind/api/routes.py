@@ -1,24 +1,53 @@
-"""The HTTP endpoints: POST /ask and GET /health."""
+"""The HTTP endpoints: POST /ask, POST /ask/stream and GET /health."""
 
+from collections.abc import Generator
 from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends
+from fastapi.sse import EventSourceResponse
 
 from querymind import __version__
-from querymind.api.deps import AnswersQuestions, get_pipeline
+from querymind.agent.events import AgentEvent, Finished
+from querymind.api.deps import (
+    AnswersQuestions,
+    StreamsAnswers,
+    get_pipeline,
+    get_streaming_pipeline,
+)
+from querymind.api.errors import error_response
 from querymind.api.schemas import (
     AskReply,
     AskRequest,
     AskResponse,
     ClarificationResponse,
+    ErrorEvent,
     ErrorResponse,
+    FinalEvent,
     HealthResponse,
     RefusalResponse,
+    StreamEvent,
     reply_from,
 )
 
 router = APIRouter()
+
+type OpenRuns = list[Generator[AgentEvent | Finished]]
+
+
+def close_runs_when_the_response_ends() -> Generator[OpenRuns]:
+    """Closes the route's pipeline run when the response ends, however it ended.
+
+    A client going away only cancels the response: FastAPI doesn't close a sync generator, so the
+    run would wait, half-read, holding its conversation's lock, until Python collects it (165 s
+    in a real test). FastAPI runs this dependency's clean-up as soon as the response has ended, and
+    after the step working now, so the run isn't still executing.
+    """
+    runs: OpenRuns = []
+    yield runs
+    for run in runs:
+        run.close()
+
 
 # Documented in OpenAPI so API users know every error shape in advance (handlers in main.py).
 _ERRORS: dict[int | str, dict[str, Any]] = {
@@ -47,6 +76,39 @@ def ask(
     conversation_id = request.conversation_id or uuid4()
     reply = pipeline.ask(request.question, conversation_id=str(conversation_id))
     return reply_from(reply, conversation_id=conversation_id)
+
+
+@router.post(
+    "/ask/stream",
+    response_class=EventSourceResponse,
+    responses={422: {"model": ErrorResponse, "description": "Invalid question"}},
+    tags=["questions"],
+)
+def ask_stream(
+    request: AskRequest,
+    pipeline: Annotated[StreamsAnswers, Depends(get_streaming_pipeline)],
+    runs: Annotated[OpenRuns, Depends(close_runs_when_the_response_ends)],
+) -> Generator[StreamEvent]:
+    """The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).
+
+    Each event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or
+    `error` (its error body): the status is already sent, so a failed run still answers 200.
+
+    Closing the connection stops the run after the step working now.
+    """
+    # A plain `def`, as in `ask` above: FastAPI runs each step of this generator in a worker thread.
+    conversation_id = request.conversation_id or uuid4()
+    try:
+        run = pipeline.stream(request.question, conversation_id=str(conversation_id))
+        runs.append(run)
+        for event in run:
+            if isinstance(event, Finished):
+                yield FinalEvent(reply=reply_from(event.reply, conversation_id=conversation_id))
+            else:
+                yield event
+    except Exception as exc:
+        _, body = error_response(exc)
+        yield ErrorEvent(error=body)
 
 
 @router.get("/health", response_model=HealthResponse, tags=["ops"])

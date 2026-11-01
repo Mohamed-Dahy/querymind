@@ -4,10 +4,12 @@ A route asks for `pipeline: AnswersQuestions = Depends(get_pipeline)` instead of
 so the app creates the pipeline once at startup and tests can hand in a fake.
 """
 
+from collections.abc import Generator
 from typing import Protocol
 
 from fastapi import Request
 
+from querymind.agent.events import AgentEvent, Finished
 from querymind.agent.schemas import AgentReply
 
 
@@ -18,7 +20,21 @@ class AnswersQuestions(Protocol):
     def ask(self, question: str, *, conversation_id: str | None = None) -> AgentReply: ...
 
 
+class StreamsAnswers(Protocol):
+    """Anything with `stream(question, conversation_id=...)`, reporting as it goes."""
+
+    def stream(
+        self, question: str, *, conversation_id: str | None = None
+    ) -> Generator[AgentEvent | Finished]: ...
+
+
 def get_pipeline(request: Request) -> AnswersQuestions:
     """The pipeline created at startup (see main.py), stored on the app."""
     pipeline: AnswersQuestions = request.app.state.pipeline
+    return pipeline
+
+
+def get_streaming_pipeline(request: Request) -> StreamsAnswers:
+    """The same pipeline, for the streaming route."""
+    pipeline: StreamsAnswers = request.app.state.pipeline
     return pipeline

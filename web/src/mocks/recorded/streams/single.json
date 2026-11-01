@@ -1,0 +1,101 @@
+[
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "schema",
+    "schema_selection": {
+      "mode": "retrieved",
+      "tables": [
+        "customers",
+        "customer_customer_demo",
+        "customer",
+        "customer_demographics",
+        "orders",
+        "invoice",
+        "order_details"
+      ],
+      "total_tables": 25,
+      "search": "hybrid"
+    }
+  },
+  {
+    "type": "examples",
+    "questions": [
+      "Which customers placed more than 20 orders? Return the company name and the number of orders.",
+      "How many orders were shipped to France?",
+      "When did each customer from Germany first buy something? Return the first and last name and the date."
+    ]
+  },
+  {
+    "type": "step",
+    "node": "retrieve_schema",
+    "status": "finished",
+    "duration_ms": 338
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "sql",
+    "attempt": 1,
+    "sql": "SELECT count(*) AS customer_count FROM customers",
+    "explanation": "This query counts the total number of customers in the trading business database."
+  },
+  {
+    "type": "step",
+    "node": "generate_sql",
+    "status": "finished",
+    "duration_ms": 1002
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "validated",
+    "attempt": 1
+  },
+  {
+    "type": "step",
+    "node": "run_sql",
+    "status": "finished",
+    "duration_ms": 66
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "checked",
+    "warnings": []
+  },
+  {
+    "type": "step",
+    "node": "check_result",
+    "status": "finished",
+    "duration_ms": 2
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "started",
+    "duration_ms": null
+  },
+  {
+    "type": "step",
+    "node": "summarize",
+    "status": "finished",
+    "duration_ms": 646
+  }
+]

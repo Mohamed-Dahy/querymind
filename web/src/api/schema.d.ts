@@ -30,6 +30,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ask/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Stream
+         * @description The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).
+         *
+         *     Each event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or
+         *     `error` (its error body): the status is already sent, so a failed run still answers 200.
+         *
+         *     Closing the connection stops the run after the step working now.
+         */
+        post: operations["ask_stream_ask_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -83,6 +108,12 @@ export interface components {
              * @description False if the LLM's answer was replaced by a safe templated one
              */
             answer_from_llm: boolean;
+            /**
+             * Attempts
+             * @description The tries before this answer
+             * @default []
+             */
+            attempts: components["schemas"]["FailedAttempt"][];
             /** Columns */
             columns: string[];
             /**
@@ -106,6 +137,17 @@ export interface components {
              */
             conversation_id: string;
             /**
+             * Duration Ms
+             * @description How long the whole run took
+             */
+            duration_ms?: number | null;
+            /**
+             * Example Questions
+             * @description The solved example questions shown to the LLM
+             * @default []
+             */
+            example_questions: string[];
+            /**
              * Explanation
              * @description What the SQL does, in plain words
              */
@@ -121,11 +163,23 @@ export interface components {
             row_count: number;
             /** Rows */
             rows: components["schemas"]["JsonValue"][][];
+            /** @description Which tables the LLM was shown */
+            schema_selection?: components["schemas"]["ShownSchema"] | null;
+            /**
+             * Search Question
+             * @description A follow-up as the standalone question that was searched
+             */
+            search_question?: string | null;
             /**
              * Sql
              * @description The validated SQL that actually ran
              */
             sql: string;
+            /**
+             * Sql Attempts
+             * @description SQL queries tried, this one too
+             */
+            sql_attempts?: number | null;
             /**
              * Truncated
              * @description True if more rows existed than the row limit
@@ -139,8 +193,41 @@ export interface components {
             warnings: components["schemas"]["ResultWarning"][];
         };
         /**
+         * AttemptFailedEvent
+         * @description Try number `attempt` failed, or ran but looked wrong ("suspicious").
+         */
+        AttemptFailedEvent: {
+            /** Attempt */
+            attempt: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "unsafe" | "db_error" | "timeout" | "suspicious";
+            /** Message */
+            message: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "attempt_failed";
+        };
+        /**
+         * CheckedEvent
+         * @description The result was checked: these are the warning signs (none = it looks fine).
+         */
+        CheckedEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "checked";
+            /** Warnings */
+            warnings: components["schemas"]["EventWarning"][];
+        };
+        /**
          * ClarificationResponse
-         * @description The question had several reasonable meanings: pick one, then ask again. No SQL ran.
+         * @description The question had several reasonable meanings: pick one, then ask again.
          */
         ClarificationResponse: {
             /**
@@ -171,6 +258,18 @@ export interface components {
             question: string;
         };
         /**
+         * ErrorEvent
+         * @description The last event of a failed run: exactly what `POST /ask` sends with its error status.
+         */
+        ErrorEvent: {
+            error: components["schemas"]["ErrorResponse"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "error";
+        };
+        /**
          * ErrorResponse
          * @description Every error has the same shape: a stable code for programs, a message for people.
          */
@@ -193,6 +292,57 @@ export interface components {
              */
             retry_after_seconds?: number | null;
         };
+        /**
+         * EventWarning
+         * @description A sign the result may be wrong: the words for people, not the hint for the LLM.
+         */
+        EventWarning: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * ExamplesEvent
+         * @description The questions of the solved examples shown to the LLM.
+         */
+        ExamplesEvent: {
+            /** Questions */
+            questions: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "examples";
+        };
+        /**
+         * FailedAttempt
+         * @description A SQL try that failed or looked wrong before the answer. No hint written for the LLM.
+         */
+        FailedAttempt: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "unsafe" | "db_error" | "timeout" | "suspicious";
+            /** Message */
+            message: string;
+            /** Sql */
+            sql: string;
+        };
+        /**
+         * FinalEvent
+         * @description The last event of a good run: exactly what `POST /ask` replies.
+         */
+        FinalEvent: {
+            /** Reply */
+            reply: components["schemas"]["AskResponse"] | components["schemas"]["ClarificationResponse"] | components["schemas"]["RefusalResponse"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "final";
+        };
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -206,7 +356,7 @@ export interface components {
         JsonValue: unknown;
         /**
          * RefusalResponse
-         * @description QueryMind won't do this (e.g. change data). No SQL ran.
+         * @description QueryMind won't do this (e.g. change data). Nothing in the database was changed.
          */
         RefusalResponse: {
             /**
@@ -243,6 +393,104 @@ export interface components {
              * @example Some rows appear more than once, which can mean a join counted things twice.
              */
             message: string;
+        };
+        /**
+         * RewriteEvent
+         * @description A follow-up was searched as this standalone question.
+         */
+        RewriteEvent: {
+            /** Search Question */
+            search_question: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "rewrite";
+        };
+        /**
+         * SchemaEvent
+         * @description Which tables the LLM was shown.
+         */
+        SchemaEvent: {
+            schema_selection: components["schemas"]["ShownSchema"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "schema";
+        };
+        /**
+         * ShownSchema
+         * @description Which tables the LLM saw, for people. SchemaSelection's raw fallback `reason` stays out.
+         */
+        ShownSchema: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "full" | "retrieved" | "fallback";
+            /**
+             * Search
+             * @default
+             */
+            search: string;
+            /** Tables */
+            tables: string[];
+            /** Total Tables */
+            total_tables: number;
+        };
+        /**
+         * SqlEvent
+         * @description Try number `attempt`: the LLM's SQL, not validated yet.
+         */
+        SqlEvent: {
+            /** Attempt */
+            attempt: number;
+            /** Explanation */
+            explanation: string;
+            /** Sql */
+            sql: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sql";
+        };
+        /**
+         * StepEvent
+         * @description A node of the graph started, finished or failed. `duration_ms` is set when it ended.
+         */
+        StepEvent: {
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "retrieve_schema" | "generate_sql" | "run_sql" | "check_result" | "repair_sql" | "summarize";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "started" | "finished" | "failed";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "step";
+        };
+        /**
+         * ValidatedEvent
+         * @description Try number `attempt` passed the SQL validator and is about to run.
+         */
+        ValidatedEvent: {
+            /** Attempt */
+            attempt: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "validated";
         };
     };
     responses: never;
@@ -318,6 +566,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ask_stream_ask_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Invalid question */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ErrorResponse"];
                 };
             };
         };

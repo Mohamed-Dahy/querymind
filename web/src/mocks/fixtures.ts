@@ -20,8 +20,8 @@ export const answer = answerJson as AskResponse
 export const followup = followupJson as AskResponse
 export const clarification = clarificationJson as ClarificationResponse
 export const refusal = refusalJson as RefusalResponse
-// U1.5's chart cases: sales per month in 1997 (month is a number 1–12, so a line chart; its
-// answer is the template one), and one number (no chart).
+// U1.5's chart cases: sales per month in 1997 (month is a number 1–12, so a line chart), and one
+// number (no chart).
 export const monthly = monthlyJson as AskResponse
 export const single = singleJson as AskResponse
 
