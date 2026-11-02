@@ -472,7 +472,8 @@ test('on a phone the drawer fills the screen and scrolls, without a sideways scr
   // Waits for the drawer's own code to download first, then measures.
   await expect(drawer.getByRole('heading', { name: 'The SQL, 2 tries' })).toBeVisible()
   const size = await drawer.boundingBox()
-  expect(size?.width).toBe(375)
+  // Close, not exact: browsers measure in fractions of a pixel (CI's said 374.99998).
+  expect(size?.width).toBeCloseTo(375, 0)
   const sideways = await page.evaluate(
     "(() => { const el = document.querySelector('[role=dialog]'); return el.scrollWidth - el.clientWidth })()",
   )
