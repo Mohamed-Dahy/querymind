@@ -25,7 +25,8 @@ from fastapi.responses import JSONResponse
 
 from querymind import __version__
 from querymind.agent.pipeline import Pipeline
-from querymind.api.deps import AnswersQuestions, StreamsAnswers
+from querymind.api.conversations import router as conversations_router
+from querymind.api.deps import AnswersQuestions, ManagesConversations, StreamsAnswers
 from querymind.api.errors import ERROR_MAP, INTERNAL_ERROR, error_response
 from querymind.api.routes import router
 from querymind.api.schemas import ErrorResponse
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_app(
-    pipeline: AnswersQuestions | StreamsAnswers | None = None,
+    pipeline: AnswersQuestions | StreamsAnswers | ManagesConversations | None = None,
     store: ConversationStore | None = None,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and `store`) in tests; leave `pipeline` out to build the real
@@ -79,6 +80,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.include_router(router)
+    app.include_router(conversations_router)
     for error_type in ERROR_MAP:
         app.add_exception_handler(error_type, _handle_known_error)
     app.add_exception_handler(RequestValidationError, _handle_invalid_request)

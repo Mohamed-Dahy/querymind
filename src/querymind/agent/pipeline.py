@@ -43,7 +43,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from querymind.agent.confidence import score_confidence
 from querymind.agent.events import AgentEvent, Finished, TraceBuilder, shown_schema
-from querymind.agent.graph import build_graph
+from querymind.agent.graph import FIXABLE_ERRORS, build_graph, failed_attempt
 from querymind.agent.schemas import (
     AgentReply,
     AskResult,
@@ -56,10 +56,12 @@ from querymind.agent.state import CHECKPOINT_TYPES, AgentContext, AgentState, ne
 from querymind.config import ConfigError, Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import QueryExecutionError, QueryTimeoutError
+from querymind.db.executor import QueryResult, execute_query
 from querymind.db.schema import introspect_schema
 from querymind.llm import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.safety.errors import UnsafeSqlError
+from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.documents import index_documents
 from querymind.semantic.examples import load_all_examples
 from querymind.semantic.index import INDEX_TABLE, SchemaIndexError, index_status
@@ -223,6 +225,47 @@ class Pipeline:
             finally:
                 self._keep_or_forget(thread_id, keep=conversation_id is not None)
         yield Finished(self._finish(question, state, reply, started, conversation_id))
+
+    def rerun(self, question: str, sql: str, *, conversation_id: str | None = None) -> QueryResult:
+        """Run a saved answer's SQL again for fresh rows, with no LLM call.
+
+        The SQL comes from storage, so it isn't trusted: it goes through the validator again, with
+        today's tables and row limit, and runs as the read-only role. Audited like any question.
+
+        Raises:
+            UnsafeSqlError / QueryExecutionError / QueryTimeoutError / DatabaseUnavailableError:
+                as for a question, but with no repair: it's the same SQL, so it would fail again.
+        """
+        started = time.perf_counter()
+        state: AgentState = {"question": question}
+        try:
+            catalog, _ = self._schema_info()
+            query = validate_sql(
+                sql,
+                allowed_tables=catalog.schema.table_names,
+                max_rows=self._settings.max_rows,
+            )
+            with self._connect(self._settings) as conn:
+                result = execute_query(
+                    conn, query, timeout_seconds=self._settings.query_timeout_seconds
+                )
+        except Exception as exc:
+            if isinstance(exc, FIXABLE_ERRORS):
+                state["attempts"] = [failed_attempt(sql, exc)]  # so the audit shows what it tried
+            self._audit(
+                question,
+                state,
+                outcome=type(exc).__name__,
+                started=started,
+                conversation_id=conversation_id,
+            )
+            raise
+        state["sql"] = query.sql
+        state["result"] = result
+        self._audit(
+            question, state, outcome="rerun", started=started, conversation_id=conversation_id
+        )
+        return result
 
     def forget(self, conversation_id: str) -> None:
         """Drop a conversation from memory, so a deleted conversation can't come back in a prompt.

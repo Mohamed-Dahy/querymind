@@ -33,11 +33,13 @@ from querymind.store.errors import (
     ConversationNotFoundError,
     StoreError,
     StoreUnavailableError,
+    TurnNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
 
 TITLE_LENGTH = 80  # a title is the first question, cut to fit the history list
+_NOT_FOUND = "This conversation doesn't exist."
 
 _SUMMARY_COLUMNS = """
     id, title, pinned, created_at, updated_at,
@@ -209,6 +211,30 @@ class ConversationStore:
             turns = self._turns(conn, conversation_id)
         return Conversation(**summary.model_dump(), saved_turns=turns)
 
+    def get_turn(self, conversation_id: UUID, n: int) -> SavedTurn:
+        """One turn of a conversation.
+
+        Raises:
+            ConversationNotFoundError: no conversation has this id.
+            TurnNotFoundError: the conversation has no turn with this number.
+        """
+        with self._transaction() as conn:
+            self._summary(conn, conversation_id)
+            found = (
+                conn.cursor(row_factory=class_row(SavedTurn))
+                .execute(
+                    """
+                    SELECT n, question, kind, sql, reply, trace, created_at
+                    FROM querymind_app.turns WHERE conversation_id = %s AND n = %s
+                    """,
+                    (conversation_id, n),
+                )
+                .fetchone()
+            )
+        if found is None:
+            raise TurnNotFoundError("This turn doesn't exist.")
+        return found
+
     def recent_turns(self, conversation_id: UUID, *, limit: int) -> list[SavedTurn]:
         """The last `limit` turns, oldest first; none if the conversation doesn't exist."""
         with self._transaction() as conn:
@@ -238,7 +264,7 @@ class ConversationStore:
                 .fetchone()
             )
         if found is None:
-            raise ConversationNotFoundError(str(conversation_id))
+            raise ConversationNotFoundError(_NOT_FOUND)
         return found
 
     def delete(self, conversation_id: UUID) -> None:
@@ -253,7 +279,7 @@ class ConversationStore:
                 (conversation_id,),
             ).fetchone()
         if deleted is None:
-            raise ConversationNotFoundError(str(conversation_id))
+            raise ConversationNotFoundError(_NOT_FOUND)
 
     def _summary(self, conn: psycopg.Connection, conversation_id: UUID) -> ConversationSummary:
         query = f"""
@@ -265,7 +291,7 @@ class ConversationStore:
             .fetchone()
         )
         if found is None:
-            raise ConversationNotFoundError(str(conversation_id))
+            raise ConversationNotFoundError(_NOT_FOUND)
         return found
 
     def _turns(self, conn: psycopg.Connection, conversation_id: UUID) -> list[SavedTurn]:

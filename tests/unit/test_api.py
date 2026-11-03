@@ -216,7 +216,7 @@ def test_openapi_docs_describe_the_endpoints() -> None:
         spec = client.get("/openapi.json").json()
         docs_page = client.get("/docs")
     assert docs_page.status_code == 200
-    assert set(spec["paths"]) == {"/ask", "/ask/stream", "/health"}
+    assert {"/ask", "/ask/stream", "/health", "/conversations"} <= set(spec["paths"])
     assert set(spec["paths"]["/ask"]["post"]["responses"]) >= {"200", "422", "502", "504"}
 
 

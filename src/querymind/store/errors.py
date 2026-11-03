@@ -10,4 +10,8 @@ class StoreUnavailableError(StoreError):
 
 
 class ConversationNotFoundError(StoreError):
-    """No conversation has this id."""
+    """No conversation has this id. The message is safe to show."""
+
+
+class TurnNotFoundError(StoreError):
+    """The conversation has no such turn, or it has no SQL to run. The message is safe to show."""

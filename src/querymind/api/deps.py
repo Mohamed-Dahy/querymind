@@ -11,6 +11,7 @@ from fastapi import Request
 
 from querymind.agent.events import AgentEvent, Finished
 from querymind.agent.schemas import AgentReply
+from querymind.db.executor import QueryResult
 from querymind.store.conversations import ConversationStore
 
 
@@ -29,6 +30,16 @@ class StreamsAnswers(Protocol):
     ) -> Generator[AgentEvent | Finished]: ...
 
 
+class ManagesConversations(Protocol):
+    """What the conversation routes need from the pipeline."""
+
+    def forget(self, conversation_id: str) -> None: ...
+
+    def rerun(
+        self, question: str, sql: str, *, conversation_id: str | None = None
+    ) -> QueryResult: ...
+
+
 def get_pipeline(request: Request) -> AnswersQuestions:
     """The pipeline created at startup (see main.py), stored on the app."""
     pipeline: AnswersQuestions = request.app.state.pipeline
@@ -38,6 +49,12 @@ def get_pipeline(request: Request) -> AnswersQuestions:
 def get_streaming_pipeline(request: Request) -> StreamsAnswers:
     """The same pipeline, for the streaming route."""
     pipeline: StreamsAnswers = request.app.state.pipeline
+    return pipeline
+
+
+def get_conversation_pipeline(request: Request) -> ManagesConversations:
+    """The same pipeline, for the conversation routes."""
+    pipeline: ManagesConversations = request.app.state.pipeline
     return pipeline
 
 

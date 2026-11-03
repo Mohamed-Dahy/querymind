@@ -187,7 +187,7 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
         with runtime.context.connect(settings) as conn:
             result = execute_query(conn, query, timeout_seconds=settings.query_timeout_seconds)
     except FIXABLE_ERRORS as exc:
-        attempt = _failed_attempt(sql, exc)
+        attempt = failed_attempt(sql, exc)
         logger.info(
             "sql attempt failed",
             extra={
@@ -312,7 +312,7 @@ def _tries_left(state: AgentState, runtime: Runtime[AgentContext], *, pending: i
     return used < runtime.context.settings.max_sql_attempts
 
 
-def _failed_attempt(sql: str, exc: Exception) -> SqlAttempt:
+def failed_attempt(sql: str, exc: Exception) -> SqlAttempt:
     """Record a fixable failure: a message for people, a detail for the LLM."""
     if isinstance(exc, UnsafeSqlError):
         return SqlAttempt(sql=sql, error_kind="unsafe", message=exc.reason, detail=exc.reason)

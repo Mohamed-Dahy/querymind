@@ -12,6 +12,11 @@ from querymind.api.schemas import ErrorResponse
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.llm import LLMError, LLMOutputError, LLMProviderError, LLMRateLimitError
 from querymind.safety.errors import UnsafeSqlError
+from querymind.store.errors import (
+    ConversationNotFoundError,
+    StoreUnavailableError,
+    TurnNotFoundError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,9 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     LLMRateLimitError: (429, "llm_rate_limited"),
     LLMProviderError: (502, "llm_unavailable"),
     LLMOutputError: (502, "llm_bad_output"),
+    ConversationNotFoundError: (404, "conversation_not_found"),
+    TurnNotFoundError: (404, "turn_not_found"),
+    StoreUnavailableError: (503, "history_unavailable"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

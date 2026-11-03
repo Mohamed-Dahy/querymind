@@ -21,7 +21,7 @@ from querymind.db.schema import introspect_schema
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
 from querymind.store.conversations import ConversationStore, SavedTurn
-from querymind.store.errors import ConversationNotFoundError
+from querymind.store.errors import ConversationNotFoundError, TurnNotFoundError
 
 pytestmark = pytest.mark.integration
 
@@ -281,6 +281,19 @@ def test_search_cant_inject_sql(store: ConversationStore, conversation: UUID) ->
 
     assert found == []
     assert store.get(conversation).turns == 1
+
+
+def test_get_turn_finds_one_turn_or_says_which_is_missing(
+    store: ConversationStore, conversation: UUID
+) -> None:
+    save(store, conversation, "First")
+    save(store, conversation, "Second")
+
+    assert store.get_turn(conversation, 2).question == "Second"
+    with pytest.raises(TurnNotFoundError):
+        store.get_turn(conversation, 3)
+    with pytest.raises(ConversationNotFoundError):
+        store.get_turn(uuid4(), 1)
 
 
 def test_recent_turns_are_the_last_ones_oldest_first(

@@ -55,6 +55,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversations
+         * @description Saved conversations: pinned first, then the most recent.
+         */
+        get: operations["list_conversations_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation
+         * @description One conversation, with its turns. Answers come without rows: re-run one for fresh rows.
+         */
+        get: operations["get_conversation_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Conversation
+         * @description Delete a conversation for good, from the store and from the agent's memory.
+         */
+        delete: operations["delete_conversation_conversations__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Conversation
+         * @description Rename or pin a conversation.
+         */
+        patch: operations["update_conversation_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/conversations/{conversation_id}/turns/{n}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rerun Turn
+         * @description Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body.
+         */
+        post: operations["rerun_turn_conversations__conversation_id__turns__n__rerun_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -258,6 +326,85 @@ export interface components {
             question: string;
         };
         /**
+         * ConversationDetail
+         * @description A saved conversation with its turns, oldest first.
+         */
+        ConversationDetail: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Pinned */
+            pinned: boolean;
+            /** Saved Turns */
+            saved_turns: components["schemas"]["SavedTurnResponse"][];
+            /** Title */
+            title: string;
+            /** Turns */
+            turns: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ConversationList
+         * @description One page of saved conversations.
+         */
+        ConversationList: {
+            /** Conversations */
+            conversations: components["schemas"]["ConversationSummary"][];
+            /**
+             * Has More
+             * @description True if another page exists
+             */
+            has_more: boolean;
+        };
+        /**
+         * ConversationSummary
+         * @description One line of the history list.
+         */
+        ConversationSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Pinned */
+            pinned: boolean;
+            /** Title */
+            title: string;
+            /** Turns */
+            turns: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ConversationUpdate
+         * @description What can change in a conversation. Anything else in the body is refused.
+         */
+        ConversationUpdate: {
+            /** Pinned */
+            pinned?: boolean | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
          * ErrorEvent
          * @description The last event of a failed run: exactly what `POST /ask` sends with its error status.
          */
@@ -379,6 +526,29 @@ export interface components {
             question: string;
         };
         /**
+         * RerunResponse
+         * @description Fresh rows from a saved answer's SQL. They may no longer match the saved answer's words.
+         */
+        RerunResponse: {
+            /** Columns */
+            columns: string[];
+            /**
+             * Ran At
+             * Format: date-time
+             * @description When these rows were read
+             */
+            ran_at: string;
+            /** Row Count */
+            row_count: number;
+            /** Rows */
+            rows: components["schemas"]["JsonValue"][][];
+            /**
+             * Truncated
+             * @description True if more rows existed than the row limit
+             */
+            truncated: boolean;
+        };
+        /**
          * ResultWarning
          * @description A sign that the result may be wrong although the query ran (see agent/sanity.py).
          */
@@ -406,6 +576,30 @@ export interface components {
              * @enum {string}
              */
             type: "rewrite";
+        };
+        /**
+         * SavedTurnResponse
+         * @description One saved question and what came back. An answer's `rows` is empty: they aren't stored, and
+         *     `row_count` says how many there were. Re-run the turn for fresh rows.
+         */
+        SavedTurnResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * N
+             * @description This turn's number in the conversation, from 1
+             */
+            n: number;
+            /** Reply */
+            reply: components["schemas"]["AskResponse"] | components["schemas"]["ClarificationResponse"] | components["schemas"]["RefusalResponse"];
+            /**
+             * Trace
+             * @description The steps of that run; empty if it didn't stream
+             */
+            trace: (components["schemas"]["StepEvent"] | components["schemas"]["SchemaEvent"] | components["schemas"]["RewriteEvent"] | components["schemas"]["ExamplesEvent"] | components["schemas"]["SqlEvent"] | components["schemas"]["ValidatedEvent"] | components["schemas"]["AttemptFailedEvent"] | components["schemas"]["CheckedEvent"])[];
         };
         /**
          * SchemaEvent
@@ -599,6 +793,257 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_conversations_conversations_get: {
+        parameters: {
+            query?: {
+                /** @description Find in titles, questions */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationList"];
+                };
+            };
+            /** @description No such conversation or turn */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved conversations aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_conversation_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationDetail"];
+                };
+            };
+            /** @description No such conversation or turn */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved conversations aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_conversation_conversations__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such conversation or turn */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved conversations aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_conversation_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSummary"];
+                };
+            };
+            /** @description No such conversation or turn */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved conversations aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rerun_turn_conversations__conversation_id__turns__n__rerun_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerunResponse"];
+                };
+            };
+            /** @description No such conversation or turn */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved conversations aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

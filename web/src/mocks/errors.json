@@ -26,5 +26,11 @@
     "status": 502,
     "message": "The AI model declined or answered in the wrong format. Try rewording it."
   },
+  "conversation_not_found": { "status": 404, "message": "This conversation doesn't exist." },
+  "turn_not_found": { "status": 404, "message": "This turn doesn't exist." },
+  "history_unavailable": {
+    "status": 503,
+    "message": "Saved conversations aren't available right now."
+  },
   "internal_error": { "status": 500, "message": "Something went wrong. Please try again." }
 }

@@ -1,9 +1,10 @@
 """Request and response bodies of the HTTP API (they also define the OpenAPI docs at /docs)."""
 
-from typing import Annotated, Literal
+from datetime import datetime
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from querymind.agent.events import (
     AttemptFailedEvent,
@@ -22,6 +23,7 @@ from querymind.agent.schemas import (
     ConfidenceLevel,
     ShownSchema,
 )
+from querymind.store.conversations import ConversationSummary
 
 
 class AskRequest(BaseModel):
@@ -213,6 +215,66 @@ StreamEvent = Annotated[
     | ErrorEvent,
     Field(discriminator="type"),
 ]
+
+
+class ConversationList(BaseModel):
+    """One page of saved conversations."""
+
+    conversations: list[ConversationSummary]
+    has_more: bool = Field(description="True if another page exists")
+
+
+class SavedTurnResponse(BaseModel):
+    """One saved question and what came back. An answer's `rows` is empty: they aren't stored, and
+    `row_count` says how many there were. Re-run the turn for fresh rows."""
+
+    n: int = Field(description="This turn's number in the conversation, from 1")
+    created_at: datetime
+    reply: AskReply
+    trace: list[
+        Annotated[
+            StepEvent
+            | SchemaEvent
+            | RewriteEvent
+            | ExamplesEvent
+            | SqlEvent
+            | ValidatedEvent
+            | AttemptFailedEvent
+            | CheckedEvent,
+            Field(discriminator="type"),
+        ]
+    ] = Field(description="The steps of that run; empty if it didn't stream")
+
+
+class ConversationDetail(ConversationSummary):
+    """A saved conversation with its turns, oldest first."""
+
+    saved_turns: list[SavedTurnResponse]
+
+
+class ConversationUpdate(BaseModel):
+    """What can change in a conversation. Anything else in the body is refused."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    pinned: bool | None = None
+
+    @model_validator(mode="after")
+    def _says_what_to_change(self) -> Self:
+        if self.title is None and self.pinned is None:
+            raise ValueError("send a title or pinned")
+        return self
+
+
+class RerunResponse(BaseModel):
+    """Fresh rows from a saved answer's SQL. They may no longer match the saved answer's words."""
+
+    columns: list[str]
+    rows: list[list[JsonValue]]
+    row_count: int
+    truncated: bool = Field(description="True if more rows existed than the row limit")
+    ran_at: datetime = Field(description="When these rows were read")
 
 
 class HealthResponse(BaseModel):
