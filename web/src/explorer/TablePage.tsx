@@ -11,6 +11,7 @@ import {
   businessLabel,
   formatRowCount,
   tableDetails,
+  termAnchor,
   termName,
   type Relation,
   type TableDetails,
@@ -264,6 +265,12 @@ function Terms({ details: { metrics } }: { details: TableDetails }) {
               <div className="mt-1.5">
                 <SqlCode sql={metric.sql} />
               </div>
+              <Link
+                to={`/explore/glossary#${termAnchor(metric.name)}`}
+                className="mt-1 inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
+              >
+                {termName(metric.name)} in the glossary
+              </Link>
             </li>
           ))}
         </ul>

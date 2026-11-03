@@ -13,10 +13,14 @@ from pydantic import BaseModel, TypeAdapter
 
 from querymind.api.errors import ERROR_MAP, LLM_MESSAGES
 from querymind.api.schemas import AskReply, StreamEvent
-from querymind.semantic.catalog import Catalog, SemanticOverview
+from querymind.semantic.catalog import Catalog, SemanticOverview, build_overview
+from querymind.semantic.dictionary import load_dictionaries
+from querymind.semantic.examples import load_all_examples
+from querymind.semantic.loader import load_semantic_layers
 from scripts.record_fixtures import DEFAULT_OUTPUT, RECORDINGS, Recording
 
 MOCKS = Path(__file__).resolve().parents[2] / "web" / "src" / "mocks"
+SEMANTIC_LAYER = Path(__file__).resolve().parents[2] / "semantic_layer"
 
 # Codes the API sends besides _ERROR_MAP's: a bad request body and the catch-all (api/main.py).
 OTHER_ERRORS = {"invalid_request": 422, "internal_error": 500}
@@ -60,6 +64,22 @@ def test_the_explorer_fixtures_match_the_api_models(name: str, model: type[BaseM
     data = load(DEFAULT_OUTPUT / f"{name}.json")
 
     assert model.model_validate(data).model_dump(mode="json") == data
+
+
+def test_the_semantic_fixture_is_what_the_yaml_files_say_today() -> None:
+    """So a new term can't be missing from the glossary's tests. If this fails, run:
+    uv run python scripts/record_fixtures.py --explorer
+    """
+    paths = sorted(SEMANTIC_LAYER.glob("*.yaml"))
+    layers = [path for path in paths if path.stem.count(".") == 0]
+
+    # The fixture was recorded in the order the settings list them, northwind first.
+    layers.sort(key=lambda path: path.stem != "northwind")
+    built = build_overview(
+        load_semantic_layers(layers), load_dictionaries(layers), load_all_examples(layers)
+    )
+
+    assert built.model_dump(mode="json") == load(DEFAULT_OUTPUT / "semantic.json")
 
 
 def test_the_repair_recording_really_repaired() -> None:

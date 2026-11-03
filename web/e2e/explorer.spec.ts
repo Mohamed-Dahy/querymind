@@ -158,7 +158,9 @@ for (const theme of THEMES) {
 
     await expect(page.getByRole('heading', { level: 1, name: 'orders' })).toBeVisible()
     await expect(
-      page.getByRole('region', { name: 'Business terms' }).getByText('Late shipment'),
+      page
+        .getByRole('region', { name: 'Business terms' })
+        .getByRole('link', { name: 'Late shipment in the glossary' }),
     ).toBeVisible()
     expect(await seriousA11yIssues(page)).toEqual([])
 
@@ -191,6 +193,49 @@ test('on a phone a table page has no sideways scroll on the page itself', async 
   await page.goto('/explore/tables/customer_customer_demo')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Joins' })).toBeVisible()
+
+  expect(
+    await page.evaluate(
+      'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+    ),
+  ).toBeLessThanOrEqual(0)
+  expect(await seriousA11yIssues(page)).toEqual([])
+})
+
+test('the glossary: from the explorer, found by another word, then asked with', async ({
+  page,
+}) => {
+  await page.goto('/explore')
+  await page.getByRole('link', { name: /^Business glossary/ }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Business glossary' })).toBeVisible()
+
+  await page.getByRole('searchbox', { name: /^Search terms/ }).fill('turnover')
+  const revenue = page.getByRole('listitem', { name: 'Revenue' })
+  await expect(revenue).toBeVisible()
+  await expect(page.getByRole('listitem')).not.toHaveCount(13)
+  await revenue.getByRole('button', { name: 'Ask with this term' }).click()
+
+  const box = page.getByRole('textbox', { name: 'Your question' })
+  await expect(box).toHaveValue('What is our revenue?')
+  await expect(box).toBeFocused()
+  await expect(page.getByRole('article')).toHaveCount(0)
+})
+
+test('a term on a table page links to its place in the glossary, in view', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 500 })
+  await page.goto('/explore/tables/track')
+  const link = page.getByRole('link', { name: 'Unsold track in the glossary' })
+
+  await link.click()
+
+  await expect(page).toHaveURL(/#term-unsold_track$/)
+  await expect(page.getByRole('listitem', { name: 'Unsold track' })).toBeInViewport()
+})
+
+test('on a phone the glossary has no sideways scroll on the page', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto('/explore/glossary')
+  await expect(page.getByRole('listitem', { name: 'Revenue' })).toBeVisible()
 
   expect(
     await page.evaluate(

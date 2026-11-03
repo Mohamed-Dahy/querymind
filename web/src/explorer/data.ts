@@ -102,6 +102,30 @@ export function termName(name: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
+/** Where a term is on the glossary page. */
+export function termAnchor(name: string): string {
+  return `term-${name}`
+}
+
+/** Finds a term by its name, written either way, another word for it, or its meaning. */
+export function metricMatches(metric: MetricMeaning, search: string): boolean {
+  const needle = search.trim().toLowerCase()
+  return (
+    !needle ||
+    [metric.name, termName(metric.name), metric.description, ...metric.synonyms].some((word) =>
+      word.toLowerCase().includes(needle),
+    )
+  )
+}
+
+/** A first draft of a question using this term, for the person to edit before sending it. */
+export function metricQuestion({ name, kind, table }: MetricMeaning): string {
+  const term = termName(name).toLowerCase()
+  return kind === 'measure'
+    ? `What is our ${term}?`
+    : `How many rows of ${table} count as "${term}"?`
+}
+
 export type Relation = {
   id: string
   /** `table.column`: the side holding the foreign key. Several columns are joined with commas. */

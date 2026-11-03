@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { LoadError } from '@/explorer/LoadError'
@@ -32,6 +32,14 @@ export default function ExplorePage() {
       <p className="mt-2 text-fg-muted">
         Every table QueryMind can read and how they join, without any of their data. Row counts are
         approximate.
+      </p>
+      <p className="mt-1">
+        <Link
+          to="/explore/glossary"
+          className="inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
+        >
+          Business glossary: what each term means
+        </Link>
       </p>
 
       <div className="mt-6">
