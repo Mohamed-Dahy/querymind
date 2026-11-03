@@ -35,11 +35,35 @@ function useSqlTokens(sql: string): ThemedToken[][] | null {
   return highlighted?.sql === sql ? highlighted.lines : null
 }
 
+/** SQL in a block, coloured once Shiki has loaded. */
+export function SqlCode({ sql }: { sql: string }) {
+  const lines = useSqlTokens(sql)
+  return (
+    // Plain text first, the same size: no jump when the colours arrive.
+    <pre className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm leading-relaxed break-words whitespace-pre-wrap">
+      <code>
+        {lines
+          ? lines.map((line, lineIndex) => (
+              <span key={lineIndex}>
+                {lineIndex > 0 && '\n'}
+                {line.map((token, tokenIndex) => (
+                  // React text, never HTML: a '<' in the SQL stays a '<'.
+                  <span key={tokenIndex} style={{ color: token.color }}>
+                    {token.content}
+                  </span>
+                ))}
+              </span>
+            ))
+          : sql}
+      </code>
+    </pre>
+  )
+}
+
 type SqlViewProps = { sql: string; explanation: string }
 
 /** The SQL that ran (coloured), what it does in plain words, and a copy button. */
 export function SqlView({ sql, explanation }: SqlViewProps) {
-  const lines = useSqlTokens(sql)
   const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle')
 
   useEffect(() => {
@@ -61,24 +85,7 @@ export function SqlView({ sql, explanation }: SqlViewProps) {
   return (
     <div className="space-y-3">
       <p className="text-fg-muted">{explanation}</p>
-      {/* Plain text first, the same size: no jump when the colours arrive. */}
-      <pre className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm leading-relaxed break-words whitespace-pre-wrap">
-        <code>
-          {lines
-            ? lines.map((line, lineIndex) => (
-                <span key={lineIndex}>
-                  {lineIndex > 0 && '\n'}
-                  {line.map((token, tokenIndex) => (
-                    // React text, never HTML: a '<' in the SQL stays a '<'.
-                    <span key={tokenIndex} style={{ color: token.color }}>
-                      {token.content}
-                    </span>
-                  ))}
-                </span>
-              ))
-            : sql}
-        </code>
-      </pre>
+      <SqlCode sql={sql} />
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" variant="outline" onClick={() => void copy()}>
           <Copy aria-hidden="true" />

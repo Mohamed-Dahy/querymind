@@ -197,8 +197,8 @@ type ConstellationProps = {
 
 /**
  * The tables as a graph, for people who can see it and use a pointer. Everyone else has the list next
- * to it, which holds the same tables and joins. So the graph is one picture with a description: its
- * nodes aren't Tab stops, and the only controls are the buttons outside it.
+ * to it, which holds the same tables and joins. So the graph is labelled with a description, and its
+ * nodes aren't Tab stops. The only controls are the buttons outside it; the only link is the credit.
  */
 export function Constellation({ data, focused, onFocus }: ConstellationProps) {
   const { tables, preferredJoins } = data
@@ -220,12 +220,14 @@ export function Constellation({ data, focused, onFocus }: ConstellationProps) {
           <ZoomButtons />
         </div>
         <div
-          role="img"
+          role="group"
           aria-label={describe(data, focused)}
           // The graph's own proportions, so fitting it to the width keeps the names readable. It may
           // be taller than the screen: the page scrolls, and the list stays beside it.
           style={{ aspectRatio: aspectRatioOf(layout) }}
-          className="rounded-cell border bg-bg"
+          // React Flow's credit stays, as its authors ask, in colours that pass the contrast check. With
+          // `!`, because its stylesheet is outside Tailwind's layers, and so beats them otherwise.
+          className="rounded-cell border bg-bg [&_.react-flow\_\_attribution]:bg-transparent! [&_.react-flow\_\_attribution_a]:text-fg-muted!"
         >
           <ReactFlow
             nodes={nodes}
@@ -244,25 +246,12 @@ export function Constellation({ data, focused, onFocus }: ConstellationProps) {
             // The wheel scrolls the page, as everywhere else. Dragging pans; the buttons zoom.
             zoomOnScroll={false}
             preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
             onNodeClick={(_, node) => {
               if (node.type === 'table') onFocus(node.id === focused?.name ? null : node.id)
             }}
             onPaneClick={() => onFocus(null)}
           />
         </div>
-        <p className="mt-1 text-xs text-fg-muted">
-          Drawn with{' '}
-          <a
-            href="https://reactflow.dev"
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-4"
-          >
-            React Flow
-          </a>
-          .
-        </p>
       </section>
     </ReactFlowProvider>
   )

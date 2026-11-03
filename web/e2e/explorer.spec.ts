@@ -35,9 +35,10 @@ test.describe('at 1440 px', () => {
       expect(clashes).toEqual([])
       expect(Math.min(...boxes.map(({ width }) => width))).toBeGreaterThan(0)
 
-      const graph = page.getByRole('img', { name: /^Graph of 25 tables/ })
+      const graph = page.getByRole('group', { name: /^Graph of 25 tables/ })
       await expect(graph.getByText('Chinook', { exact: true })).toBeVisible()
       await expect(graph.getByText('Northwind', { exact: true })).toBeVisible()
+      await expect(graph.getByRole('link', { name: 'React Flow' })).toBeVisible()
       expect(await seriousA11yIssues(page)).toEqual([])
     })
   }
@@ -53,7 +54,7 @@ test.describe('at 1440 px', () => {
       'aria-pressed',
       'true',
     )
-    await expect(page.getByRole('img', { name: /orders is highlighted/ })).toBeAttached()
+    await expect(page.getByRole('group', { name: /orders is highlighted/ })).toBeAttached()
     expect(await seriousA11yIssues(page)).toEqual([])
 
     await page.goBack()
@@ -77,7 +78,7 @@ test.describe('at 1440 px', () => {
     await page.goto('/explore?table=track')
 
     await expect(
-      page.getByRole('img', { name: /track is highlighted, with the 5 tables/ }),
+      page.getByRole('group', { name: /track is highlighted, with the 5 tables/ }),
     ).toBeAttached()
     await expect(
       page.locator('.react-flow__node-table[data-id="track"] .border-signal'),
@@ -104,9 +105,8 @@ test.describe('at 1440 px', () => {
     await expect(page.locator('.react-flow__node-table')).toHaveCount(25)
     const list = page.getByRole('region', { name: 'List of tables' })
 
-    await expect(
-      page.locator('.react-flow [tabindex="0"], .react-flow a, .react-flow button'),
-    ).toHaveCount(0)
+    await expect(page.locator('.react-flow [tabindex="0"], .react-flow button')).toHaveCount(0)
+    await expect(page.locator('.react-flow a')).toHaveCount(1) // React Flow's credit
 
     await list.getByRole('searchbox').focus()
     await page.keyboard.type('clients')
@@ -118,6 +118,8 @@ test.describe('at 1440 px', () => {
     const join = list.getByRole('button', { name: 'customer_customer_demo' })
     await expect(join).toBeVisible() // the row opens just after the URL changes
 
+    await page.keyboard.press('Tab')
+    await expect(list.getByRole('link', { name: 'Everything about customers' })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(join).toBeFocused()
     await page.keyboard.press('Enter')
@@ -137,6 +139,58 @@ test('on a phone: the list only, with no sideways scroll, and the graph is never
   await expect(list.getByText('25 tables')).toBeVisible()
   await expect(page.locator('.react-flow')).toHaveCount(0)
   expect(asked.filter((url) => /constellation|xyflow/i.test(url))).toEqual([])
+
+  expect(
+    await page.evaluate(
+      'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+    ),
+  ).toBeLessThanOrEqual(0)
+  expect(await seriousA11yIssues(page)).toEqual([])
+})
+
+for (const theme of THEMES) {
+  test(`${theme} theme: a table's page, from the list, through a join, to a question`, async ({
+    page,
+  }) => {
+    await useTheme(page, theme)
+    await page.goto('/explore?table=orders')
+    await page.getByRole('link', { name: 'Everything about orders' }).click()
+
+    await expect(page.getByRole('heading', { level: 1, name: 'orders' })).toBeVisible()
+    await expect(
+      page.getByRole('region', { name: 'Business terms' }).getByText('Late shipment'),
+    ).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    const open = page.getByRole('link', { name: 'Open customers' }).first()
+    await open.scrollIntoViewIfNeeded()
+    await open.click()
+    const heading = page.getByRole('heading', { level: 1, name: 'customers' })
+    await expect(heading).toBeInViewport()
+
+    const question = page
+      .getByRole('region', { name: 'Questions to ask' })
+      .getByRole('button')
+      .first()
+    const words = (await question.innerText()).trim()
+    await question.click()
+
+    const box = page.getByRole('textbox', { name: 'Your question' })
+    await expect(box).toHaveValue(words)
+    await expect(box).toBeFocused()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('article')).toHaveCount(0)
+
+    await page.goBack()
+    await expect(heading).toBeVisible()
+  })
+}
+
+test('on a phone a table page has no sideways scroll on the page itself', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto('/explore/tables/customer_customer_demo')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Joins' })).toBeVisible()
 
   expect(
     await page.evaluate(

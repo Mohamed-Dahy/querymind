@@ -1,7 +1,7 @@
 import { CornerDownRight, Info } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
-import { useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 
 import { ApiError } from '@/api/client'
 import { getConversation } from '@/api/conversations'
@@ -11,9 +11,10 @@ import { Composer, type ComposerHandle } from '@/canvas/Composer'
 import { EmptyCanvas } from '@/canvas/EmptyCanvas'
 import { NEW_CONVERSATION, type Cell as CellData } from '@/canvas/state'
 import { railFrom, repairAnnouncement } from '@/canvas/trace'
-import { useConversation } from '@/canvas/useConversation'
+import { useConversation, type DraftState } from '@/canvas/useConversation'
 import { formatWait } from '@/canvas/wait'
 import { Button } from '@/components/ui/button'
+import { KEEP_FOCUS } from '@/layout/useFocusOnRouteChange'
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { NotFoundPage } from './NotFoundPage'
@@ -73,6 +74,19 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
   useEffect(() => {
     if (saved.data) load(saved.data)
   }, [saved.data, load])
+
+  // A question sent here from the explorer. Used once: the state is cleared, so a reload or coming
+  // back doesn't put it in the composer again. On the next frame, because the shell moves focus to
+  // the page after this effect has run, and the box should have it.
+  const { state } = useLocation()
+  const navigate = useNavigate()
+  const draft = (state as DraftState | null)?.draft
+  useEffect(() => {
+    if (draft === undefined) return
+    composer.current?.fill(draft)
+    requestAnimationFrame(() => composer.current?.focus())
+    void navigate('/', { replace: true, state: KEEP_FOCUS })
+  }, [draft, navigate])
 
   // Looked up in this conversation's cells, so it ends by itself when the conversation changes.
   const [followingUpId, setFollowingUpId] = useState<string | null>(null)

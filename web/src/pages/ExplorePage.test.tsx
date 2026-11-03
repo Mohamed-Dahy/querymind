@@ -88,6 +88,15 @@ describe('ExplorePage', () => {
     expect(screen.getByRole('button', { name: 'employee_territories' })).toBeInTheDocument()
   })
 
+  it('a chosen table links to its own page', async () => {
+    renderApp('/explore?table=track')
+
+    expect(await screen.findByRole('link', { name: 'Everything about track' })).toHaveAttribute(
+      'href',
+      '/explore/tables/track',
+    )
+  })
+
   it('follows a join from one table to the next, and Back returns', async () => {
     const user = userEvent.setup()
     const { router } = renderApp('/explore?table=territories')

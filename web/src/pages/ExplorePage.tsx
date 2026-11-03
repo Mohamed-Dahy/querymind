@@ -1,10 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router'
 
-import { ApiError } from '@/api/client'
-import { errorTitle } from '@/api/errors'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { LoadError } from '@/explorer/LoadError'
 import { TableList } from '@/explorer/TableList'
 import { useExplorerData } from '@/explorer/useExplorerData'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -42,18 +40,7 @@ export default function ExplorePage() {
             <Skeleton className="h-96 w-full motion-reduce:animate-none" />
           </div>
         ) : data === undefined ? (
-          <div className="rounded-lg border bg-surface p-4">
-            <p className="font-semibold">
-              {errorTitle(error instanceof ApiError ? error.code : 'unexpected')}
-            </p>
-            <p className="mt-1 text-sm text-fg-muted">
-              The tables can&apos;t be listed right now. Questions on the canvas may not work
-              either.
-            </p>
-            <Button type="button" variant="outline" className="mt-3" onClick={retry}>
-              Try again
-            </Button>
-          </div>
+          <LoadError error={error} onRetry={retry} />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
             {wide && (

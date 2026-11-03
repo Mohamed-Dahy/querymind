@@ -56,9 +56,10 @@ Object.defineProperties(HTMLElement.prototype, {
   clientWidth: { configurable: true, get: () => 800 },
 })
 
-// findBy… and waitFor wait 3 s, not 1 s: lazy parts (AnswerCell, the chart) are compiled by Vite the
-// first time a test file loads them, which on a busy machine can take more than a second.
-configure({ asyncUtilTimeout: 3000 })
+// findBy… and waitFor wait 5 s, not 1 s: lazy parts (AnswerCell, the chart) are compiled by Vite the
+// first time a test file loads them, and the whole suite at once keeps every core busy. A test that
+// is really failing only takes longer to say so.
+configure({ asyncUtilTimeout: 5000 })
 
 // Unmount what each test rendered, so tests don't see each other's DOM.
 afterEach(() => cleanup())

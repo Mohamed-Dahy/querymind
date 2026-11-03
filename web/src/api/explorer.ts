@@ -4,6 +4,9 @@ import type { components } from './schema'
 
 type Schemas = components['schemas']
 export type Catalog = Schemas['Catalog']
+export type CatalogTable = Schemas['CatalogTable']
+export type TableMeaning = Schemas['TableMeaning']
+export type MetricMeaning = Schemas['MetricMeaning']
 export type SemanticOverview = Schemas['SemanticOverview']
 
 const TIMEOUT_MS = 20_000 // the first read of the catalog may have to count a few tables

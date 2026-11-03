@@ -1,5 +1,6 @@
 import { Search, ShieldAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
+import { Link } from 'react-router'
 
 import { cn } from '@/lib/utils'
 
@@ -114,6 +115,12 @@ function TableRow({
       </button>
       {focused && (
         <div className="px-2 pb-2 text-xs">
+          <Link
+            to={`/explore/tables/${encodeURIComponent(table.name)}`}
+            className="mb-1 inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
+          >
+            Everything about {table.name}
+          </Link>
           {near.length === 0 ? (
             <p className="text-fg-muted">This table joins no other table.</p>
           ) : (

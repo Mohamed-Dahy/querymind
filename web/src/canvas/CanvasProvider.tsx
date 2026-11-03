@@ -14,7 +14,7 @@ import {
   NEW_CONVERSATION,
   type CellError,
 } from './state'
-import { CanvasContext, type CanvasContextValue } from './useConversation'
+import { CanvasContext, type CanvasContextValue, type DraftState } from './useConversation'
 
 // Cell ids only need to be unique on this page load (crypto.randomUUID needs HTTPS off localhost).
 let lastCellId = 0
@@ -124,16 +124,19 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'dropped', conversationId })
   }, [])
 
-  const startOver = useCallback(() => {
-    // A question with no conversation has nowhere to land after this, so it is cancelled. One
-    // in a named conversation goes on: its answer waits at that URL (Back finds it), and
-    // throwing it away wouldn't save the quota it has already spent.
-    for (const { controller, named } of running.current.values()) {
-      if (!named) controller.abort()
-    }
-    dispatch({ type: 'reset' })
-    void navigate('/')
-  }, [navigate])
+  const startOver = useCallback(
+    (state?: DraftState) => {
+      // A question with no conversation has nowhere to land after this, so it is cancelled. One
+      // in a named conversation goes on: its answer waits at that URL (Back finds it), and
+      // throwing it away wouldn't save the quota it has already spent.
+      for (const { controller, named } of running.current.values()) {
+        if (!named) controller.abort()
+      }
+      dispatch({ type: 'reset' })
+      void navigate('/', { state })
+    },
+    [navigate],
+  )
 
   const value = useMemo<CanvasContextValue>(
     () => ({
@@ -141,7 +144,9 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       load,
       applyRerun,
       dropConversation,
-      newConversation: startOver,
+      // Not `startOver` itself: a button's onClick would pass its click event in as the state.
+      newConversation: () => startOver(),
+      draftNew: (draft) => startOver({ draft }),
       askNew: (question) => {
         startOver()
         const cellId = `cell-${++lastCellId}`

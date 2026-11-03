@@ -4,7 +4,7 @@ import { createBrowserRouter, type RouteObject } from 'react-router'
 import { AppShell } from '@/layout/AppShell'
 import { CanvasPage } from '@/pages/CanvasPage'
 import { EvalsPage } from '@/pages/EvalsPage'
-import { LazyExplorePage } from '@/pages/LazyPages'
+import { LazyExplorePage, LazyTablePage } from '@/pages/LazyPages'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 /** What a route tells the shell: its page name, shown in the browser tab (useFocusOnRouteChange). */
@@ -42,6 +42,11 @@ export const routes: RouteObject[] = [
       {
         path: 'explore',
         element: <LazyExplorePage />,
+        handle: { title: 'Data explorer' } satisfies RouteHandle,
+      },
+      {
+        path: 'explore/tables/:table',
+        element: <LazyTablePage />,
         handle: { title: 'Data explorer' } satisfies RouteHandle,
       },
       {

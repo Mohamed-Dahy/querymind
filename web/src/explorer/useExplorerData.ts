@@ -26,6 +26,8 @@ export function useExplorerData() {
   )
   return {
     data,
+    catalog: catalog.data,
+    semantic: semantic.data,
     error: catalog.error ?? semantic.error,
     pending: catalog.isPending || semantic.isPending,
     retry: () => {

@@ -1,5 +1,11 @@
 /** The two API responses as one list of tables, in the shape the explorer's screens need. */
-import type { Catalog, SemanticOverview } from '@/api/explorer'
+import type {
+  Catalog,
+  CatalogTable,
+  MetricMeaning,
+  SemanticOverview,
+  TableMeaning,
+} from '@/api/explorer'
 
 export type ExplorerTable = {
   name: string
@@ -88,4 +94,72 @@ export function formatRowCount(count: number | null): string {
 /** "chinook" → "Chinook"; a table no semantic layer covers goes under "Other". */
 export function businessLabel(business: string | null): string {
   return business === null ? 'Other' : business.charAt(0).toUpperCase() + business.slice(1)
+}
+
+/** "late_shipment" → "Late shipment". */
+export function termName(name: string): string {
+  const words = name.replaceAll('_', ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+export type Relation = {
+  id: string
+  /** `table.column`: the side holding the foreign key. Several columns are joined with commas. */
+  from: string
+  /** `table.column`: the side it points to. */
+  to: string
+  /** The table at the far end, from this page's point of view. */
+  other: string
+  preferred: boolean
+  note: string
+}
+
+export type TableDetails = {
+  table: CatalogTable
+  meaning: TableMeaning | undefined
+  businessDescription: string
+  metrics: MetricMeaning[]
+  relations: Relation[]
+}
+
+const qualified = (table: string, columns: readonly string[]) =>
+  columns.map((column) => `${table}.${column}`).join(', ')
+
+/** All one table's page needs, or undefined if there is no such table. */
+export function tableDetails(
+  name: string,
+  catalog: Catalog,
+  overview: SemanticOverview,
+): TableDetails | undefined {
+  const table = catalog.tables.find((one) => one.name === name)
+  if (table === undefined) return undefined
+  const business = overview.businesses.find(({ database }) => database === table.business)
+
+  const joins = overview.businesses.flatMap((one) => one.joins)
+  const relations = catalog.tables.flatMap((source) =>
+    source.foreign_keys
+      .filter(({ ref_table: target }) => source.name === name || target === name)
+      .map(({ columns, ref_table: target, ref_columns: refColumns }): Relation => {
+        const from = qualified(source.name, columns)
+        const to = qualified(target, refColumns)
+        const join = joins.find(
+          ({ left, right }) => (left === from && right === to) || (left === to && right === from),
+        )
+        return {
+          id: `${from}->${to}`,
+          from,
+          to,
+          other: source.name === name ? target : source.name,
+          preferred: join !== undefined,
+          note: join?.note ?? '',
+        }
+      }),
+  )
+  return {
+    table,
+    meaning: business?.tables.find((one) => one.name === name),
+    businessDescription: business?.description ?? '',
+    metrics: (business?.metrics ?? []).filter((metric) => metric.table === name),
+    relations,
+  }
 }
