@@ -1,10 +1,14 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AskResponse } from '@/api/client'
+import type { RerunResult } from '@/api/conversations'
 import * as csv from '@/lib/csv'
 import { answer, monthly, single } from '@/mocks/fixtures'
+import { server } from '@/mocks/server'
+import { renderWithQueryClient } from '@/test/render'
 
 import { AnswerCell } from './AnswerCell'
 
@@ -192,6 +196,100 @@ describe('AnswerCell', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await waitFor(() => expect(button).toHaveFocus())
+  })
+
+  describe('a saved answer', () => {
+    const conversation_id = '3f2a9c1e-0000-4000-8000-000000000000'
+    const reply = { ...answer, rows: [], conversation_id }
+    const fresh = {
+      columns: answer.columns,
+      rows: answer.rows,
+      row_count: answer.rows.length,
+      truncated: false,
+      ran_at: '2026-11-03T09:00:00Z',
+    }
+
+    function renderSaved(onRerun = vi.fn<(result: RerunResult) => void>()) {
+      const user = userEvent.setup()
+      renderWithQueryClient(
+        <AnswerCell
+          reply={reply}
+          saved={{ n: 1, createdAt: '2026-11-01T10:00:00Z' }}
+          onRerun={onRerun}
+        />,
+      )
+      return { user, onRerun }
+    }
+
+    it('says its rows are not stored, and has no chart until they are back', () => {
+      renderSaved()
+
+      expect(screen.queryByRole('tab', { name: 'Chart' })).not.toBeInTheDocument()
+      expect(screen.getByText(/rows of this answer aren't stored/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Re-run for rows' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Download CSV' })).not.toBeInTheDocument()
+      expect(screen.getByText(answer.answer)).toBeInTheDocument()
+    })
+
+    it('a re-run asks only for that turn, and hands over the rows', async () => {
+      let url = ''
+      server.use(
+        http.post('/api/conversations/:id/turns/:n/rerun', ({ request }) => {
+          url = request.url
+          return HttpResponse.json(fresh)
+        }),
+      )
+      const { user, onRerun } = renderSaved()
+
+      await user.click(screen.getByRole('button', { name: 'Re-run for rows' }))
+
+      await waitFor(() => expect(onRerun).toHaveBeenCalledExactlyOnceWith(fresh))
+      expect(url).toContain(`/conversations/${conversation_id}/turns/1/rerun`)
+    })
+
+    it('a failed re-run says why, and can be tried again', async () => {
+      server.use(
+        http.post('/api/conversations/:id/turns/:n/rerun', () =>
+          HttpResponse.json(
+            { error: 'unsafe_sql', message: 'Only SELECT queries are allowed.' },
+            { status: 422 },
+          ),
+        ),
+      )
+      const { user } = renderSaved()
+
+      await user.click(screen.getByRole('button', { name: 'Re-run for rows' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("I couldn't answer that safely.")
+      expect(screen.getByRole('button', { name: 'Re-run for rows' })).toHaveAttribute(
+        'aria-disabled',
+        'false',
+      )
+    })
+
+    it('with fresh rows: the chart, the table, the CSV, and a note about the dates', async () => {
+      renderWithQueryClient(
+        <AnswerCell
+          reply={{ ...reply, rows: answer.rows }}
+          saved={{ n: 1, createdAt: '2026-11-01T10:00:00Z', freshAt: '2026-11-03T09:00:00Z' }}
+        />,
+      )
+
+      expect(screen.getByText(/^Fresh rows from .*so they may not match\.$/)).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Chart' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('a saved answer with no rows at all has nothing to re-run', () => {
+      renderWithQueryClient(
+        <AnswerCell
+          reply={{ ...reply, row_count: 0 }}
+          saved={{ n: 1, createdAt: '2026-11-01T10:00:00Z' }}
+        />,
+      )
+
+      expect(screen.queryByRole('button', { name: 'Re-run for rows' })).not.toBeInTheDocument()
+      expect(screen.getByText('0 rows')).toBeInTheDocument()
+    })
   })
 
   it('has no Chart tab for one number, and opens on the table', () => {

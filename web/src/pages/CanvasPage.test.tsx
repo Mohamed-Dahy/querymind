@@ -12,7 +12,16 @@ import {
   refusal,
   repairStream,
 } from '@/mocks/fixtures'
-import { ASK_URL, errorStream, replyFor, replyStream, STREAM_URL, streamOf } from '@/mocks/handlers'
+import {
+  apiError,
+  ASK_URL,
+  errorStream,
+  replyFor,
+  replyStream,
+  STREAM_URL,
+  streamOf,
+} from '@/mocks/handlers'
+import { recordTurn } from '@/mocks/conversations'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
 
@@ -482,20 +491,81 @@ describe('CanvasPage', () => {
     expect(await screen.findByText(followup.answer)).toBeInTheDocument()
   })
 
-  it('a conversation not in this browser says so, and asking there sends its id', async () => {
+  it('a saved conversation opens after a reload, with its rail, and re-runs for rows', async () => {
+    const id = crypto.randomUUID()
+    recordTurn({ ...answer, conversation_id: id }, answerStream)
+    const user = userEvent.setup()
+    renderApp(`/c/${id}`)
+
+    const cell = await screen.findByRole('article', { name: answer.question })
+    expect(within(cell).getByText(answer.answer)).toBeInTheDocument()
+    expect(within(cell).getByRole('list', { name: 'Agent steps' })).toBeInTheDocument()
+    expect(within(cell).getByRole('tab', { name: 'Table' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(within(cell).queryByRole('tab', { name: 'Chart' })).not.toBeInTheDocument()
+
+    await user.click(within(cell).getByRole('button', { name: 'Re-run for rows' }))
+
+    expect(await within(cell).findByText(/^Fresh rows from /)).toBeInTheDocument()
+    expect(await within(cell).findByRole('tab', { name: 'Chart' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(await within(cell).findByRole('img', { name: /^Bar chart/ })).toBeInTheDocument()
+  })
+
+  it('a follow-up on a reopened conversation continues it', async () => {
+    const id = crypto.randomUUID()
+    recordTurn({ ...answer, conversation_id: id }, answerStream)
+    const bodies = recordAsks()
+    const user = userEvent.setup()
+    renderApp(`/c/${id}`)
+
+    await screen.findByRole('article', { name: answer.question })
+    await askByKeyboard(user, 'Now only for 1997')
+    await screen.findByText(followup.answer)
+
+    expect(bodies).toEqual([{ question: 'Now only for 1997', conversation_id: id }])
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+  })
+
+  it('opening a saved conversation announces nothing: nothing just finished', async () => {
+    const id = crypto.randomUUID()
+    recordTurn({ ...answer, conversation_id: id }, answerStream)
+    renderApp(`/c/${id}`)
+
+    await screen.findByRole('article', { name: answer.question })
+
+    expect(screen.queryByText('Answer ready.')).not.toBeInTheDocument()
+  })
+
+  it('a conversation that is gone says so, and asking there sends its id', async () => {
     const bodies = recordAsks()
     const id = '3f2a9c1e-0000-4000-8000-000000000000'
     const user = userEvent.setup()
     renderApp(`/c/${id}`)
 
-    const notice = /isn't saved in this browser yet/
-    expect(screen.getByText(notice)).toBeInTheDocument()
+    const notice = await screen.findByText(/This conversation wasn't found/)
+    expect(notice).toBeInTheDocument()
 
     await askByKeyboard(user, 'Now only for 1997')
     await screen.findByText(followup.answer)
 
     expect(bodies).toEqual([{ question: 'Now only for 1997', conversation_id: id }])
-    expect(screen.queryByText(notice)).not.toBeInTheDocument()
+    expect(screen.queryByText(/This conversation wasn't found/)).not.toBeInTheDocument()
+  })
+
+  it('with history off, a conversation link says so calmly, and asking still works', async () => {
+    server.use(http.get('/api/conversations/:id', () => apiError('history_unavailable')))
+    const user = userEvent.setup()
+    renderApp('/c/3f2a9c1e-0000-4000-8000-000000000000')
+
+    expect(await screen.findByText(/earlier questions can't be shown/)).toBeInTheDocument()
+
+    await askByKeyboard(user, 'Now only for 1997')
+    expect(await screen.findByText(followup.answer)).toBeInTheDocument()
   })
 
   it('a path that cannot be a conversation id is not found, not a canvas that will fail', () => {

@@ -41,7 +41,7 @@ export class ApiError extends Error {
 const API_BASE = `${window.location.origin}/api`
 export const ASK_URL = `${API_BASE}/ask`
 
-const api = createClient<paths>({
+export const api = createClient<paths>({
   baseUrl: API_BASE,
   // Look up fetch on every call (not once at start-up), so test stubs and MSW (U0.5) are used.
   fetch: (request) => globalThis.fetch(request),
@@ -66,14 +66,14 @@ export function checkedReply(reply: AskReply): AskReply {
   return reply
 }
 
-type Result<T> = { data?: T; error?: unknown; response: Response }
+export type Result<T> = { data?: T; error?: unknown; response: Response }
 
 /**
  * Run one request with a timeout, and turn every failure into an ApiError (like client.py):
  * the API's own {error, message}, a timeout, an unreachable API, or a body we can't read.
  * A cancel by the caller (their `signal`) is passed on as the AbortError it is: not a failure.
  */
-async function call<T>(
+export async function call<T>(
   timeoutMs: number,
   signal: AbortSignal | undefined,
   send: (signal: AbortSignal) => Promise<Result<T>>,
@@ -105,10 +105,11 @@ async function call<T>(
 
   const { data, error, response } = result
   if (!response.ok) throw errorFrom(response.status, error)
-  if (data === undefined) {
+  // 204 No Content has no body on purpose (a delete).
+  if (data === undefined && response.status !== 204) {
     throw new ApiError('bad_response', 'The API sent an unexpected response.')
   }
-  return data
+  return data as T
 }
 
 export function isErrorBody(body: unknown): body is ErrorBody {

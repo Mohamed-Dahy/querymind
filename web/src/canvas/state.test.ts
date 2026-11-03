@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { TraceEvent } from '@/api/stream'
+import type { ConversationDetail } from '@/api/conversations'
 import { answer, clarification, followup, refusal, repairStream } from '@/mocks/fixtures'
 
 import {
@@ -183,5 +184,112 @@ describe('canvasReducer', () => {
   it('returns the same store when nothing changed', () => {
     const store = run(askNew)
     expect(canvasReducer(store, { key: 'other', type: 'retried', cellId: 'c1' })).toBe(store)
+  })
+})
+
+describe('saved conversations', () => {
+  const SAVED: ConversationDetail = {
+    id: 'conv-9',
+    title: 'Sales',
+    pinned: false,
+    created_at: '2026-11-01T10:00:00Z',
+    updated_at: '2026-11-01T10:00:00Z',
+    turns: 2,
+    saved_turns: [
+      {
+        n: 1,
+        created_at: '2026-11-01T10:00:00Z',
+        reply: { ...answer, rows: [] },
+        trace: repairStream,
+      },
+      { n: 2, created_at: '2026-11-01T10:05:00Z', reply: refusal, trace: [] },
+    ],
+  }
+
+  it('fills an empty conversation with saved cells', () => {
+    const store = canvasReducer(EMPTY_STORE, { type: 'loaded', conversation: SAVED })
+    const { id, cells } = conversationAt(store, 'conv-9')
+
+    expect(id).toBe('conv-9')
+    expect(cells.map((cell) => cell.status)).toEqual(['done', 'done'])
+    expect(cells[0]?.question).toBe(answer.question)
+    expect(cells[0]?.saved).toEqual({ n: 1, createdAt: '2026-11-01T10:00:00Z' })
+    expect(cells[0]?.trace).toEqual(repairStream)
+    expect(cells[1]).not.toHaveProperty('trace') // it didn't stream: no rail
+  })
+
+  it('never replaces live cells', () => {
+    const live: CanvasStore = canvasReducer(EMPTY_STORE, {
+      key: 'conv-9',
+      type: 'asked',
+      cellId: 'c1',
+      question: 'Asked while it was loading',
+    })
+
+    expect(canvasReducer(live, { type: 'loaded', conversation: SAVED })).toBe(live)
+  })
+
+  it('a re-run puts fresh rows into the answer, and says when they were read', () => {
+    const store = canvasReducer(EMPTY_STORE, { type: 'loaded', conversation: SAVED })
+    const next = canvasReducer(store, {
+      key: 'conv-9',
+      type: 'rerun',
+      cellId: 'saved-conv-9-1',
+      result: {
+        columns: ['a'],
+        rows: [[1], [2], [3]],
+        row_count: 3,
+        truncated: false,
+        ran_at: '2026-11-03T09:00:00Z',
+      },
+    })
+    const [cell] = conversationAt(next, 'conv-9').cells
+
+    expect(cell?.reply).toMatchObject({ columns: ['a'], rows: [[1], [2], [3]], row_count: 3 })
+    expect(cell?.reply).toMatchObject({ answer: answer.answer }) // the words stay as they were
+    expect(cell?.saved).toEqual({
+      n: 1,
+      createdAt: '2026-11-01T10:00:00Z',
+      freshAt: '2026-11-03T09:00:00Z',
+    })
+  })
+
+  it('a re-run does nothing to a cell that was not saved', () => {
+    const state = conversationReducer(asked(EMPTY), {
+      type: 'replied',
+      cellId: 'c1',
+      reply: answer,
+    })
+
+    const next = conversationReducer(state, {
+      type: 'rerun',
+      cellId: 'c1',
+      result: { columns: [], rows: [], row_count: 0, truncated: false, ran_at: 'x' },
+    })
+
+    expect(next.cells[0]?.reply).toEqual(answer)
+  })
+
+  it('a dropped conversation is gone, and so is `/` pointing at it', () => {
+    const store = canvasReducer(
+      canvasReducer(EMPTY_STORE, {
+        key: NEW_CONVERSATION,
+        type: 'asked',
+        cellId: 'c1',
+        question: 'q',
+      }),
+      {
+        key: NEW_CONVERSATION,
+        type: 'replied',
+        cellId: 'c1',
+        reply: { ...answer, conversation_id: 'conv-1' },
+      },
+    )
+    expect(store.promotedTo).toBe('conv-1')
+
+    const next = canvasReducer(store, { type: 'dropped', conversationId: 'conv-1' })
+
+    expect(next.promotedTo).toBeNull()
+    expect(conversationAt(next, NEW_CONVERSATION).cells).toEqual([])
   })
 })

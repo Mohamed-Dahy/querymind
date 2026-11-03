@@ -1,7 +1,10 @@
 import { CornerDownRight, Info } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 
+import { ApiError } from '@/api/client'
+import { getConversation } from '@/api/conversations'
 import { errorTitle } from '@/api/errors'
 import { Cell } from '@/canvas/Cell'
 import { Composer, type ComposerHandle } from '@/canvas/Composer'
@@ -11,12 +14,14 @@ import { railFrom, repairAnnouncement } from '@/canvas/trace'
 import { useConversation } from '@/canvas/useConversation'
 import { formatWait } from '@/canvas/wait'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 import { NotFoundPage } from './NotFoundPage'
 
 /** What a screen reader hears about the latest cell (the cells themselves aren't live regions). */
 function announcement(cell: CellData | undefined): string {
-  if (cell === undefined) return ''
+  // Opening a saved conversation isn't news: nothing just finished.
+  if (cell === undefined || cell.saved !== undefined) return ''
   if (cell.status === 'running') {
     const repairing = repairAnnouncement(railFrom(cell.trace ?? [], { ended: false }))
     return repairing || 'Working on your question.'
@@ -50,12 +55,24 @@ export function CanvasPage() {
 
 /** The canvas: example questions or the conversation's cells, and the composer at the bottom. */
 function Canvas({ conversationId }: { conversationId: string | undefined }) {
-  const { conversation, busy, ask, retry, stop } = useConversation(
+  const { conversation, busy, ask, retry, stop, load, applyRerun } = useConversation(
     conversationId ?? NEW_CONVERSATION,
   )
   const { cells } = conversation
   const composer = useRef<ComposerHandle>(null)
   const followUpNoteId = useId()
+
+  // After a reload, or a shared link: nothing in memory, so fetch what was saved.
+  const saved = useQuery({
+    queryKey: ['conversation', conversationId],
+    queryFn: ({ signal }) => getConversation(conversationId as string, signal),
+    enabled: conversationId !== undefined && cells.length === 0,
+    retry: false,
+    gcTime: 0, // once it's on the canvas this copy isn't needed; after a delete it would be wrong
+  })
+  useEffect(() => {
+    if (saved.data) load(saved.data)
+  }, [saved.data, load])
 
   // Looked up in this conversation's cells, so it ends by itself when the conversation changes.
   const [followingUpId, setFollowingUpId] = useState<string | null>(null)
@@ -81,9 +98,14 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
       </p>
 
       <div className="mt-8 flex-1">
-        {cells.length === 0 ? (
+        {cells.length === 0 && saved.isFetching ? (
+          <div aria-hidden="true" className="space-y-3">
+            <Skeleton className="h-24 w-full motion-reduce:animate-none" />
+            <Skeleton className="h-24 w-full motion-reduce:animate-none" />
+          </div>
+        ) : cells.length === 0 ? (
           <>
-            {conversationId !== undefined && <NotSavedNotice />}
+            {saved.error && <NotLoadedNotice error={saved.error} />}
             <EmptyCanvas onAsk={ask} busy={busy} />
           </>
         ) : (
@@ -108,6 +130,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
                     // The Stop button goes away too.
                     composer.current?.focus()
                   }}
+                  onRerun={applyRerun}
                   onFollowUp={(cellId) => {
                     setFollowingUpId(cellId)
                     composer.current?.focus()
@@ -157,13 +180,15 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
   )
 }
 
-/** `/c/<id>` with no cells: after a reload, or a shared link. Saved history arrives in U3. */
-function NotSavedNotice() {
+/** `/c/<id>` that couldn't be loaded: gone, or history is off. Asking there still works. */
+function NotLoadedNotice({ error }: { error: Error }) {
+  const gone = error instanceof ApiError && error.code === 'conversation_not_found'
   return (
     <p className="mb-4 flex items-start gap-2 rounded-lg border bg-surface px-3 py-2 text-sm">
       <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
-      This conversation isn&apos;t saved in this browser yet, so its earlier questions can&apos;t be
-      shown. You can still ask here: the server may remember them for a while.
+      {gone
+        ? "This conversation wasn't found. It may have been deleted, or it was never saved. A question here starts it again."
+        : "This conversation's earlier questions can't be shown right now. You can still ask here: the server may remember them for a while."}
     </p>
   )
 }

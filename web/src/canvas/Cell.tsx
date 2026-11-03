@@ -1,6 +1,7 @@
 import { CornerDownRight } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 
+import type { RerunResult } from '@/api/conversations'
 import type { TraceEvent } from '@/api/stream'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -36,6 +37,8 @@ type CellProps = {
   onFollowUp: (cellId: string) => void
   /** Stops this cell's question while it runs. */
   onStop: (cellId: string) => void
+  /** Fresh rows arrived for this saved cell. */
+  onRerun: (cellId: string, result: RerunResult) => void
 }
 
 /**
@@ -81,7 +84,7 @@ export function Cell(props: CellProps) {
   )
 }
 
-function CellBody({ cell, busy, onAsk, onRetry, onRephrase, onFollowUp }: CellProps) {
+function CellBody({ cell, busy, onAsk, onRetry, onRephrase, onFollowUp, onRerun }: CellProps) {
   if (cell.status === 'running') return <RunningBody />
   if (cell.status === 'failed' || cell.reply === undefined) {
     return (
@@ -99,7 +102,11 @@ function CellBody({ cell, busy, onAsk, onRetry, onRephrase, onFollowUp }: CellPr
     case 'answer':
       return (
         <Suspense fallback={<RunningBody />}>
-          <AnswerCell reply={reply} />
+          <AnswerCell
+            reply={reply}
+            saved={cell.saved}
+            onRerun={(result) => onRerun(cell.id, result)}
+          />
           {/* Every cell has this button, so the description says which question it is for. */}
           <Button
             type="button"

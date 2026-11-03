@@ -1,8 +1,9 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { ApiError, type AskRequest } from '@/api/client'
+import { CONVERSATIONS_KEY, type ConversationDetail, type RerunResult } from '@/api/conversations'
 import { askStream, type AskStreamOptions } from '@/api/stream'
 import { KEEP_FOCUS } from '@/layout/useFocusOnRouteChange'
 
@@ -42,6 +43,7 @@ function cellError(error: unknown): CellError {
 export function CanvasProvider({ children }: { children: ReactNode }) {
   const [store, dispatch] = useReducer(canvasReducer, EMPTY_STORE)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { pathname } = useLocation()
   // Asking is never retried automatically (queryClient.ts): every try spends LLM quota.
   const { mutateAsync } = useMutation({
@@ -80,6 +82,8 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
           },
         })
         dispatch({ key: target, type: 'replied', cellId, reply })
+        // The API saved this turn before replying, so the history list can show it now.
+        void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_KEY })
         // The first reply named the conversation: put that name in the URL, so it can be
         // bookmarked and shared. Replace (Back skips the empty `/`), keep focus in the composer,
         // and only if the user is still on `/` (not if they went to Explore meanwhile).
@@ -99,12 +103,26 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         running.current.delete(cellId)
       }
     },
-    [mutateAsync, navigate],
+    [mutateAsync, navigate, queryClient],
   )
+
+  // Only dispatch: stable, so effects can depend on them.
+  const load = useCallback((conversation: ConversationDetail) => {
+    dispatch({ type: 'loaded', conversation })
+  }, [])
+  const applyRerun = useCallback((key: string, cellId: string, result: RerunResult) => {
+    dispatch({ key, type: 'rerun', cellId, result })
+  }, [])
+  const dropConversation = useCallback((conversationId: string) => {
+    dispatch({ type: 'dropped', conversationId })
+  }, [])
 
   const value = useMemo<CanvasContextValue>(
     () => ({
       store,
+      load,
+      applyRerun,
+      dropConversation,
       ask: (key, question, parentId) => {
         const cellId = `cell-${++lastCellId}`
         dispatch(
@@ -139,7 +157,7 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         void navigate('/')
       },
     }),
-    [store, send, navigate],
+    [store, send, navigate, load, applyRerun, dropConversation],
   )
   return <CanvasContext value={value}>{children}</CanvasContext>
 }

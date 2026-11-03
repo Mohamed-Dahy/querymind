@@ -1,6 +1,16 @@
 import { delay, http, HttpResponse } from 'msw'
 
+import {
+  deleteStored,
+  getStored,
+  listStored,
+  recordTurn,
+  rerunStored,
+  updateStored,
+} from './conversations'
+
 import type { AskReply, AskRequest } from '@/api/client'
+import type { ConversationUpdate } from '@/api/conversations'
 import type { StreamEvent, TraceEvent } from '@/api/stream'
 import {
   answer,
@@ -28,6 +38,7 @@ import {
 export const HEALTH_URL = '/api/health'
 export const ASK_URL = '/api/ask'
 export const STREAM_URL = '/api/ask/stream'
+const CONVERSATION_URL = '/api/conversations/:id'
 
 // In the browser's mock mode the steps come one by one, so they can be seen. Tests don't wait.
 const EVENT_DELAY_MS = import.meta.env.MODE === 'mock' ? 60 : 0
@@ -115,6 +126,7 @@ export function streamOf(events: readonly StreamEvent[], { stuck = false } = {})
 /** The whole recorded stream for a question: its events, then the reply. */
 export function replyStream(request: AskRequest) {
   const { reply, events } = recordedFor(request)
+  recordTurn(reply, events) // the real API saves before the final event, too
   return streamOf([...events, { type: 'final', reply }])
 }
 
@@ -144,6 +156,30 @@ export const handlers = [
     const body = (await request.json()) as AskRequest
     const code = ERROR_PREFIX.exec(body.question)?.[1]?.toLowerCase()
     if (code && code in errors) return apiError(code as MockErrorCode)
-    return HttpResponse.json(replyFor(body))
+    const reply = replyFor(body)
+    recordTurn(reply, [])
+    return HttpResponse.json(reply)
+  }),
+  http.get('/api/conversations', ({ request }) => {
+    const { searchParams } = new URL(request.url)
+    return HttpResponse.json(listStored(searchParams.get('q'), Number(searchParams.get('limit'))))
+  }),
+  http.get(CONVERSATION_URL, ({ params }) => {
+    const found = getStored(String(params['id']))
+    return found ? HttpResponse.json(found) : apiError('conversation_not_found')
+  }),
+  http.patch(CONVERSATION_URL, async ({ params, request }) => {
+    const change = (await request.json()) as ConversationUpdate
+    const found = updateStored(String(params['id']), change)
+    return found ? HttpResponse.json(found) : apiError('conversation_not_found')
+  }),
+  http.delete(CONVERSATION_URL, ({ params }) =>
+    deleteStored(String(params['id']))
+      ? new HttpResponse(null, { status: 204 })
+      : apiError('conversation_not_found'),
+  ),
+  http.post(`${CONVERSATION_URL}/turns/:n/rerun`, ({ params }) => {
+    const result = rerunStored(String(params['id']), Number(params['n']))
+    return result ? HttpResponse.json(result) : apiError('turn_not_found')
   }),
 ]

@@ -315,9 +315,10 @@ for (const theme of THEMES) {
     await expect(page.getByText(/^Try again in \d+ seconds$/)).toBeVisible()
     expect(await seriousA11yIssues(page)).toEqual([])
 
-    // A reload: nothing is saved yet, and the page says so.
+    // A reload: the conversation comes back from what was saved.
     await page.goto(conversationUrl)
-    await expect(page.getByText(/isn't saved in this browser yet/)).toBeVisible()
+    await expect(page.getByRole('article')).toHaveCount(2)
+    await expect(page.getByRole('article', { name: example })).toBeVisible()
     expect(await seriousA11yIssues(page)).toEqual([])
   })
 }
@@ -481,4 +482,124 @@ test('on a phone the drawer fills the screen and scrolls, without a sideways scr
   await drawer.getByText('It needed 1 repair to get this result.').scrollIntoViewIfNeeded()
   await expect(drawer.getByText('It needed 1 repair to get this result.')).toBeInViewport()
   expect(await seriousA11yIssues(page)).toEqual([])
+})
+
+// U3.4: history survives a reload.
+for (const theme of THEMES) {
+  test(`${theme} theme: ask, reload, it is still there, and a re-run brings the rows back`, async ({
+    page,
+  }) => {
+    await useTheme(page, theme)
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    const question = 'What is the total sales amount per category?'
+    const box = page.getByRole('textbox', { name: 'Your question' })
+    await box.fill(question)
+    await box.press('Control+Enter')
+    await expect(page.getByText(answer.answer)).toBeVisible()
+    await expect(page).toHaveURL(/\/c\//)
+    const history = page.getByRole('region', { name: 'History' })
+    await expect(history.getByRole('link', { name: question })).toBeVisible()
+
+    await page.reload()
+
+    const cell = page.getByRole('article', { name: question })
+    await expect(cell.getByText(answer.answer)).toBeVisible()
+    await expect(cell.getByRole('list', { name: 'Agent steps' })).toBeVisible()
+    await expect(history.getByRole('link', { name: question })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await expect(cell.getByText(/aren't stored/)).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    await cell.getByRole('button', { name: 'Re-run for rows' }).click()
+    await expect(cell.getByRole('img', { name: /^Bar chart/ })).toBeVisible()
+    await expect(cell.getByText(/^Fresh rows from /)).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    // The drawer still works on a saved answer.
+    await cell.getByRole('button', { name: 'Show your work' }).click()
+    await expect(page.getByRole('dialog').getByRole('heading', { name: 'The SQL' })).toBeVisible()
+  })
+}
+
+test('the history rail: search, rename, pin, delete and Undo', async ({ page }) => {
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+  const history = page.getByRole('region', { name: 'History' })
+
+  for (const question of ['Sales per category?', 'Top 3 artists']) {
+    await page.getByRole('button', { name: 'New conversation' }).click()
+    await box.fill(question)
+    await box.press('Control+Enter')
+    await expect(history.getByRole('link', { name: question })).toBeVisible()
+  }
+
+  await history.getByRole('searchbox').fill('artists')
+  await expect(history.getByRole('link', { name: 'Sales per category?' })).toHaveCount(0)
+  await history.getByRole('searchbox').fill('')
+  const sales = history.getByRole('link', { name: 'Sales per category?' })
+  await expect(sales).toBeVisible()
+
+  await sales.hover()
+  await history.getByRole('button', { name: 'Pin “Sales per category?”' }).click()
+  await expect(history.getByRole('heading', { name: 'Pinned' })).toBeVisible()
+  expect(await seriousA11yIssues(page)).toEqual([])
+
+  // By keyboard: focus shows the buttons, which are hidden until wanted.
+  await page.getByRole('link', { name: 'Top 3 artists' }).focus()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  const title = history.getByRole('textbox', { name: 'New title' })
+  await expect(title).toBeFocused()
+  await title.fill('Weekly numbers')
+  await title.press('Enter')
+  const renamed = history.getByRole('link', { name: 'Weekly numbers' })
+  await expect(renamed).toBeVisible()
+
+  await renamed.hover()
+  await history.getByRole('button', { name: 'Delete “Weekly numbers”' }).click()
+  await expect(renamed).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(renamed).toBeVisible()
+
+  await renamed.hover()
+  await history.getByRole('button', { name: 'Delete “Weekly numbers”' }).click()
+  await expect(renamed).toHaveCount(0)
+  // Without an Undo, the real DELETE goes out when the time ends. (Closing the page sends it at
+  // once, but the fake API lives in the page, so that path is tested in Vitest and on the real API.)
+  await page.waitForRequest((request) => request.method() === 'DELETE')
+  await page.reload()
+  await apiStatusLoaded(page)
+  await expect(history.getByRole('link', { name: 'Sales per category?' })).toBeVisible()
+  await expect(history.getByRole('link', { name: 'Weekly numbers' })).toHaveCount(0)
+})
+
+test('on a phone the history opens in a sheet, and a conversation opens from it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+  await box.fill('Sales per category?')
+  await box.press('Control+Enter')
+  await expect(page.getByRole('article').getByText(answer.answer)).toBeVisible()
+  await page.getByRole('button', { name: 'New conversation' }).click()
+
+  const opener = page.getByRole('button', { name: 'History' })
+  await opener.click()
+  const sheet = page.getByRole('dialog', { name: 'History' })
+  await expect(sheet.getByRole('link', { name: 'Sales per category?' })).toBeVisible()
+  expect(await seriousA11yIssues(page)).toEqual([])
+
+  await sheet.getByRole('link', { name: 'Sales per category?' }).click()
+  await expect(sheet).toHaveCount(0)
+  await expect(page.getByRole('article', { name: 'Sales per category?' })).toBeVisible()
+
+  await opener.click()
+  await page.keyboard.press('Escape')
+  await expect(opener).toBeFocused()
 })

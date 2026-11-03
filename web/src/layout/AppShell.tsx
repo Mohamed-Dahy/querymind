@@ -4,10 +4,11 @@ import {
   LayoutGrid,
   Network,
   ScanSearch,
+  History,
   SquarePen,
   type LucideIcon,
 } from 'lucide-react'
-import { useRef } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 
 import { CanvasProvider } from '@/canvas/CanvasProvider'
@@ -17,7 +18,9 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { ApiStatus } from './ApiStatus'
+import { HistoryRail } from './HistoryRail'
 import { SkipLink } from './SkipLink'
+import { useDeleteWithUndo } from './useDeleteWithUndo'
 import { useFocusOnRouteChange } from './useFocusOnRouteChange'
 
 type NavItem = { to: string; label: string; Icon: LucideIcon; matches: (path: string) => boolean }
@@ -28,6 +31,11 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/explore', label: 'Explore', Icon: Network, matches: (p) => p.startsWith('/explore') },
   { to: '/evals', label: 'Evals', Icon: Gauge, matches: (p) => p.startsWith('/evals') },
 ]
+
+// Only phones open it, so only they download it (and the dialog code it needs).
+const HistorySheet = lazy(() =>
+  import('./HistorySheet').then(({ HistorySheet }) => ({ default: HistorySheet })),
+)
 
 /** The frame around every page: top bar, left rail, and the page itself in <main>. */
 export function AppShell() {
@@ -82,16 +90,21 @@ function NewConversationButton() {
   )
 }
 
-/** The left rail (a row on phones): the three areas, then the history (filled in by U3). */
+/** The left rail (a row on phones): the three areas, then the history. */
 function NavRail() {
   const { pathname } = useLocation()
+  // Here, because this stays mounted: a delete waiting out its Undo must survive the sheet closing.
+  const deletes = useDeleteWithUndo()
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetLoaded, setSheetLoaded] = useState(false)
+  const historyButton = useRef<HTMLButtonElement>(null)
 
   return (
     <nav
       aria-label="Main"
       className="border-b bg-surface md:w-56 md:shrink-0 md:border-r md:border-b-0"
     >
-      <ul className="flex gap-1 p-2 md:flex-col">
+      <ul className="flex flex-wrap gap-1 p-2 md:flex-col md:flex-nowrap">
         {NAV_ITEMS.map(({ to, label, Icon, matches }) => {
           const current = matches(pathname)
           return (
@@ -113,14 +126,40 @@ function NavRail() {
             </li>
           )
         })}
+        <li className="ml-auto md:hidden">
+          <button
+            ref={historyButton}
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => {
+              setSheetLoaded(true)
+              setSheetOpen(true)
+            }}
+            className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+          >
+            <History aria-hidden="true" className="size-4" />
+            History
+          </button>
+        </li>
       </ul>
 
-      <section aria-labelledby="history-heading" className="hidden px-5 py-3 md:block">
-        <h2 id="history-heading" className="text-xs tracking-wide text-fg-muted uppercase">
+      <section aria-labelledby="history-heading" className="hidden px-3 py-3 md:block">
+        <h2 id="history-heading" className="px-2 text-xs tracking-wide text-fg-muted uppercase">
           History
         </h2>
-        <p className="mt-2 text-sm text-fg-muted">Your past conversations will be listed here.</p>
+        <HistoryRail deletes={deletes} />
       </section>
+
+      {sheetLoaded && (
+        <Suspense fallback={null}>
+          <HistorySheet
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+            deletes={deletes}
+            opener={historyButton}
+          />
+        </Suspense>
+      )}
 
       {import.meta.env.DEV && (
         <p className="hidden px-5 pb-3 md:block">

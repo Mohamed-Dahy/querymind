@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext } from 'react'
 
+import type { ConversationDetail, RerunResult } from '@/api/conversations'
+
 import { conversationAt, type CanvasStore, type Conversation } from './state'
 
 export type CanvasContextValue = {
@@ -8,6 +10,12 @@ export type CanvasContextValue = {
   retry: (key: string, cellId: string) => void
   stop: (cellId: string) => void
   newConversation: () => void
+  /** Puts a saved conversation on the canvas, if nothing is there yet. */
+  load: (conversation: ConversationDetail) => void
+  /** Fresh rows for a saved cell. */
+  applyRerun: (key: string, cellId: string, result: RerunResult) => void
+  /** Removes a deleted conversation from this page's memory. */
+  dropConversation: (conversationId: string) => void
 }
 
 /** Filled by CanvasProvider (AppShell), above the routes, so `/` → `/c/<id>` keeps the state. */
@@ -28,11 +36,13 @@ export type ConversationView = {
   retry: (cellId: string) => void
   /** Stops a running cell's question. */
   stop: (cellId: string) => void
+  load: (conversation: ConversationDetail) => void
+  applyRerun: (cellId: string, result: RerunResult) => void
 }
 
 /** One conversation (`key` = NEW_CONVERSATION or a conversation id), and a way to ask in it. */
 export function useConversation(key: string): ConversationView {
-  const { store, ask: askIn, retry: retryIn, stop } = useCanvas()
+  const { store, ask: askIn, retry: retryIn, stop, load, applyRerun: rerunIn } = useCanvas()
 
   const conversation = conversationAt(store, key)
   const busy = conversation.cells.some((cell) => cell.status === 'running')
@@ -41,7 +51,17 @@ export function useConversation(key: string): ConversationView {
     [askIn, key],
   )
   const retry = useCallback((cellId: string) => retryIn(key, cellId), [retryIn, key])
-  return { conversation, busy, ask, retry, stop }
+  const applyRerun = useCallback(
+    (cellId: string, result: RerunResult) => rerunIn(key, cellId, result),
+    [rerunIn, key],
+  )
+  return { conversation, busy, ask, retry, stop, load, applyRerun }
+}
+
+/** What the history list does to the canvas. */
+export function useHistoryActions() {
+  const { newConversation, dropConversation } = useCanvas()
+  return { newConversation, dropConversation }
 }
 
 /** Starts over at an empty `/`. The old conversation stays at its own URL. */

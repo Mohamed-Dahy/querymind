@@ -3,6 +3,7 @@ import { render } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 
+import { Toaster } from '@/components/ui/sonner'
 import { routes } from '@/router'
 
 /** Render inside a fresh query cache, so tests never share data, and failures aren't retried. */
@@ -17,5 +18,11 @@ export function renderWithQueryClient(ui: ReactElement) {
  */
 export function renderApp(path = '/') {
   const router = createMemoryRouter(routes, { initialEntries: [path] })
-  return { ...renderWithQueryClient(<RouterProvider router={router} />), router }
+  const app = (
+    <>
+      <RouterProvider router={router} />
+      <Toaster />
+    </>
+  )
+  return { ...renderWithQueryClient(app), router }
 }

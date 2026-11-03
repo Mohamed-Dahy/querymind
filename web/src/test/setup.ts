@@ -10,6 +10,8 @@ import { server } from '../mocks/server'
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 // A test can swap one endpoint with server.use(...); put the normal handlers back after it.
 afterEach(() => server.resetHandlers())
+// The fake API keeps its saved conversations in localStorage (mocks/conversations.ts).
+afterEach(() => localStorage.clear())
 afterAll(() => server.close())
 
 // jsdom has no matchMedia (the theme code uses it). This stand-in says "no preference" for every query;
