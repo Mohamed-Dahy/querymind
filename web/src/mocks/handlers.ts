@@ -1,10 +1,13 @@
 import { delay, http, HttpResponse } from 'msw'
 
 import {
+  addSavedQuestion,
   deleteStored,
   getStored,
+  listSavedQuestions,
   listStored,
   recordTurn,
+  removeSavedQuestion,
   rerunStored,
   updateStored,
 } from './conversations'
@@ -39,6 +42,7 @@ export const HEALTH_URL = '/api/health'
 export const ASK_URL = '/api/ask'
 export const STREAM_URL = '/api/ask/stream'
 const CONVERSATION_URL = '/api/conversations/:id'
+export const SAVED_QUESTIONS_URL = '/api/saved-questions'
 
 // In the browser's mock mode the steps come one by one, so they can be seen. Tests don't wait.
 const EVENT_DELAY_MS = import.meta.env.MODE === 'mock' ? 60 : 0
@@ -181,5 +185,14 @@ export const handlers = [
   http.post(`${CONVERSATION_URL}/turns/:n/rerun`, ({ params }) => {
     const result = rerunStored(String(params['id']), Number(params['n']))
     return result ? HttpResponse.json(result) : apiError('turn_not_found')
+  }),
+  http.get(SAVED_QUESTIONS_URL, () => HttpResponse.json({ questions: listSavedQuestions() })),
+  http.post(SAVED_QUESTIONS_URL, async ({ request }) => {
+    const { question } = (await request.json()) as { question: string }
+    return HttpResponse.json(addSavedQuestion(question.trim()))
+  }),
+  http.delete(`${SAVED_QUESTIONS_URL}/:id`, ({ params }) => {
+    removeSavedQuestion(String(params['id']))
+    return new HttpResponse(null, { status: 204 })
   }),
 ]

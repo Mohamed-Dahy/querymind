@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Pin, PinOff, Search, Trash2 } from 'lucide-react'
+import { BookmarkX, Pencil, Pin, PinOff, Search, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useLocation } from 'react-router'
 import { toast } from 'sonner'
@@ -13,6 +13,7 @@ import {
   type ConversationUpdate,
 } from '@/api/conversations'
 import { errorTitle } from '@/api/errors'
+import { useSavedQuestions, type SavedQuestion } from '@/api/savedQuestions'
 import { useHistoryActions } from '@/canvas/useConversation'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -74,6 +75,9 @@ export function HistoryRail({ deletes, onOpen }: HistoryRailProps) {
         />
       </div>
 
+      {/* A search looks through conversations, so while one is on, its results are all there is. */}
+      {!query && <SavedQuestions onOpen={onOpen} afterRemove={() => searchBox.current?.focus()} />}
+
       {conversations.isPending ? (
         <div aria-hidden="true" className="mt-3 space-y-2">
           <Skeleton className="h-4 w-full motion-reduce:animate-none" />
@@ -131,6 +135,70 @@ const ACTIONS =
   // Out of the way until wanted, but still reachable: width 0 keeps them in the Tab order, so
   // focus reveals them. Touch screens have no hover, so there they always show.
   'flex w-0 shrink-0 overflow-hidden opacity-0 group-focus-within:w-auto group-focus-within:opacity-100 group-hover:w-auto group-hover:opacity-100 pointer-coarse:w-auto pointer-coarse:opacity-100'
+
+/** Questions kept to ask again. Nothing at all until the first one, or with history off. */
+function SavedQuestions({
+  onOpen,
+  afterRemove,
+}: {
+  onOpen: (() => void) | undefined
+  afterRemove: () => void
+}) {
+  const { questions, remove } = useSavedQuestions()
+  if (questions.length === 0) return null
+
+  return (
+    <section className="mt-3">
+      <h3 className="px-2 text-xs text-fg-muted">Saved</h3>
+      <ul className="mt-1 space-y-0.5">
+        {questions.map((saved) => (
+          <SavedQuestionItem
+            key={saved.id}
+            saved={saved}
+            onOpen={onOpen}
+            onRemove={() => {
+              remove(saved.id)
+              afterRemove() // this row's button is going away with the focus in it
+            }}
+          />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function SavedQuestionItem({
+  saved: { question },
+  onOpen,
+  onRemove,
+}: {
+  saved: SavedQuestion
+  onOpen: (() => void) | undefined
+  onRemove: () => void
+}) {
+  const { askNew } = useHistoryActions()
+  return (
+    <li className="group flex items-center rounded-lg hover:bg-muted">
+      <button
+        type="button"
+        aria-label={`Ask “${question}”`}
+        title={question}
+        onClick={() => {
+          onOpen?.()
+          askNew(question)
+        }}
+        className="flex min-h-8 min-w-0 flex-1 items-center rounded-lg px-2 text-left text-sm text-fg-muted pointer-coarse:min-h-11"
+      >
+        <span className="truncate">{question}</span>
+      </button>
+      <div className={ACTIONS}>
+        <IconButton label={`Remove “${question}” from saved`} onClick={onRemove}>
+          <BookmarkX aria-hidden="true" />
+        </IconButton>
+      </div>
+    </li>
+  )
+}
 
 function HistoryItem({
   conversation,

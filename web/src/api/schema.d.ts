@@ -143,6 +143,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/saved-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Saved Questions
+         * @description The saved questions, newest first.
+         */
+        get: operations["list_saved_questions_saved_questions_get"];
+        put?: never;
+        /**
+         * Save Question
+         * @description Save a question. Saving the same words again gives back the row that is already there.
+         */
+        post: operations["save_question_saved_questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/saved-questions/{saved_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Saved Question
+         * @description Remove a saved question. Removing one that is already gone is fine.
+         */
+        delete: operations["remove_saved_question_saved_questions__saved_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -576,6 +620,40 @@ export interface components {
              * @enum {string}
              */
             type: "rewrite";
+        };
+        /**
+         * SavedQuestion
+         * @description A question kept to ask again. Only its words: no answer, no SQL, no rows.
+         */
+        SavedQuestion: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Question */
+            question: string;
+        };
+        /**
+         * SavedQuestionCreate
+         * @description A question to keep. The same limits as asking it, because it will be asked again.
+         */
+        SavedQuestionCreate: {
+            /** Question */
+            question: string;
+        };
+        /**
+         * SavedQuestionList
+         * @description The saved questions, newest first.
+         */
+        SavedQuestionList: {
+            /** Questions */
+            questions: components["schemas"]["SavedQuestion"][];
         };
         /**
          * SavedTurnResponse
@@ -1064,6 +1142,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    list_saved_questions_saved_questions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedQuestionList"];
+                };
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved questions aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_question_saved_questions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedQuestionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedQuestion"];
+                };
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved questions aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_saved_question_saved_questions__saved_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                saved_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An invalid id or body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved questions aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

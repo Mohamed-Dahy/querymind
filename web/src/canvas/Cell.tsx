@@ -11,6 +11,7 @@ import { AgentRail } from './AgentRail'
 import { ClarificationCell } from './ClarificationCell'
 import { ErrorCell } from './ErrorCell'
 import { RefusalCell } from './RefusalCell'
+import { SaveQuestionButton } from './SaveQuestionButton'
 import type { Cell as CellData } from './state'
 
 // Loaded with the first answer, not with the page: the tabs and tooltip it uses (Radix) then stay
@@ -23,6 +24,8 @@ const NO_EVENTS: readonly TraceEvent[] = []
 
 type CellProps = {
   cell: CellData
+  /** The conversation's first question: its words make sense on their own. */
+  first: boolean
   /** The question of the cell this one follows up on, if there is one. */
   parentQuestion: string | undefined
   /** A question is running in this conversation: anything that would ask another one waits. */
@@ -84,7 +87,16 @@ export function Cell(props: CellProps) {
   )
 }
 
-function CellBody({ cell, busy, onAsk, onRetry, onRephrase, onFollowUp, onRerun }: CellProps) {
+function CellBody({
+  cell,
+  first,
+  busy,
+  onAsk,
+  onRetry,
+  onRephrase,
+  onFollowUp,
+  onRerun,
+}: CellProps) {
   if (cell.status === 'running') return <RunningBody />
   if (cell.status === 'failed' || cell.reply === undefined) {
     return (
@@ -99,7 +111,10 @@ function CellBody({ cell, busy, onAsk, onRetry, onRephrase, onFollowUp, onRerun 
 
   const { reply } = cell
   switch (reply.kind) {
-    case 'answer':
+    case 'answer': {
+      // "Now only for 1997" means nothing in a new conversation, which is where a saved question is
+      // asked. So a later question can only be saved if the agent rewrote it to stand alone.
+      const standalone = reply.search_question?.trim() || (first ? cell.question : null)
       return (
         <Suspense fallback={<RunningBody />}>
           <AnswerCell
@@ -108,18 +123,21 @@ function CellBody({ cell, busy, onAsk, onRetry, onRephrase, onFollowUp, onRerun 
             onRerun={(result) => onRerun(cell.id, result)}
           />
           {/* Every cell has this button, so the description says which question it is for. */}
-          <Button
-            type="button"
-            variant="outline"
-            aria-describedby={`${cell.id}-question`}
-            className="mt-3"
-            onClick={() => onFollowUp(cell.id)}
-          >
-            <CornerDownRight aria-hidden="true" />
-            Follow up
-          </Button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              aria-describedby={`${cell.id}-question`}
+              onClick={() => onFollowUp(cell.id)}
+            >
+              <CornerDownRight aria-hidden="true" />
+              Follow up
+            </Button>
+            {standalone !== null && <SaveQuestionButton cellId={cell.id} question={standalone} />}
+          </div>
         </Suspense>
       )
+    }
     case 'clarification':
       return (
         <ClarificationCell

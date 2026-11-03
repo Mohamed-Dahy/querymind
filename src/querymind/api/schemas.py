@@ -23,7 +23,7 @@ from querymind.agent.schemas import (
     ConfidenceLevel,
     ShownSchema,
 )
-from querymind.store.conversations import ConversationSummary
+from querymind.store.conversations import ConversationSummary, SavedQuestion
 
 
 class AskRequest(BaseModel):
@@ -265,6 +265,20 @@ class ConversationUpdate(BaseModel):
         if self.title is None and self.pinned is None:
             raise ValueError("send a title or pinned")
         return self
+
+
+class SavedQuestionList(BaseModel):
+    """The saved questions, newest first."""
+
+    questions: list[SavedQuestion]
+
+
+class SavedQuestionCreate(BaseModel):
+    """A question to keep. The same limits as asking it, because it will be asked again."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    question: str = Field(min_length=1, max_length=1000)
 
 
 class RerunResponse(BaseModel):

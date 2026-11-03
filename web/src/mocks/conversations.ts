@@ -10,9 +10,11 @@ import type {
   ConversationUpdate,
   RerunResult,
 } from '@/api/conversations'
+import type { SavedQuestion } from '@/api/savedQuestions'
 import type { TraceEvent } from '@/api/stream'
 
 const KEY = 'querymind-mock-conversations'
+const SAVED_KEY = 'querymind-mock-saved-questions'
 const TITLE_LENGTH = 80
 
 type StoredTurn = {
@@ -120,4 +122,27 @@ export function rerunStored(id: string, n: number): RerunResult | undefined {
     truncated: false,
     ran_at: new Date().toISOString(),
   }
+}
+
+function loadSaved(): SavedQuestion[] {
+  return JSON.parse(localStorage.getItem(SAVED_KEY) ?? '[]') as SavedQuestion[]
+}
+
+export function listSavedQuestions(): SavedQuestion[] {
+  return loadSaved()
+}
+
+/** Like the real table: the same words stay one row. */
+export function addSavedQuestion(question: string): SavedQuestion {
+  const saved = loadSaved()
+  const found = saved.find((one) => one.question === question)
+  if (found !== undefined) return found
+  const added = { id: crypto.randomUUID(), question, created_at: new Date().toISOString() }
+  localStorage.setItem(SAVED_KEY, JSON.stringify([added, ...saved]))
+  return added
+}
+
+export function removeSavedQuestion(id: string) {
+  const kept = loadSaved().filter((one) => one.id !== id)
+  localStorage.setItem(SAVED_KEY, JSON.stringify(kept))
 }

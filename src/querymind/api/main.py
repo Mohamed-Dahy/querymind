@@ -29,6 +29,7 @@ from querymind.api.conversations import router as conversations_router
 from querymind.api.deps import AnswersQuestions, ManagesConversations, StreamsAnswers
 from querymind.api.errors import ERROR_MAP, INTERNAL_ERROR, error_response
 from querymind.api.routes import router
+from querymind.api.saved_questions import router as saved_questions_router
 from querymind.api.schemas import ErrorResponse
 from querymind.config import get_settings
 from querymind.llm import create_embedding_provider, create_llm_provider
@@ -81,6 +82,7 @@ def create_app(
     )
     app.include_router(router)
     app.include_router(conversations_router)
+    app.include_router(saved_questions_router)
     for error_type in ERROR_MAP:
         app.add_exception_handler(error_type, _handle_known_error)
     app.add_exception_handler(RequestValidationError, _handle_invalid_request)

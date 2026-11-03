@@ -39,6 +39,7 @@ from querymind.store.errors import (
 logger = logging.getLogger(__name__)
 
 TITLE_LENGTH = 80  # a title is the first question, cut to fit the history list
+MAX_SAVED_QUESTIONS = 200  # newest first; more than anyone scrolls through in a side rail
 _NOT_FOUND = "This conversation doesn't exist."
 
 _SUMMARY_COLUMNS = """
@@ -78,6 +79,16 @@ class Conversation(ConversationSummary):
     """A conversation with its turns, oldest first."""
 
     saved_turns: list[SavedTurn]
+
+
+class SavedQuestion(BaseModel):
+    """A question kept to ask again. Only its words: no answer, no SQL, no rows."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    question: str
+    created_at: datetime
 
 
 def title_from(question: str) -> str:
@@ -280,6 +291,48 @@ class ConversationStore:
             ).fetchone()
         if deleted is None:
             raise ConversationNotFoundError(_NOT_FOUND)
+
+    def list_saved_questions(self) -> list[SavedQuestion]:
+        """The saved questions, newest first."""
+        with self._transaction() as conn:
+            return (
+                conn.cursor(row_factory=class_row(SavedQuestion))
+                .execute(
+                    """
+                    SELECT id, question, created_at FROM querymind_app.saved_questions
+                    ORDER BY created_at DESC, id LIMIT %s
+                    """,
+                    (MAX_SAVED_QUESTIONS,),
+                )
+                .fetchall()
+            )
+
+    def add_saved_question(self, question: str) -> SavedQuestion:
+        """Save a question. The same words saved twice stay one row, with its first date.
+
+        `DO UPDATE` changes nothing here, but unlike `DO NOTHING` it returns the row that exists.
+        """
+        with self._transaction() as conn:
+            found = (
+                conn.cursor(row_factory=class_row(SavedQuestion))
+                .execute(
+                    """
+                    INSERT INTO querymind_app.saved_questions (question) VALUES (%s)
+                    ON CONFLICT (md5(question)) DO UPDATE SET question = EXCLUDED.question
+                    RETURNING id, question, created_at
+                    """,
+                    (question,),
+                )
+                .fetchone()
+            )
+        if found is None:  # an upsert with RETURNING always gives its row
+            raise StoreUnavailableError("The question wasn't saved.")
+        return found
+
+    def remove_saved_question(self, saved_id: UUID) -> None:
+        """Remove a saved question. Already gone is fine: the result is what was asked for."""
+        with self._transaction() as conn:
+            conn.execute("DELETE FROM querymind_app.saved_questions WHERE id = %s", (saved_id,))
 
     def _summary(self, conn: psycopg.Connection, conversation_id: UUID) -> ConversationSummary:
         query = f"""

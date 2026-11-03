@@ -116,6 +116,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
               <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
                 <Cell
                   cell={cell}
+                  first={index === 0}
                   parentQuestion={cells.find(({ id }) => id === cell.parentId)?.question}
                   busy={busy}
                   onAsk={ask}

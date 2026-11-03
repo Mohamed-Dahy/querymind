@@ -10,6 +10,8 @@ export type CanvasContextValue = {
   retry: (key: string, cellId: string) => void
   stop: (cellId: string) => void
   newConversation: () => void
+  /** Starts over at an empty `/` and asks this there, as a new conversation. */
+  askNew: (question: string) => void
   /** Puts a saved conversation on the canvas, if nothing is there yet. */
   load: (conversation: ConversationDetail) => void
   /** Fresh rows for a saved cell. */
@@ -60,8 +62,8 @@ export function useConversation(key: string): ConversationView {
 
 /** What the history list does to the canvas. */
 export function useHistoryActions() {
-  const { newConversation, dropConversation } = useCanvas()
-  return { newConversation, dropConversation }
+  const { newConversation, dropConversation, askNew } = useCanvas()
+  return { newConversation, dropConversation, askNew }
 }
 
 /** Starts over at an empty `/`. The old conversation stays at its own URL. */

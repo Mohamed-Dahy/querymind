@@ -18,10 +18,11 @@ import {
   errorStream,
   replyFor,
   replyStream,
+  SAVED_QUESTIONS_URL,
   STREAM_URL,
   streamOf,
 } from '@/mocks/handlers'
-import { recordTurn } from '@/mocks/conversations'
+import { addSavedQuestion, recordTurn } from '@/mocks/conversations'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
 
@@ -640,5 +641,158 @@ describe('CanvasPage', () => {
     expect(within(cell).getByText('Nothing in the database was changed.')).toBeInTheDocument()
     expect(within(cell).queryByRole('tab')).not.toBeInTheDocument()
     expect(screen.getByText('QueryMind declined this question.')).toBeInTheDocument()
+  })
+
+  describe('saving a question', () => {
+    async function askedOnce(user: ReturnType<typeof userEvent.setup>, question: string) {
+      await askByKeyboard(user, question)
+      await screen.findByText(answer.answer)
+    }
+
+    it('saves and unsaves, showing which it is', async () => {
+      const user = userEvent.setup()
+      renderApp('/')
+      await askedOnce(user, 'Sales per category?')
+
+      const save = await screen.findByRole('button', { name: 'Save question' })
+      expect(save).toHaveAttribute('aria-pressed', 'false')
+      await user.click(save)
+
+      const saved = await screen.findByRole('button', { name: 'Saved' })
+      expect(saved).toHaveAttribute('aria-pressed', 'true')
+      expect(saved).toHaveFocus() // the same button: the keyboard stays where it was
+      expect(
+        await screen.findByRole('button', { name: 'Ask “Sales per category?”' }),
+      ).toBeInTheDocument()
+
+      await user.click(saved)
+
+      expect(await screen.findByRole('button', { name: 'Save question' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      )
+      expect(screen.queryByRole('button', { name: 'Ask “Sales per category?”' })).toBeNull()
+    })
+
+    it('knows a question saved earlier', async () => {
+      addSavedQuestion('Sales per category?')
+      const user = userEvent.setup()
+      renderApp('/')
+      await askedOnce(user, 'Sales per category?')
+
+      expect(await screen.findByRole('button', { name: 'Saved' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+    })
+
+    it('a later question is saved in the words the agent rewrote it to', async () => {
+      const bodies: { question: string }[] = []
+      server.use(
+        http.post(SAVED_QUESTIONS_URL, async ({ request }) => {
+          const body = (await request.json()) as { question: string }
+          bodies.push(body)
+          return HttpResponse.json(addSavedQuestion(body.question))
+        }),
+      )
+      const id = crypto.randomUUID()
+      recordTurn({ ...answer, conversation_id: id }, answerStream)
+      recordTurn(
+        {
+          ...answer,
+          question: 'Now only for 1997',
+          search_question: 'Sales per category in 1997 ', // the API trims what it saves
+          conversation_id: id,
+        },
+        answerStream,
+      )
+      const user = userEvent.setup()
+      renderApp(`/c/${id}`)
+
+      const later = await screen.findByRole('article', { name: 'Now only for 1997' })
+      await user.click(await within(later).findByRole('button', { name: 'Save question' }))
+
+      await within(later).findByRole('button', { name: 'Saved' })
+      expect(bodies).toEqual([{ question: 'Sales per category in 1997' }])
+    })
+
+    it('a later question that was not rewritten has no button: alone, its words mean nothing', async () => {
+      const id = crypto.randomUUID()
+      recordTurn({ ...answer, conversation_id: id }, answerStream)
+      recordTurn({ ...answer, question: 'Now only for 1997', conversation_id: id }, answerStream)
+      renderApp(`/c/${id}`)
+
+      const first = await screen.findByRole('article', { name: answer.question })
+      await within(first).findByRole('button', { name: 'Save question' })
+      const later = screen.getByRole('article', { name: 'Now only for 1997' })
+      await within(later).findByRole('button', { name: 'Follow up' })
+      expect(within(later).queryByRole('button', { name: /^Save/ })).toBeNull()
+    })
+
+    it('a failed save says so, and stays unsaved', async () => {
+      server.use(http.post(SAVED_QUESTIONS_URL, () => apiError('history_unavailable')))
+      const user = userEvent.setup()
+      renderApp('/')
+      await askedOnce(user, 'Sales per category?')
+
+      await user.click(await screen.findByRole('button', { name: 'Save question' }))
+
+      expect(await screen.findByText("History isn't available.")).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save question' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      )
+    })
+
+    it('with history off there is no button, and the answer is still there', async () => {
+      server.use(http.get(SAVED_QUESTIONS_URL, () => apiError('history_unavailable')))
+      const user = userEvent.setup()
+      renderApp('/')
+      await askedOnce(user, 'Sales per category?')
+
+      await screen.findByRole('button', { name: 'Follow up' })
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Save question' })).toBeNull(),
+      )
+    })
+
+    it('asking a saved question from a conversation starts a new one, not a follow-up', async () => {
+      addSavedQuestion('Top 3 artists')
+      const bodies = recordAsks()
+      const user = userEvent.setup()
+      const { router } = renderApp('/')
+      await askedOnce(user, 'Sales per category?')
+      await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/c\//))
+      const first = router.state.location.pathname
+
+      await user.click(await screen.findByRole('button', { name: 'Ask “Top 3 artists”' }))
+
+      expect(await screen.findByRole('article', { name: 'Top 3 artists' })).toBeInTheDocument()
+      expect(screen.queryByRole('article', { name: 'Sales per category?' })).toBeNull()
+      await waitFor(() => expect(bodies).toHaveLength(2))
+      expect(bodies[1]).toEqual({ question: 'Top 3 artists', conversation_id: null })
+      await waitFor(() => {
+        expect(router.state.location.pathname).toMatch(/^\/c\//)
+        expect(router.state.location.pathname).not.toBe(first)
+      })
+    })
+
+    it('asking a saved question right after the first answer, still at `/`, is new too', async () => {
+      // The first reply promotes `new` to that conversation. Before the page has seen a reset, that
+      // promotion would still send the saved question into the old conversation.
+      addSavedQuestion('Top 3 artists')
+      const bodies = recordAsks()
+      const user = userEvent.setup()
+      renderApp('/')
+      await user.click(await screen.findByRole('button', { name: 'Ask “Top 3 artists”' }))
+      await screen.findByRole('article', { name: 'Top 3 artists' })
+      await waitFor(() => expect(bodies).toHaveLength(1))
+      await screen.findByText(answer.answer)
+
+      await user.click(screen.getByRole('button', { name: 'Ask “Top 3 artists”' }))
+
+      await waitFor(() => expect(bodies).toHaveLength(2))
+      expect(bodies[1]?.conversation_id).toBeNull()
+    })
   })
 })

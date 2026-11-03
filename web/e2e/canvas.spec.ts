@@ -577,6 +577,72 @@ test('the history rail: search, rename, pin, delete and Undo', async ({ page }) 
   await expect(history.getByRole('link', { name: 'Weekly numbers' })).toHaveCount(0)
 })
 
+// U3.5: a question kept to ask again.
+for (const theme of THEMES) {
+  test(`${theme} theme: save a question, it survives a reload, and one click asks it anew`, async ({
+    page,
+  }) => {
+    await useTheme(page, theme)
+    await page.goto('/')
+    await apiStatusLoaded(page)
+    const question = 'Sales per category?'
+    const box = page.getByRole('textbox', { name: 'Your question' })
+    await box.fill(question)
+    await box.press('Control+Enter')
+    const cell = page.getByRole('article', { name: question })
+    await expect(cell.getByText(answer.answer)).toBeVisible()
+
+    await cell.getByRole('button', { name: 'Save question' }).click()
+    const saved = cell.getByRole('button', { name: 'Saved' })
+    await expect(saved).toHaveAttribute('aria-pressed', 'true')
+    const history = page.getByRole('region', { name: 'History' })
+    const again = history.getByRole('button', { name: `Ask “${question}”` })
+    await expect(again).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    await page.reload()
+    await expect(again).toBeVisible()
+    const firstUrl = page.url()
+
+    await again.click()
+    await expect(page.getByRole('article')).toHaveCount(1)
+    await expect(
+      page.getByRole('article', { name: question }).getByText(answer.answer),
+    ).toBeVisible()
+    await expect(page).toHaveURL(/\/c\//)
+    expect(page.url()).not.toBe(firstUrl)
+
+    await again.hover()
+    await history.getByRole('button', { name: `Remove “${question}” from saved` }).click()
+    await expect(again).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Save question' })).toBeVisible()
+  })
+}
+
+test('on a phone a saved question is asked from the sheet, which then closes', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto('/')
+  await apiStatusLoaded(page)
+  const box = page.getByRole('textbox', { name: 'Your question' })
+  await box.fill('Sales per category?')
+  await box.press('Control+Enter')
+  await page.getByRole('button', { name: 'Save question' }).click()
+  await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible()
+  expect(
+    await page.evaluate(
+      'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+    ),
+  ).toBeLessThanOrEqual(0)
+  await page.getByRole('button', { name: 'New conversation' }).click()
+
+  await page.getByRole('button', { name: 'History' }).click()
+  const sheet = page.getByRole('dialog', { name: 'History' })
+  await sheet.getByRole('button', { name: 'Ask “Sales per category?”' }).click()
+
+  await expect(sheet).toHaveCount(0)
+  await expect(page.getByRole('article', { name: 'Sales per category?' })).toBeVisible()
+})
+
 test('on a phone the history opens in a sheet, and a conversation opens from it', async ({
   page,
 }) => {

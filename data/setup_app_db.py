@@ -52,9 +52,17 @@ TABLES = (
     f"""
     CREATE TABLE IF NOT EXISTS {SCHEMA}.saved_questions (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        question text NOT NULL UNIQUE,
+        question text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now()
     )
+    """,
+    # One row per wording. On a hash, because a plain index refuses a value over 2,704 bytes, and
+    # 1,000 characters (the longest question) can be 4,000. The DROP is for a database set up before
+    # this index existed.
+    f"ALTER TABLE {SCHEMA}.saved_questions DROP CONSTRAINT IF EXISTS saved_questions_question_key",
+    f"""
+    CREATE UNIQUE INDEX IF NOT EXISTS saved_questions_wording
+    ON {SCHEMA}.saved_questions (md5(question))
     """,
     # What the history list sorts by.
     f"""

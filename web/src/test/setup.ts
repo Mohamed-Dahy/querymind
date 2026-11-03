@@ -1,6 +1,7 @@
 // Runs before every test file (vite.config.ts → test.setupFiles).
 import '@testing-library/jest-dom/vitest' // adds matchers like toBeInTheDocument()
 import { cleanup, configure } from '@testing-library/react'
+import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 
 import { server } from '../mocks/server'
@@ -12,6 +13,11 @@ beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 // The fake API keeps its saved conversations in localStorage (mocks/conversations.ts).
 afterEach(() => localStorage.clear())
+// Sonner keeps its toasts in the module, and a new <Toaster> shows them again: without this, one
+// test's toast would appear in the next test too.
+afterEach(() => {
+  for (const { id } of toast.getToasts()) toast.dismiss(id)
+})
 afterAll(() => server.close())
 
 // jsdom has no matchMedia (the theme code uses it). This stand-in says "no preference" for every query;
@@ -38,6 +44,9 @@ if (typeof window.ResizeObserver !== 'function') {
     disconnect() {}
   }
 }
+
+// jsdom has no pointer capture; a toast asks for it the moment one of its buttons is pressed.
+HTMLElement.prototype.setPointerCapture ??= () => {}
 
 // jsdom lays nothing out, so every element is 0 × 0 px, and a virtualized list (ResultTable) would
 // draw no rows. Give elements the size of the table's scroll area instead: a window of rows appears,

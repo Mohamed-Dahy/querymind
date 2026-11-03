@@ -4,6 +4,7 @@ Needs the setup too: `uv run python data/setup_app_db.py`, with APP_DB_USER and 
 Skipped without them, because history is optional. CI sets them, so CI always runs these.
 """
 
+import random
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
@@ -20,7 +21,7 @@ from querymind.db.connection import connect_app
 from querymind.db.schema import introspect_schema
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
-from querymind.store.conversations import ConversationStore, SavedTurn
+from querymind.store.conversations import ConversationStore, SavedQuestion, SavedTurn
 from querymind.store.errors import ConversationNotFoundError, TurnNotFoundError
 
 pytestmark = pytest.mark.integration
@@ -60,6 +61,14 @@ def app_conn(settings: Settings, store: ConversationStore) -> Iterator[psycopg.C
         yield conn
     finally:
         conn.close()
+
+
+@pytest.fixture
+def saved_question(store: ConversationStore) -> Iterator[SavedQuestion]:
+    """A saved question with words no other test uses, removed again after the test."""
+    saved = store.add_saved_question(f"Sales this week? {uuid4()}")
+    yield saved
+    store.remove_saved_question(saved.id)
 
 
 def save(store: ConversationStore, conversation_id: UUID, question: str = "Top customers?") -> int:
@@ -335,3 +344,65 @@ def test_delete_removes_the_turns_too(
 def test_a_missing_conversation_is_said_clearly(store: ConversationStore, action: Any) -> None:
     with pytest.raises(ConversationNotFoundError):
         action(store, uuid4())
+
+
+# --- Saved questions ----------------------------------------------------------------------------
+
+
+def test_a_saved_question_is_listed(
+    store: ConversationStore, saved_question: SavedQuestion
+) -> None:
+    assert saved_question in store.list_saved_questions()
+
+
+def test_saving_the_same_words_twice_keeps_one_row(
+    store: ConversationStore, saved_question: SavedQuestion
+) -> None:
+    again = store.add_saved_question(saved_question.question)
+
+    assert again == saved_question
+    same = [one for one in store.list_saved_questions() if one.question == saved_question.question]
+    assert len(same) == 1
+
+
+def test_the_newest_saved_question_comes_first(
+    store: ConversationStore, saved_question: SavedQuestion
+) -> None:
+    newer = store.add_saved_question(f"Newer {uuid4()}")
+    try:
+        ids = [one.id for one in store.list_saved_questions()]
+        assert ids.index(newer.id) < ids.index(saved_question.id)
+    finally:
+        store.remove_saved_question(newer.id)
+
+
+def test_removing_a_saved_question_twice_is_fine(
+    store: ConversationStore, saved_question: SavedQuestion
+) -> None:
+    store.remove_saved_question(saved_question.id)
+    store.remove_saved_question(saved_question.id)
+
+    assert saved_question not in store.list_saved_questions()
+
+
+def test_quotes_in_a_saved_question_stay_plain_text(store: ConversationStore) -> None:
+    words = f"'; DROP TABLE querymind_app.saved_questions; -- {uuid4()}"
+
+    saved = store.add_saved_question(words)
+    try:
+        assert saved.question == words
+        assert saved in store.list_saved_questions()
+    finally:
+        store.remove_saved_question(saved.id)
+
+
+def test_the_longest_question_the_api_takes_can_be_saved(store: ConversationStore) -> None:
+    """4,000 bytes that don't compress: more than a plain unique index takes (2,704)."""
+    picks = random.Random(42)
+    words = "".join(chr(picks.randrange(0x20000, 0x2A6DF)) for _ in range(1000))
+
+    saved = store.add_saved_question(words)
+    try:
+        assert saved.question == words
+    finally:
+        store.remove_saved_question(saved.id)

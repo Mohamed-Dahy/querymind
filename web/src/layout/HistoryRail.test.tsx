@@ -4,8 +4,8 @@ import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { answer } from '@/mocks/fixtures'
-import { recordTurn } from '@/mocks/conversations'
-import { apiError } from '@/mocks/handlers'
+import { addSavedQuestion, recordTurn } from '@/mocks/conversations'
+import { apiError, SAVED_QUESTIONS_URL } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
 
@@ -275,5 +275,94 @@ describe('HistoryRail', () => {
 
     expect(await within(history()).findByRole('link', { name: 'Question 60' })).toBeVisible()
     expect(within(history()).queryByRole('button', { name: 'Show more' })).toBeNull()
+  })
+})
+
+describe('saved questions in the rail', () => {
+  const ask = (question: string) =>
+    within(history()).findByRole('button', { name: `Ask “${question}”` })
+
+  it('shows no section until something is saved', async () => {
+    renderApp('/')
+
+    await within(history()).findByText('Your past conversations will be listed here.')
+    expect(within(history()).queryByRole('heading', { name: 'Saved' })).toBeNull()
+  })
+
+  it('lists them under their own heading', async () => {
+    addSavedQuestion('Sales this week?')
+    renderApp('/')
+
+    expect(await ask('Sales this week?')).toBeVisible()
+    expect(within(history()).getByRole('heading', { name: 'Saved' })).toBeInTheDocument()
+  })
+
+  it('one click asks it as a new conversation', async () => {
+    addSavedQuestion('Sales this week?')
+    const user = userEvent.setup()
+    const { router } = renderApp('/')
+
+    await user.click(await ask('Sales this week?'))
+
+    expect(await screen.findByRole('article', { name: 'Sales this week?' })).toBeInTheDocument()
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/c\//))
+  })
+
+  it('removes one, and gives the focus somewhere that stays', async () => {
+    addSavedQuestion('Sales this week?')
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await user.click(
+      await within(history()).findByRole('button', {
+        name: 'Remove “Sales this week?” from saved',
+      }),
+    )
+
+    await waitFor(() =>
+      expect(within(history()).queryByRole('heading', { name: 'Saved' })).toBeNull(),
+    )
+    expect(within(history()).getByRole('searchbox')).toHaveFocus()
+    expect(localStorage.getItem('querymind-mock-saved-questions')).toBe('[]')
+  })
+
+  it('a failed remove brings the row back and says so', async () => {
+    addSavedQuestion('Sales this week?')
+    server.use(http.delete(`${SAVED_QUESTIONS_URL}/:id`, () => apiError('history_unavailable')))
+    const user = userEvent.setup()
+    renderApp('/')
+
+    await user.click(
+      await within(history()).findByRole('button', {
+        name: 'Remove “Sales this week?” from saved',
+      }),
+    )
+
+    expect(await screen.findByText("History isn't available.")).toBeInTheDocument()
+    expect(await ask('Sales this week?')).toBeVisible()
+  })
+
+  it('steps aside during a search', async () => {
+    addSavedQuestion('Sales this week?')
+    const user = userEvent.setup()
+    renderApp('/')
+    await ask('Sales this week?')
+
+    await user.type(within(history()).getByRole('searchbox'), 'zebra')
+
+    await waitFor(() =>
+      expect(within(history()).queryByRole('heading', { name: 'Saved' })).toBeNull(),
+    )
+  })
+
+  it('with history off there is nothing to show, and no error of its own', async () => {
+    server.use(
+      http.get(LIST_URL, () => apiError('history_unavailable')),
+      http.get(SAVED_QUESTIONS_URL, () => apiError('history_unavailable')),
+    )
+    renderApp('/')
+
+    await within(history()).findByText(/isn't available on this server/)
+    expect(within(history()).queryByRole('heading', { name: 'Saved' })).toBeNull()
   })
 })

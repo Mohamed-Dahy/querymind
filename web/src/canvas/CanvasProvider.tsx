@@ -7,7 +7,13 @@ import { CONVERSATIONS_KEY, type ConversationDetail, type RerunResult } from '@/
 import { askStream, type AskStreamOptions } from '@/api/stream'
 import { KEEP_FOCUS } from '@/layout/useFocusOnRouteChange'
 
-import { canvasReducer, conversationAt, EMPTY_STORE, type CellError } from './state'
+import {
+  canvasReducer,
+  conversationAt,
+  EMPTY_STORE,
+  NEW_CONVERSATION,
+  type CellError,
+} from './state'
 import { CanvasContext, type CanvasContextValue } from './useConversation'
 
 // Cell ids only need to be unique on this page load (crypto.randomUUID needs HTTPS off localhost).
@@ -64,10 +70,11 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
 
   // Asks the API for a cell that is already running, and dispatches what happened.
   const send = useCallback(
-    async (key: string, cellId: string, question: string) => {
+    async (key: string, cellId: string, question: string, { fresh = false } = {}) => {
       // The id comes from the conversation, not the URL: a follow-up typed at `/` right after the
-      // first answer must continue that conversation.
-      const conversationId = conversationAt(latest.current.store, key).id
+      // first answer must continue that conversation. `fresh`: it was only just reset, which
+      // `latest` hasn't seen yet, so `new` could still lead to the old conversation.
+      const conversationId = fresh ? null : conversationAt(latest.current.store, key).id
       // Its id, not `key`: `new` may mean another conversation by the time the reply arrives.
       const target = conversationId ?? key
       const controller = new AbortController()
@@ -117,12 +124,30 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'dropped', conversationId })
   }, [])
 
+  const startOver = useCallback(() => {
+    // A question with no conversation has nowhere to land after this, so it is cancelled. One
+    // in a named conversation goes on: its answer waits at that URL (Back finds it), and
+    // throwing it away wouldn't save the quota it has already spent.
+    for (const { controller, named } of running.current.values()) {
+      if (!named) controller.abort()
+    }
+    dispatch({ type: 'reset' })
+    void navigate('/')
+  }, [navigate])
+
   const value = useMemo<CanvasContextValue>(
     () => ({
       store,
       load,
       applyRerun,
       dropConversation,
+      newConversation: startOver,
+      askNew: (question) => {
+        startOver()
+        const cellId = `cell-${++lastCellId}`
+        dispatch({ key: NEW_CONVERSATION, type: 'asked', cellId, question })
+        void send(NEW_CONVERSATION, cellId, question, { fresh: true })
+      },
       ask: (key, question, parentId) => {
         const cellId = `cell-${++lastCellId}`
         dispatch(
@@ -146,18 +171,8 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         run.stopped = true
         run.controller.abort()
       },
-      newConversation: () => {
-        // A question with no conversation has nowhere to land after this, so it is cancelled. One
-        // in a named conversation goes on: its answer waits at that URL (Back finds it), and
-        // throwing it away wouldn't save the quota it has already spent.
-        for (const { controller, named } of running.current.values()) {
-          if (!named) controller.abort()
-        }
-        dispatch({ type: 'reset' })
-        void navigate('/')
-      },
     }),
-    [store, send, navigate, load, applyRerun, dropConversation],
+    [store, send, startOver, load, applyRerun, dropConversation],
   )
   return <CanvasContext value={value}>{children}</CanvasContext>
 }

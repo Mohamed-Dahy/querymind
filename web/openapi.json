@@ -786,6 +786,66 @@
         "title": "RewriteEvent",
         "type": "object"
       },
+      "SavedQuestion": {
+        "description": "A question kept to ask again. Only its words: no answer, no SQL, no rows.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "question",
+          "created_at"
+        ],
+        "title": "SavedQuestion",
+        "type": "object"
+      },
+      "SavedQuestionCreate": {
+        "additionalProperties": false,
+        "description": "A question to keep. The same limits as asking it, because it will be asked again.",
+        "properties": {
+          "question": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "SavedQuestionCreate",
+        "type": "object"
+      },
+      "SavedQuestionList": {
+        "description": "The saved questions, newest first.",
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/SavedQuestion"
+            },
+            "title": "Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "title": "SavedQuestionList",
+        "type": "object"
+      },
       "SavedTurnResponse": {
         "description": "One saved question and what came back. An answer's `rows` is empty: they aren't stored, and\n`row_count` says how many there were. Re-run the turn for fresh rows.",
         "properties": {
@@ -1634,6 +1694,145 @@
         "summary": "Health",
         "tags": [
           "ops"
+        ]
+      }
+    },
+    "/saved-questions": {
+      "get": {
+        "description": "The saved questions, newest first.",
+        "operationId": "list_saved_questions_saved_questions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQuestionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An invalid id or body"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved questions aren't available"
+          }
+        },
+        "summary": "List Saved Questions",
+        "tags": [
+          "saved questions"
+        ]
+      },
+      "post": {
+        "description": "Save a question. Saving the same words again gives back the row that is already there.",
+        "operationId": "save_question_saved_questions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedQuestionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQuestion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An invalid id or body"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved questions aren't available"
+          }
+        },
+        "summary": "Save Question",
+        "tags": [
+          "saved questions"
+        ]
+      }
+    },
+    "/saved-questions/{saved_id}": {
+      "delete": {
+        "description": "Remove a saved question. Removing one that is already gone is fine.",
+        "operationId": "remove_saved_question_saved_questions__saved_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "saved_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Saved Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An invalid id or body"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved questions aren't available"
+          }
+        },
+        "summary": "Remove Saved Question",
+        "tags": [
+          "saved questions"
         ]
       }
     }
