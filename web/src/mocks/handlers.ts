@@ -19,6 +19,7 @@ import {
   answer,
   answerStream,
   answerWithRows,
+  catalog,
   clarification,
   clarificationStream,
   errors,
@@ -31,6 +32,7 @@ import {
   refusalStream,
   repair,
   repairStream,
+  semantic,
   single,
   singleStream,
   type MockError,
@@ -186,6 +188,8 @@ export const handlers = [
     const result = rerunStored(String(params['id']), Number(params['n']))
     return result ? HttpResponse.json(result) : apiError('turn_not_found')
   }),
+  http.get('/api/catalog', () => HttpResponse.json(catalog)),
+  http.get('/api/semantic', () => HttpResponse.json(semantic)),
   http.get(SAVED_QUESTIONS_URL, () => HttpResponse.json({ questions: listSavedQuestions() })),
   http.post(SAVED_QUESTIONS_URL, async ({ request }) => {
     const { question } = (await request.json()) as { question: string }

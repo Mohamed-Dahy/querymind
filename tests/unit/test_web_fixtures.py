@@ -13,6 +13,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from querymind.api.errors import ERROR_MAP, LLM_MESSAGES
 from querymind.api.schemas import AskReply, StreamEvent
+from querymind.semantic.catalog import Catalog, SemanticOverview
 from scripts.record_fixtures import DEFAULT_OUTPUT, RECORDINGS, Recording
 
 MOCKS = Path(__file__).resolve().parents[2] / "web" / "src" / "mocks"
@@ -52,6 +53,13 @@ def test_recorded_stream_holds_valid_events_and_nothing_private(recording: Recor
     assert not {"final", "error"} & {event["type"] for event in events}
     text = path.read_text(encoding="utf-8")
     assert '"detail"' not in text and '"reason"' not in text and '"schema_text"' not in text
+
+
+@pytest.mark.parametrize(("name", "model"), [("catalog", Catalog), ("semantic", SemanticOverview)])
+def test_the_explorer_fixtures_match_the_api_models(name: str, model: type[BaseModel]) -> None:
+    data = load(DEFAULT_OUTPUT / f"{name}.json")
+
+    assert model.model_validate(data).model_dump(mode="json") == data
 
 
 def test_the_repair_recording_really_repaired() -> None:

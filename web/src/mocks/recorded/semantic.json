@@ -1,0 +1,1755 @@
+{
+  "businesses": [
+    {
+      "database": "northwind",
+      "description": "Our food trading business (customers, orders, products, suppliers, shippers).",
+      "tables": [
+        {
+          "name": "categories",
+          "description": "",
+          "synonyms": [
+            "product lines",
+            "product categories"
+          ],
+          "dictionary_description": "Each row represents a product category, used to classify items sold in the business.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "category_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the category, acting as the primary key."
+            },
+            {
+              "name": "category_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the product category."
+            },
+            {
+              "name": "description",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Text describing the types of products in the category."
+            },
+            {
+              "name": "picture",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Binary data holding an image representing the category."
+            }
+          ],
+          "suggested_questions": [
+            "What is the value of the stock in each category (unit price times units in stock)? Return the category name and the stock value.",
+            "Which customers bought Seafood products in 1997? Return their company names."
+          ]
+        },
+        {
+          "name": "customer_customer_demo",
+          "description": "",
+          "synonyms": [],
+          "dictionary_description": "Each row maps a customer to a specific customer demographic category, used for customer segmentation.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "customer_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to customers(customer_id)."
+            },
+            {
+              "name": "customer_type_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to customer_demographics(customer_type_id)."
+            }
+          ],
+          "suggested_questions": []
+        },
+        {
+          "name": "customer_demographics",
+          "description": "",
+          "synonyms": [],
+          "dictionary_description": "Each row represents a customer demographic type and its description, used to categorize customers.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "customer_type_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key holding the customer type identifier."
+            },
+            {
+              "name": "customer_desc",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Text describing the customer demographic category."
+            }
+          ],
+          "suggested_questions": []
+        },
+        {
+          "name": "customers",
+          "description": "Companies that buy food from our trading business (not the music store's customer table).",
+          "synonyms": [
+            "clients",
+            "accounts",
+            "buyers"
+          ],
+          "dictionary_description": "Each row represents a customer in the food trading business, used to store company and contact details.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "customer_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the customer."
+            },
+            {
+              "name": "company_name",
+              "description": "The customer's name; use it when listing customers.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the customer's company."
+            },
+            {
+              "name": "contact_name",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Name of the customer contact person."
+            },
+            {
+              "name": "contact_title",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Job title of the customer contact person."
+            },
+            {
+              "name": "address",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Street address of the customer."
+            },
+            {
+              "name": "city",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "City of the customer location."
+            },
+            {
+              "name": "region",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "State or region of the customer location; NULL if not applicable."
+            },
+            {
+              "name": "postal_code",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Postal code of the customer location."
+            },
+            {
+              "name": "country",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Country of the customer location."
+            },
+            {
+              "name": "phone",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Telephone number of the customer."
+            },
+            {
+              "name": "fax",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Fax number of the customer."
+            }
+          ],
+          "suggested_questions": [
+            "Which customers placed more than 20 orders? Return the company name and the number of orders.",
+            "Which customers bought Seafood products in 1997? Return their company names."
+          ]
+        },
+        {
+          "name": "employee_territories",
+          "description": "",
+          "synonyms": [],
+          "dictionary_description": "Each row represents an association between an employee and a territory, used to track employee coverage areas.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "employee_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to employees(employee_id)."
+            },
+            {
+              "name": "territory_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to territories(territory_id)."
+            }
+          ],
+          "suggested_questions": [
+            "How many territories does each employee cover? Return the first and last name and the count."
+          ]
+        },
+        {
+          "name": "employees",
+          "description": "Trading business staff; the sales representatives who handle orders.",
+          "synonyms": [
+            "staff",
+            "sales reps",
+            "salespeople",
+            "reps"
+          ],
+          "dictionary_description": "Each row represents an employee and their details, used to store staff records for the food trading business.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "employee_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key identifier for the employee."
+            },
+            {
+              "name": "last_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Employee's last name."
+            },
+            {
+              "name": "first_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Employee's first name."
+            },
+            {
+              "name": "title",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Job title of the employee."
+            },
+            {
+              "name": "title_of_courtesy",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Courtesy title used for the employee."
+            },
+            {
+              "name": "birth_date",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data: employee's birth date."
+            },
+            {
+              "name": "hire_date",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Date the employee was hired."
+            },
+            {
+              "name": "address",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data: street address of the employee."
+            },
+            {
+              "name": "city",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "City of the employee's address."
+            },
+            {
+              "name": "region",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Region or state of the employee's address."
+            },
+            {
+              "name": "postal_code",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data: postal code of the employee's address."
+            },
+            {
+              "name": "country",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Country of the employee's address."
+            },
+            {
+              "name": "home_phone",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data: home phone number of the employee."
+            },
+            {
+              "name": "extension",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Internal phone extension for the employee."
+            },
+            {
+              "name": "photo",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Binary image data of the employee."
+            },
+            {
+              "name": "notes",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data: additional notes about the employee."
+            },
+            {
+              "name": "reports_to",
+              "description": "The employee's manager (another employee_id).",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to the manager's employee_id; NULL if no manager."
+            },
+            {
+              "name": "photo_path",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "URL path to the employee's photo."
+            }
+          ],
+          "suggested_questions": [
+            "Which employees were hired before 1993? Return their first and last names and hire dates.",
+            "Which employees report to Andrew Fuller? Return their first and last names.",
+            "How many territories does each employee cover? Return the first and last name and the count.",
+            "How many late shipments did each employee's orders have? Return the first and last name and the number of late shipments.",
+            "How much sales revenue did each employee bring in from orders placed in 1996? Return the employee's first and last name and the revenue."
+          ]
+        },
+        {
+          "name": "order_details",
+          "description": "One line per product in an order; the source of all sales amounts.",
+          "synonyms": [
+            "order lines",
+            "line items"
+          ],
+          "dictionary_description": "Each row represents a line item within an order, detailing the product, price, quantity, and discount for tracking order contents.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "order_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to orders(order_id)."
+            },
+            {
+              "name": "product_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to products(product_id)."
+            },
+            {
+              "name": "unit_price",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Price per unit of the product."
+            },
+            {
+              "name": "quantity",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Number of units ordered."
+            },
+            {
+              "name": "discount",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Discount applied to the line item."
+            }
+          ],
+          "suggested_questions": [
+            "What was the sales revenue in each quarter of 1997? Return the quarter (1-4) and the revenue.",
+            "How much sales revenue did each employee bring in from orders placed in 1996? Return the employee's first and last name and the revenue.",
+            "Which customers bought Seafood products in 1997? Return their company names."
+          ]
+        },
+        {
+          "name": "orders",
+          "description": "",
+          "synonyms": [
+            "purchases",
+            "sales orders"
+          ],
+          "dictionary_description": "One row represents a customer order, used to track order dates, shipping details, and fulfillment status.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "order_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the order."
+            },
+            {
+              "name": "customer_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to customers(customer_id)."
+            },
+            {
+              "name": "employee_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to employees(employee_id)."
+            },
+            {
+              "name": "order_date",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Date the order was placed."
+            },
+            {
+              "name": "required_date",
+              "description": "The date the customer needs the order by.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Date the order is required by."
+            },
+            {
+              "name": "shipped_date",
+              "description": "NULL while the order hasn't shipped yet.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Date the order was shipped, or NULL if not shipped."
+            },
+            {
+              "name": "ship_via",
+              "description": "The shipper that delivered the order.",
+              "synonyms": [
+                "carrier"
+              ],
+              "pii": false,
+              "dictionary_note": "Points to shippers(shipper_id)."
+            },
+            {
+              "name": "freight",
+              "description": "Shipping cost charged for the order.",
+              "synonyms": [
+                "shipping cost"
+              ],
+              "pii": false,
+              "dictionary_note": "Freight cost for the order."
+            },
+            {
+              "name": "ship_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the shipping recipient."
+            },
+            {
+              "name": "ship_address",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Street address for delivery."
+            },
+            {
+              "name": "ship_city",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "City for delivery."
+            },
+            {
+              "name": "ship_region",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "State or region for delivery, or NULL if not applicable."
+            },
+            {
+              "name": "ship_postal_code",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Postal code for delivery, or NULL if none."
+            },
+            {
+              "name": "ship_country",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Country for delivery."
+            }
+          ],
+          "suggested_questions": [
+            "How many orders were shipped to France?",
+            "On which day of the week are orders placed? Return the day number (0 = Sunday) and the number of orders.",
+            "For orders shipped to Brazil, show each order id, its freight, and the average freight of all orders from the same customer.",
+            "How many open orders are going to each country? Return the destination country and the count.",
+            "What was the sales revenue in each quarter of 1997? Return the quarter (1-4) and the revenue."
+          ]
+        },
+        {
+          "name": "products",
+          "description": "",
+          "synonyms": [
+            "items",
+            "SKUs",
+            "goods"
+          ],
+          "dictionary_description": "Each row represents a product sold by the business, used to track inventory, pricing, and supplier details.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "product_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key for the product."
+            },
+            {
+              "name": "product_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the product."
+            },
+            {
+              "name": "supplier_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to suppliers(supplier_id)."
+            },
+            {
+              "name": "category_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to categories(category_id)."
+            },
+            {
+              "name": "quantity_per_unit",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Description of unit size or packaging quantity."
+            },
+            {
+              "name": "unit_price",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Price per unit of the product."
+            },
+            {
+              "name": "units_in_stock",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Number of units currently in stock."
+            },
+            {
+              "name": "units_on_order",
+              "description": "Units ordered from the supplier but not yet received.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Number of units currently on order."
+            },
+            {
+              "name": "reorder_level",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Stock level threshold that triggers a reorder."
+            },
+            {
+              "name": "discontinued",
+              "description": "1 = no longer sold (a retired product), 0 = still sold.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Integer flag indicating if the product is discontinued."
+            }
+          ],
+          "suggested_questions": [
+            "Which products cost more than 50 per unit? Return the product name and its price.",
+            "How many products come from suppliers in each country? Return the country and the count.",
+            "What is the value of the stock in each category (unit price times units in stock)? Return the category name and the stock value.",
+            "Which suppliers sell products in more than one category? Return their company names.",
+            "Which customers bought Seafood products in 1997? Return their company names."
+          ]
+        },
+        {
+          "name": "region",
+          "description": "",
+          "synonyms": [],
+          "dictionary_description": "Each row represents a geographical region, used for organizing territories and business operations.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "region_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the region."
+            },
+            {
+              "name": "region_description",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Text description of the region name."
+            }
+          ],
+          "suggested_questions": [
+            "How many sales territories are in each region? Return the region and the count."
+          ]
+        },
+        {
+          "name": "shippers",
+          "description": "Delivery companies that ship our orders.",
+          "synonyms": [
+            "carriers",
+            "couriers",
+            "delivery companies"
+          ],
+          "dictionary_description": "Each row represents a delivery company used by the business to ship orders.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "shipper_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the shipper, serving as the primary key."
+            },
+            {
+              "name": "company_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the shipping company."
+            },
+            {
+              "name": "phone",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Phone number for the shipper."
+            }
+          ],
+          "suggested_questions": [
+            "What share of all orders did each shipper carry? Return the company name and the percentage."
+          ]
+        },
+        {
+          "name": "suppliers",
+          "description": "Companies we buy products from.",
+          "synonyms": [
+            "vendors"
+          ],
+          "dictionary_description": "Each row represents a supplier providing products to the business, used to manage vendor details.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "supplier_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the supplier, acting as the primary key."
+            },
+            {
+              "name": "company_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the supplier company."
+            },
+            {
+              "name": "contact_name",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data."
+            },
+            {
+              "name": "contact_title",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data."
+            },
+            {
+              "name": "address",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data."
+            },
+            {
+              "name": "city",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "City where the supplier is located."
+            },
+            {
+              "name": "region",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "State or region of the supplier; NULL if not applicable."
+            },
+            {
+              "name": "postal_code",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data."
+            },
+            {
+              "name": "country",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Country where the supplier is located."
+            },
+            {
+              "name": "phone",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data."
+            },
+            {
+              "name": "fax",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data."
+            },
+            {
+              "name": "homepage",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Website or homepage reference for the supplier; NULL if none."
+            }
+          ],
+          "suggested_questions": [
+            "How many suppliers do we buy from?",
+            "Which suppliers are located in Japan? Return their company names and cities.",
+            "How many products come from suppliers in each country? Return the country and the count.",
+            "Which suppliers sell products in more than one category? Return their company names."
+          ]
+        },
+        {
+          "name": "territories",
+          "description": "",
+          "synonyms": [],
+          "dictionary_description": "Each row represents a sales territory with a description and region, used for geographic sales tracking.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "territory_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key holding the territory identifier code."
+            },
+            {
+              "name": "territory_description",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Holds the name or description of the territory."
+            },
+            {
+              "name": "region_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to region(region_id)."
+            }
+          ],
+          "suggested_questions": [
+            "How many sales territories are in each region? Return the region and the count."
+          ]
+        },
+        {
+          "name": "us_states",
+          "description": "",
+          "synonyms": [],
+          "dictionary_description": "Each row represents a US state with its name, abbreviation, and region, used for geographic reference.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "state_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the state"
+            },
+            {
+              "name": "state_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Full name of the state"
+            },
+            {
+              "name": "state_abbr",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Two-letter postal abbreviation for the state"
+            },
+            {
+              "name": "state_region",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Geographical region where the state is located"
+            }
+          ],
+          "suggested_questions": []
+        }
+      ],
+      "metrics": [
+        {
+          "name": "revenue",
+          "kind": "measure",
+          "table": "order_details",
+          "sql": "sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount))",
+          "description": "Sales after discount.",
+          "synonyms": [
+            "sales",
+            "turnover",
+            "income",
+            "sales amount"
+          ]
+        },
+        {
+          "name": "average_order_value",
+          "kind": "measure",
+          "table": "order_details",
+          "sql": "sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)) / count(DISTINCT order_details.order_id)",
+          "description": "Revenue divided by the number of distinct orders.",
+          "synonyms": [
+            "AOV",
+            "average basket",
+            "average order size"
+          ]
+        },
+        {
+          "name": "late_shipment",
+          "kind": "condition",
+          "table": "orders",
+          "sql": "orders.shipped_date > orders.required_date",
+          "description": "An order shipped after the date the customer needed it.",
+          "synonyms": [
+            "late order",
+            "late delivery",
+            "shipped late"
+          ]
+        },
+        {
+          "name": "open_order",
+          "kind": "condition",
+          "table": "orders",
+          "sql": "orders.shipped_date IS NULL",
+          "description": "An order that hasn't shipped yet.",
+          "synonyms": [
+            "unshipped order",
+            "pending order",
+            "backlog"
+          ]
+        },
+        {
+          "name": "key_account",
+          "kind": "condition",
+          "table": "customers",
+          "sql": "customers.customer_id IN (\n  SELECT o.customer_id FROM orders AS o\n  JOIN order_details AS d ON d.order_id = o.order_id\n  GROUP BY o.customer_id\n  HAVING sum(d.unit_price * d.quantity * (1 - d.discount)) >= 30000)",
+          "description": "A customer with 30,000 or more revenue over all their orders (company rule).",
+          "synonyms": [
+            "key accounts",
+            "key clients",
+            "top-tier customers"
+          ]
+        },
+        {
+          "name": "active_customer",
+          "kind": "condition",
+          "table": "customers",
+          "sql": "customers.customer_id IN (\n  SELECT o.customer_id FROM orders AS o WHERE o.order_date >= DATE '1998-03-01')",
+          "description": "A customer with at least one order on or after 1998-03-01, the current reporting period (company rule).",
+          "synonyms": [
+            "active customers",
+            "active clients"
+          ]
+        },
+        {
+          "name": "needs_restock",
+          "kind": "condition",
+          "table": "products",
+          "sql": "products.discontinued = 0 AND products.units_in_stock + products.units_on_order <= products.reorder_level",
+          "description": "A product still sold whose stock plus units on order is at or below its reorder level (company rule).",
+          "synonyms": [
+            "restock",
+            "reorder needed",
+            "running low"
+          ]
+        },
+        {
+          "name": "retired_product",
+          "kind": "condition",
+          "table": "products",
+          "sql": "products.discontinued = 1",
+          "description": "A product we no longer sell.",
+          "synonyms": [
+            "retired products",
+            "discontinued products"
+          ]
+        }
+      ],
+      "joins": [
+        {
+          "left": "orders.customer_id",
+          "right": "customers.customer_id",
+          "note": ""
+        },
+        {
+          "left": "order_details.order_id",
+          "right": "orders.order_id",
+          "note": ""
+        },
+        {
+          "left": "order_details.product_id",
+          "right": "products.product_id",
+          "note": ""
+        },
+        {
+          "left": "products.category_id",
+          "right": "categories.category_id",
+          "note": ""
+        },
+        {
+          "left": "products.supplier_id",
+          "right": "suppliers.supplier_id",
+          "note": ""
+        },
+        {
+          "left": "orders.employee_id",
+          "right": "employees.employee_id",
+          "note": "the sales rep who handled the order"
+        },
+        {
+          "left": "orders.ship_via",
+          "right": "shippers.shipper_id",
+          "note": "the shipper (carrier) of the order"
+        }
+      ]
+    },
+    {
+      "database": "chinook",
+      "description": "Our online music store (tracks, albums, artists, invoices).",
+      "tables": [
+        {
+          "name": "album",
+          "description": "",
+          "synonyms": [
+            "records"
+          ],
+          "dictionary_description": "Each row represents a music album, used to store album titles and link them to their respective artists.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "album_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key for the album."
+            },
+            {
+              "name": "title",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Title of the album."
+            },
+            {
+              "name": "artist_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to artist(artist_id)."
+            }
+          ],
+          "suggested_questions": [
+            "Which albums by Iron Maiden does the store sell? Return the album titles.",
+            "Which tracks last longer than 10 minutes? Return the track name and its album title.",
+            "Which albums have more than 20 tracks? Return the album title and the number of tracks.",
+            "Which playlists contain at least one Metallica track? Return the playlist names."
+          ]
+        },
+        {
+          "name": "artist",
+          "description": "",
+          "synonyms": [
+            "bands",
+            "musicians",
+            "performers",
+            "singers"
+          ],
+          "dictionary_description": "Each row represents an artist and is used to store the artist's unique identifier and name.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "artist_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key for the artist."
+            },
+            {
+              "name": "name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the artist."
+            }
+          ],
+          "suggested_questions": [
+            "Which albums by Iron Maiden does the store sell? Return the album titles.",
+            "Which playlists contain at least one Metallica track? Return the playlist names."
+          ]
+        },
+        {
+          "name": "customer",
+          "description": "People who buy music from our online music store (not the trading business's customers).",
+          "synonyms": [
+            "music store customers",
+            "listeners",
+            "music buyers"
+          ],
+          "dictionary_description": "One row represents a customer in the online music store, used to store contact and support representative details.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "customer_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the customer."
+            },
+            {
+              "name": "first_name",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Customer's first name."
+            },
+            {
+              "name": "last_name",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Customer's last name."
+            },
+            {
+              "name": "company",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Company name; NULL means no company provided."
+            },
+            {
+              "name": "address",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Customer's street address."
+            },
+            {
+              "name": "city",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "City of the customer's address."
+            },
+            {
+              "name": "state",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "State or province; NULL means none applicable."
+            },
+            {
+              "name": "country",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Country of the customer's address."
+            },
+            {
+              "name": "postal_code",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Postal or ZIP code."
+            },
+            {
+              "name": "phone",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Customer's phone number."
+            },
+            {
+              "name": "fax",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Customer's fax number; NULL means none provided."
+            },
+            {
+              "name": "email",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Customer's email address."
+            },
+            {
+              "name": "support_rep_id",
+              "description": "The employee who supports this customer.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Points to employee(employee_id) for the assigned support representative."
+            }
+          ],
+          "suggested_questions": [
+            "When did each customer from Germany first buy something? Return the first and last name and the date.",
+            "Who is the support rep of each customer in France? Return the customer's first and last name and the rep's first and last name.",
+            "Which customers have bought at least one Jazz track? Return their first and last names."
+          ]
+        },
+        {
+          "name": "employee",
+          "description": "Music store staff, including the support reps who look after customers.",
+          "synonyms": [
+            "music store staff",
+            "support reps"
+          ],
+          "dictionary_description": "One row represents an employee of the online music store and is used to store their personal and employment details.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "employee_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key uniquely identifying the employee."
+            },
+            {
+              "name": "last_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Employee's family name."
+            },
+            {
+              "name": "first_name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Employee's given name."
+            },
+            {
+              "name": "title",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Job title of the employee."
+            },
+            {
+              "name": "reports_to",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to employee(employee_id) for their manager; NULL if none."
+            },
+            {
+              "name": "birth_date",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data timestamp of the employee's birth."
+            },
+            {
+              "name": "hire_date",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Timestamp of when the employee was hired."
+            },
+            {
+              "name": "address",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data street address of the employee."
+            },
+            {
+              "name": "city",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "City of the employee's address."
+            },
+            {
+              "name": "state",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "State or province of the employee's address."
+            },
+            {
+              "name": "country",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Country of the employee's address."
+            },
+            {
+              "name": "postal_code",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data postal code of the employee's address."
+            },
+            {
+              "name": "phone",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data phone number of the employee."
+            },
+            {
+              "name": "fax",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data fax number of the employee."
+            },
+            {
+              "name": "email",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data email address of the employee."
+            }
+          ],
+          "suggested_questions": [
+            "Which employees work as sales support agents? Return their first and last names.",
+            "Who is the support rep of each customer in France? Return the customer's first and last name and the rep's first and last name."
+          ]
+        },
+        {
+          "name": "genre",
+          "description": "",
+          "synonyms": [
+            "music styles",
+            "music genres"
+          ],
+          "dictionary_description": "Each row represents a music genre, used to classify tracks by their musical style.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "genre_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique integer identifier for the genre."
+            },
+            {
+              "name": "name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Text name of the music genre."
+            }
+          ],
+          "suggested_questions": [
+            "What is the average track length in minutes for each genre? Return the genre and the minutes.",
+            "Rank the genres by their number of tracks, most first. Return the genre, the number of tracks and its rank.",
+            "How many video tracks are there in each genre? Return the genre and the count.",
+            "How many tracks in each genre have never been sold? Return the genre and the count.",
+            "Which customers have bought at least one Jazz track? Return their first and last names."
+          ]
+        },
+        {
+          "name": "invoice",
+          "description": "One music purchase by a customer (2021 to 2025).",
+          "synonyms": [
+            "music orders",
+            "music purchases",
+            "receipts",
+            "bills"
+          ],
+          "dictionary_description": "Each row represents a customer invoice, used to track purchase dates, billing locations, and the total amount charged.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "invoice_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key uniquely identifying the invoice."
+            },
+            {
+              "name": "customer_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to customer(customer_id)."
+            },
+            {
+              "name": "invoice_date",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Timestamp of when the invoice was issued."
+            },
+            {
+              "name": "billing_address",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data holding the billing street address."
+            },
+            {
+              "name": "billing_city",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "City of the billing address."
+            },
+            {
+              "name": "billing_state",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "State or province of the billing address; NULL if not applicable."
+            },
+            {
+              "name": "billing_country",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Country of the billing address."
+            },
+            {
+              "name": "billing_postal_code",
+              "description": "",
+              "synonyms": [],
+              "pii": true,
+              "dictionary_note": "Personal data holding the postal code of the billing address."
+            },
+            {
+              "name": "total",
+              "description": "Amount of the whole invoice (the sum of its lines).",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Total monetary amount of the invoice."
+            }
+          ],
+          "suggested_questions": [
+            "How many invoices were issued in each month of 2024? Return the month (1-12) and the count.",
+            "What is the average invoice total in each billing country with more than 10 invoices? Return the country and the average.",
+            "When did each customer from Germany first buy something? Return the first and last name and the date.",
+            "Which customers have bought at least one Jazz track? Return their first and last names."
+          ]
+        },
+        {
+          "name": "invoice_line",
+          "description": "One track on an invoice; the source of music sales amounts.",
+          "synonyms": [
+            "invoice lines"
+          ],
+          "dictionary_description": "Each row represents a specific line item within an invoice, used to record purchased tracks and their quantities.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "invoice_line_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the invoice line."
+            },
+            {
+              "name": "invoice_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to invoice(invoice_id)."
+            },
+            {
+              "name": "track_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to track(track_id)."
+            },
+            {
+              "name": "unit_price",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Price per unit of the track."
+            },
+            {
+              "name": "quantity",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Number of units purchased for the track."
+            }
+          ],
+          "suggested_questions": [
+            "How much music was sold in each media type? Return the media type name and its sales.",
+            "How many tracks in each genre have never been sold? Return the genre and the count.",
+            "Which customers have bought at least one Jazz track? Return their first and last names."
+          ]
+        },
+        {
+          "name": "media_type",
+          "description": "The file format of a track (audio or video).",
+          "synonyms": [
+            "formats",
+            "file formats"
+          ],
+          "dictionary_description": "Each row represents a distinct media format used to categorize and track the types of audio and video files available in the store.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "media_type_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the media type."
+            },
+            {
+              "name": "name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Descriptive name of the media file format."
+            }
+          ],
+          "suggested_questions": [
+            "What share of all tracks does each media type have? Return the media type and the percentage.",
+            "How much music was sold in each media type? Return the media type name and its sales.",
+            "How many video tracks are there in each genre? Return the genre and the count."
+          ]
+        },
+        {
+          "name": "playlist",
+          "description": "",
+          "synonyms": [
+            "mixes"
+          ],
+          "dictionary_description": "Each row represents a playlist, used to group music and video tracks together.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "playlist_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Unique identifier for the playlist."
+            },
+            {
+              "name": "name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the playlist."
+            }
+          ],
+          "suggested_questions": [
+            "What is the total number of playlists?",
+            "How many tracks are on each playlist? Return the playlist name and the number of tracks.",
+            "Which playlists contain at least one Metallica track? Return the playlist names."
+          ]
+        },
+        {
+          "name": "playlist_track",
+          "description": "",
+          "synonyms": [],
+          "dictionary_description": "Each row represents a track assigned to a specific playlist to manage playlist contents.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "playlist_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "The unique identifier of the playlist, pointing to the playlist table."
+            },
+            {
+              "name": "track_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "The unique identifier of the track, pointing to the track table."
+            }
+          ],
+          "suggested_questions": [
+            "How many tracks are on each playlist? Return the playlist name and the number of tracks.",
+            "Which playlists contain at least one Metallica track? Return the playlist names."
+          ]
+        },
+        {
+          "name": "track",
+          "description": "A song or video we sell.",
+          "synonyms": [
+            "songs",
+            "tunes",
+            "recordings"
+          ],
+          "dictionary_description": "Each row represents a single music track available in the store, used to store audio file details and pricing.",
+          "dictionary_reviewed": false,
+          "columns": [
+            {
+              "name": "track_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Primary key for the track."
+            },
+            {
+              "name": "name",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Name of the track."
+            },
+            {
+              "name": "album_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to album(album_id)."
+            },
+            {
+              "name": "media_type_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to media_type(media_type_id)."
+            },
+            {
+              "name": "genre_id",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Foreign key pointing to genre(genre_id)."
+            },
+            {
+              "name": "composer",
+              "description": "",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Composer of the track, can be NULL."
+            },
+            {
+              "name": "milliseconds",
+              "description": "Length in milliseconds (60000 = one minute).",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Duration of the track in milliseconds."
+            },
+            {
+              "name": "bytes",
+              "description": "File size in bytes.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "File size of the track in bytes."
+            },
+            {
+              "name": "unit_price",
+              "description": "List price of one track.",
+              "synonyms": [],
+              "pii": false,
+              "dictionary_note": "Price per unit of the track."
+            }
+          ],
+          "suggested_questions": [
+            "Which tracks were composed by Jimi Hendrix? Return the track names.",
+            "How many tracks have no composer listed?",
+            "What is the average track length in minutes for each genre? Return the genre and the minutes.",
+            "Which tracks last longer than 10 minutes? Return the track name and its album title.",
+            "Which albums have more than 20 tracks? Return the album title and the number of tracks."
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "name": "music_sales",
+          "kind": "measure",
+          "table": "invoice_line",
+          "sql": "sum(invoice_line.unit_price * invoice_line.quantity)",
+          "description": "Money from track sales (price times quantity).",
+          "synonyms": [
+            "music revenue",
+            "track sales",
+            "music store sales"
+          ]
+        },
+        {
+          "name": "big_spender",
+          "kind": "condition",
+          "table": "customer",
+          "sql": "customer.customer_id IN (\n  SELECT i.customer_id FROM invoice AS i GROUP BY i.customer_id HAVING sum(i.total) >= 45)",
+          "description": "A music store customer with 45 or more in total purchases (company rule).",
+          "synonyms": [
+            "big spenders",
+            "top music customers"
+          ]
+        },
+        {
+          "name": "long_track",
+          "kind": "condition",
+          "table": "track",
+          "sql": "track.milliseconds > 300000",
+          "description": "A track longer than 5 minutes (company rule).",
+          "synonyms": [
+            "long tracks",
+            "long songs"
+          ]
+        },
+        {
+          "name": "video_track",
+          "kind": "condition",
+          "table": "track",
+          "sql": "track.media_type_id IN (SELECT m.media_type_id FROM media_type AS m WHERE m.name ILIKE '%video%')",
+          "description": "A track whose file is a video.",
+          "synonyms": [
+            "videos",
+            "music videos"
+          ]
+        },
+        {
+          "name": "unsold_track",
+          "kind": "condition",
+          "table": "track",
+          "sql": "NOT EXISTS (SELECT 1 FROM invoice_line AS il WHERE il.track_id = track.track_id)",
+          "description": "A track that has never been sold.",
+          "synonyms": [
+            "unsold tracks",
+            "never sold"
+          ]
+        }
+      ],
+      "joins": [
+        {
+          "left": "album.artist_id",
+          "right": "artist.artist_id",
+          "note": ""
+        },
+        {
+          "left": "track.album_id",
+          "right": "album.album_id",
+          "note": ""
+        },
+        {
+          "left": "track.genre_id",
+          "right": "genre.genre_id",
+          "note": ""
+        },
+        {
+          "left": "track.media_type_id",
+          "right": "media_type.media_type_id",
+          "note": ""
+        },
+        {
+          "left": "invoice_line.track_id",
+          "right": "track.track_id",
+          "note": ""
+        },
+        {
+          "left": "invoice_line.invoice_id",
+          "right": "invoice.invoice_id",
+          "note": ""
+        },
+        {
+          "left": "invoice.customer_id",
+          "right": "customer.customer_id",
+          "note": ""
+        },
+        {
+          "left": "customer.support_rep_id",
+          "right": "employee.employee_id",
+          "note": "the customer's support rep"
+        },
+        {
+          "left": "playlist_track.playlist_id",
+          "right": "playlist.playlist_id",
+          "note": ""
+        },
+        {
+          "left": "playlist_track.track_id",
+          "right": "track.track_id",
+          "note": ""
+        }
+      ]
+    }
+  ]
+}

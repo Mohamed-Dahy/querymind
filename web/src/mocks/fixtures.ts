@@ -1,3 +1,4 @@
+import type { Catalog, SemanticOverview } from '@/api/explorer'
 import type {
   AskResponse,
   ClarificationResponse,
@@ -8,11 +9,13 @@ import type { TraceEvent } from '@/api/stream'
 import openapi from '../../openapi.json'
 import errorsJson from './errors.json'
 import answerJson from './recorded/answer.json'
+import catalogJson from './recorded/catalog.json'
 import clarificationJson from './recorded/clarification.json'
 import followupJson from './recorded/followup.json'
 import monthlyJson from './recorded/monthly.json'
 import refusalJson from './recorded/refusal.json'
 import repairJson from './recorded/repair.json'
+import semanticJson from './recorded/semantic.json'
 import singleJson from './recorded/single.json'
 import answerStreamJson from './recorded/streams/answer.json'
 import clarificationStreamJson from './recorded/streams/clarification.json'
@@ -25,6 +28,8 @@ import singleStreamJson from './recorded/streams/single.json'
 // Real POST /ask replies, recorded once by scripts/record_fixtures.py. JSON imports get loose types
 // (`kind: string`), so they are cast; tests/unit/test_web_fixtures.py checks every file against the
 // Pydantic models, so the casts are safe.
+export const catalog = catalogJson as Catalog
+export const semantic = semanticJson as SemanticOverview
 export const answer = answerJson as AskResponse
 export const followup = followupJson as AskResponse
 export const clarification = clarificationJson as ClarificationResponse

@@ -1,0 +1,1137 @@
+{
+  "tables": [
+    {
+      "name": "album",
+      "business": "chinook",
+      "row_count": 347,
+      "columns": [
+        {
+          "name": "album_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "title",
+          "data_type": "character varying"
+        },
+        {
+          "name": "artist_id",
+          "data_type": "integer"
+        }
+      ],
+      "primary_key": [
+        "album_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "artist_id"
+          ],
+          "ref_table": "artist",
+          "ref_columns": [
+            "artist_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "artist",
+      "business": "chinook",
+      "row_count": 275,
+      "columns": [
+        {
+          "name": "artist_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "name",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "artist_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "categories",
+      "business": "northwind",
+      "row_count": 8,
+      "columns": [
+        {
+          "name": "category_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "category_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "description",
+          "data_type": "text"
+        },
+        {
+          "name": "picture",
+          "data_type": "bytea"
+        }
+      ],
+      "primary_key": [
+        "category_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "customer",
+      "business": "chinook",
+      "row_count": 59,
+      "columns": [
+        {
+          "name": "customer_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "first_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "last_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "company",
+          "data_type": "character varying"
+        },
+        {
+          "name": "address",
+          "data_type": "character varying"
+        },
+        {
+          "name": "city",
+          "data_type": "character varying"
+        },
+        {
+          "name": "state",
+          "data_type": "character varying"
+        },
+        {
+          "name": "country",
+          "data_type": "character varying"
+        },
+        {
+          "name": "postal_code",
+          "data_type": "character varying"
+        },
+        {
+          "name": "phone",
+          "data_type": "character varying"
+        },
+        {
+          "name": "fax",
+          "data_type": "character varying"
+        },
+        {
+          "name": "email",
+          "data_type": "character varying"
+        },
+        {
+          "name": "support_rep_id",
+          "data_type": "integer"
+        }
+      ],
+      "primary_key": [
+        "customer_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "support_rep_id"
+          ],
+          "ref_table": "employee",
+          "ref_columns": [
+            "employee_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "customer_customer_demo",
+      "business": "northwind",
+      "row_count": 0,
+      "columns": [
+        {
+          "name": "customer_id",
+          "data_type": "character varying"
+        },
+        {
+          "name": "customer_type_id",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "customer_id",
+        "customer_type_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "customer_type_id"
+          ],
+          "ref_table": "customer_demographics",
+          "ref_columns": [
+            "customer_type_id"
+          ]
+        },
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "ref_table": "customers",
+          "ref_columns": [
+            "customer_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "customer_demographics",
+      "business": "northwind",
+      "row_count": 0,
+      "columns": [
+        {
+          "name": "customer_type_id",
+          "data_type": "character varying"
+        },
+        {
+          "name": "customer_desc",
+          "data_type": "text"
+        }
+      ],
+      "primary_key": [
+        "customer_type_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "customers",
+      "business": "northwind",
+      "row_count": 91,
+      "columns": [
+        {
+          "name": "customer_id",
+          "data_type": "character varying"
+        },
+        {
+          "name": "company_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "contact_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "contact_title",
+          "data_type": "character varying"
+        },
+        {
+          "name": "address",
+          "data_type": "character varying"
+        },
+        {
+          "name": "city",
+          "data_type": "character varying"
+        },
+        {
+          "name": "region",
+          "data_type": "character varying"
+        },
+        {
+          "name": "postal_code",
+          "data_type": "character varying"
+        },
+        {
+          "name": "country",
+          "data_type": "character varying"
+        },
+        {
+          "name": "phone",
+          "data_type": "character varying"
+        },
+        {
+          "name": "fax",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "customer_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "employee",
+      "business": "chinook",
+      "row_count": 8,
+      "columns": [
+        {
+          "name": "employee_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "last_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "first_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "title",
+          "data_type": "character varying"
+        },
+        {
+          "name": "reports_to",
+          "data_type": "integer"
+        },
+        {
+          "name": "birth_date",
+          "data_type": "timestamp without time zone"
+        },
+        {
+          "name": "hire_date",
+          "data_type": "timestamp without time zone"
+        },
+        {
+          "name": "address",
+          "data_type": "character varying"
+        },
+        {
+          "name": "city",
+          "data_type": "character varying"
+        },
+        {
+          "name": "state",
+          "data_type": "character varying"
+        },
+        {
+          "name": "country",
+          "data_type": "character varying"
+        },
+        {
+          "name": "postal_code",
+          "data_type": "character varying"
+        },
+        {
+          "name": "phone",
+          "data_type": "character varying"
+        },
+        {
+          "name": "fax",
+          "data_type": "character varying"
+        },
+        {
+          "name": "email",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "employee_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "reports_to"
+          ],
+          "ref_table": "employee",
+          "ref_columns": [
+            "employee_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "employee_territories",
+      "business": "northwind",
+      "row_count": 49,
+      "columns": [
+        {
+          "name": "employee_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "territory_id",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "employee_id",
+        "territory_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "employees",
+          "ref_columns": [
+            "employee_id"
+          ]
+        },
+        {
+          "columns": [
+            "territory_id"
+          ],
+          "ref_table": "territories",
+          "ref_columns": [
+            "territory_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "employees",
+      "business": "northwind",
+      "row_count": 9,
+      "columns": [
+        {
+          "name": "employee_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "last_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "first_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "title",
+          "data_type": "character varying"
+        },
+        {
+          "name": "title_of_courtesy",
+          "data_type": "character varying"
+        },
+        {
+          "name": "birth_date",
+          "data_type": "date"
+        },
+        {
+          "name": "hire_date",
+          "data_type": "date"
+        },
+        {
+          "name": "address",
+          "data_type": "character varying"
+        },
+        {
+          "name": "city",
+          "data_type": "character varying"
+        },
+        {
+          "name": "region",
+          "data_type": "character varying"
+        },
+        {
+          "name": "postal_code",
+          "data_type": "character varying"
+        },
+        {
+          "name": "country",
+          "data_type": "character varying"
+        },
+        {
+          "name": "home_phone",
+          "data_type": "character varying"
+        },
+        {
+          "name": "extension",
+          "data_type": "character varying"
+        },
+        {
+          "name": "photo",
+          "data_type": "bytea"
+        },
+        {
+          "name": "notes",
+          "data_type": "text"
+        },
+        {
+          "name": "reports_to",
+          "data_type": "smallint"
+        },
+        {
+          "name": "photo_path",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "employee_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "reports_to"
+          ],
+          "ref_table": "employees",
+          "ref_columns": [
+            "employee_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "genre",
+      "business": "chinook",
+      "row_count": 25,
+      "columns": [
+        {
+          "name": "genre_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "name",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "genre_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "invoice",
+      "business": "chinook",
+      "row_count": 412,
+      "columns": [
+        {
+          "name": "invoice_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "customer_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "invoice_date",
+          "data_type": "timestamp without time zone"
+        },
+        {
+          "name": "billing_address",
+          "data_type": "character varying"
+        },
+        {
+          "name": "billing_city",
+          "data_type": "character varying"
+        },
+        {
+          "name": "billing_state",
+          "data_type": "character varying"
+        },
+        {
+          "name": "billing_country",
+          "data_type": "character varying"
+        },
+        {
+          "name": "billing_postal_code",
+          "data_type": "character varying"
+        },
+        {
+          "name": "total",
+          "data_type": "numeric"
+        }
+      ],
+      "primary_key": [
+        "invoice_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "ref_table": "customer",
+          "ref_columns": [
+            "customer_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invoice_line",
+      "business": "chinook",
+      "row_count": 2240,
+      "columns": [
+        {
+          "name": "invoice_line_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "invoice_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "track_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "unit_price",
+          "data_type": "numeric"
+        },
+        {
+          "name": "quantity",
+          "data_type": "integer"
+        }
+      ],
+      "primary_key": [
+        "invoice_line_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "invoice_id"
+          ],
+          "ref_table": "invoice",
+          "ref_columns": [
+            "invoice_id"
+          ]
+        },
+        {
+          "columns": [
+            "track_id"
+          ],
+          "ref_table": "track",
+          "ref_columns": [
+            "track_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "media_type",
+      "business": "chinook",
+      "row_count": 5,
+      "columns": [
+        {
+          "name": "media_type_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "name",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "media_type_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "order_details",
+      "business": "northwind",
+      "row_count": 2155,
+      "columns": [
+        {
+          "name": "order_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "product_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "unit_price",
+          "data_type": "real"
+        },
+        {
+          "name": "quantity",
+          "data_type": "smallint"
+        },
+        {
+          "name": "discount",
+          "data_type": "real"
+        }
+      ],
+      "primary_key": [
+        "order_id",
+        "product_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "order_id"
+          ],
+          "ref_table": "orders",
+          "ref_columns": [
+            "order_id"
+          ]
+        },
+        {
+          "columns": [
+            "product_id"
+          ],
+          "ref_table": "products",
+          "ref_columns": [
+            "product_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orders",
+      "business": "northwind",
+      "row_count": 830,
+      "columns": [
+        {
+          "name": "order_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "customer_id",
+          "data_type": "character varying"
+        },
+        {
+          "name": "employee_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "order_date",
+          "data_type": "date"
+        },
+        {
+          "name": "required_date",
+          "data_type": "date"
+        },
+        {
+          "name": "shipped_date",
+          "data_type": "date"
+        },
+        {
+          "name": "ship_via",
+          "data_type": "smallint"
+        },
+        {
+          "name": "freight",
+          "data_type": "real"
+        },
+        {
+          "name": "ship_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "ship_address",
+          "data_type": "character varying"
+        },
+        {
+          "name": "ship_city",
+          "data_type": "character varying"
+        },
+        {
+          "name": "ship_region",
+          "data_type": "character varying"
+        },
+        {
+          "name": "ship_postal_code",
+          "data_type": "character varying"
+        },
+        {
+          "name": "ship_country",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "order_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "ref_table": "customers",
+          "ref_columns": [
+            "customer_id"
+          ]
+        },
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "employees",
+          "ref_columns": [
+            "employee_id"
+          ]
+        },
+        {
+          "columns": [
+            "ship_via"
+          ],
+          "ref_table": "shippers",
+          "ref_columns": [
+            "shipper_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "playlist",
+      "business": "chinook",
+      "row_count": 18,
+      "columns": [
+        {
+          "name": "playlist_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "name",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "playlist_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "playlist_track",
+      "business": "chinook",
+      "row_count": 8715,
+      "columns": [
+        {
+          "name": "playlist_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "track_id",
+          "data_type": "integer"
+        }
+      ],
+      "primary_key": [
+        "playlist_id",
+        "track_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "playlist_id"
+          ],
+          "ref_table": "playlist",
+          "ref_columns": [
+            "playlist_id"
+          ]
+        },
+        {
+          "columns": [
+            "track_id"
+          ],
+          "ref_table": "track",
+          "ref_columns": [
+            "track_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "products",
+      "business": "northwind",
+      "row_count": 77,
+      "columns": [
+        {
+          "name": "product_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "product_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "supplier_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "category_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "quantity_per_unit",
+          "data_type": "character varying"
+        },
+        {
+          "name": "unit_price",
+          "data_type": "real"
+        },
+        {
+          "name": "units_in_stock",
+          "data_type": "smallint"
+        },
+        {
+          "name": "units_on_order",
+          "data_type": "smallint"
+        },
+        {
+          "name": "reorder_level",
+          "data_type": "smallint"
+        },
+        {
+          "name": "discontinued",
+          "data_type": "integer"
+        }
+      ],
+      "primary_key": [
+        "product_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "category_id"
+          ],
+          "ref_table": "categories",
+          "ref_columns": [
+            "category_id"
+          ]
+        },
+        {
+          "columns": [
+            "supplier_id"
+          ],
+          "ref_table": "suppliers",
+          "ref_columns": [
+            "supplier_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "region",
+      "business": "northwind",
+      "row_count": 4,
+      "columns": [
+        {
+          "name": "region_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "region_description",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "region_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "shippers",
+      "business": "northwind",
+      "row_count": 6,
+      "columns": [
+        {
+          "name": "shipper_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "company_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "phone",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "shipper_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "suppliers",
+      "business": "northwind",
+      "row_count": 29,
+      "columns": [
+        {
+          "name": "supplier_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "company_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "contact_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "contact_title",
+          "data_type": "character varying"
+        },
+        {
+          "name": "address",
+          "data_type": "character varying"
+        },
+        {
+          "name": "city",
+          "data_type": "character varying"
+        },
+        {
+          "name": "region",
+          "data_type": "character varying"
+        },
+        {
+          "name": "postal_code",
+          "data_type": "character varying"
+        },
+        {
+          "name": "country",
+          "data_type": "character varying"
+        },
+        {
+          "name": "phone",
+          "data_type": "character varying"
+        },
+        {
+          "name": "fax",
+          "data_type": "character varying"
+        },
+        {
+          "name": "homepage",
+          "data_type": "text"
+        }
+      ],
+      "primary_key": [
+        "supplier_id"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "territories",
+      "business": "northwind",
+      "row_count": 53,
+      "columns": [
+        {
+          "name": "territory_id",
+          "data_type": "character varying"
+        },
+        {
+          "name": "territory_description",
+          "data_type": "character varying"
+        },
+        {
+          "name": "region_id",
+          "data_type": "smallint"
+        }
+      ],
+      "primary_key": [
+        "territory_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "region_id"
+          ],
+          "ref_table": "region",
+          "ref_columns": [
+            "region_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "track",
+      "business": "chinook",
+      "row_count": 3503,
+      "columns": [
+        {
+          "name": "track_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "album_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "media_type_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "genre_id",
+          "data_type": "integer"
+        },
+        {
+          "name": "composer",
+          "data_type": "character varying"
+        },
+        {
+          "name": "milliseconds",
+          "data_type": "integer"
+        },
+        {
+          "name": "bytes",
+          "data_type": "integer"
+        },
+        {
+          "name": "unit_price",
+          "data_type": "numeric"
+        }
+      ],
+      "primary_key": [
+        "track_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "album_id"
+          ],
+          "ref_table": "album",
+          "ref_columns": [
+            "album_id"
+          ]
+        },
+        {
+          "columns": [
+            "genre_id"
+          ],
+          "ref_table": "genre",
+          "ref_columns": [
+            "genre_id"
+          ]
+        },
+        {
+          "columns": [
+            "media_type_id"
+          ],
+          "ref_table": "media_type",
+          "ref_columns": [
+            "media_type_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "us_states",
+      "business": "northwind",
+      "row_count": 51,
+      "columns": [
+        {
+          "name": "state_id",
+          "data_type": "smallint"
+        },
+        {
+          "name": "state_name",
+          "data_type": "character varying"
+        },
+        {
+          "name": "state_abbr",
+          "data_type": "character varying"
+        },
+        {
+          "name": "state_region",
+          "data_type": "character varying"
+        }
+      ],
+      "primary_key": [
+        "state_id"
+      ],
+      "foreign_keys": []
+    }
+  ]
+}

@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 
 from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import SqlDraft
+from querymind.api.explorer import create_explorer
 from querymind.api.main import create_app
 from querymind.config import ConfigError, Settings, get_settings
 from querymind.llm import create_embedding_provider, create_llm_provider
@@ -81,6 +82,10 @@ RECORDINGS = (
     ),
 )
 NAMES = tuple(recording.name for recording in RECORDINGS)
+
+
+# Recorded from GET /catalog and GET /semantic, for the data explorer.
+EXPLORER_FIXTURES = ("catalog", "semantic")
 
 
 def select(names: list[str]) -> tuple[Recording, ...]:
@@ -167,6 +172,18 @@ def write_fixtures(recorded: dict[str, Recorded], output_dir: Path) -> list[Path
     return paths
 
 
+def record_explorer(settings: Settings, output_dir: Path) -> list[Path]:
+    """catalog.json and semantic.json, from the real endpoints. Metadata only, and no LLM."""
+    app = create_app(pipeline=object(), explorer=create_explorer(settings))  # type: ignore[arg-type]
+    paths = []
+    with TestClient(app) as client:
+        for name in EXPLORER_FIXTURES:
+            path = output_dir / f"{name}.json"
+            write_json(path, client.get(f"/{name}").raise_for_status().json())
+            paths.append(path)
+    return paths
+
+
 def record_with(
     settings: Settings, recordings: tuple[Recording, ...], responses: tuple[FakeResponse, ...] = ()
 ) -> tuple[dict[str, Recorded], list[str]]:
@@ -192,6 +209,11 @@ def main() -> int:
         metavar="NAME",
         help=f"record only these ({', '.join(NAMES)}); the other fixtures are left as they are",
     )
+    parser.add_argument(
+        "--explorer",
+        action="store_true",
+        help="record only catalog.json and semantic.json (needs the database, no LLM)",
+    )
     args = parser.parse_args()
     wanted = set(args.only or NAMES)
 
@@ -200,6 +222,10 @@ def main() -> int:
     except ConfigError as exc:
         print(exc, file=sys.stderr)
         return 1
+    if args.explorer:
+        for path in record_explorer(settings, args.output):
+            print(f"wrote {path}")
+        return 0
     settings = settings.model_copy(update={"llm_provider": args.provider})
     # Built here, not by the app's start-up, so --provider applies (the app reads .env only).
     chosen = select(sorted(wanted))
