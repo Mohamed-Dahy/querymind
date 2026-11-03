@@ -8,6 +8,7 @@ the LLM through the history (§8.5).
 
 import warnings
 from collections import deque
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -96,7 +97,9 @@ def executor(monkeypatch: pytest.MonkeyPatch) -> StubExecutor:
     return stub
 
 
-def pipeline_with(*responses: FakeResponse) -> tuple[Pipeline, FakeLLMProvider]:
+def pipeline_with(
+    *responses: FakeResponse, history_loader: Callable[[str], list[Turn]] | None = None
+) -> tuple[Pipeline, FakeLLMProvider]:
     values: dict[str, Any] = {
         "postgres_host": "127.0.0.1",
         "postgres_port": 5433,
@@ -112,7 +115,13 @@ def pipeline_with(*responses: FakeResponse) -> tuple[Pipeline, FakeLLMProvider]:
         "semantic_layer_paths": [],  # the fake SCHEMA has no Northwind tables to define
     }
     llm = FakeLLMProvider(responses)
-    return Pipeline(llm=llm, settings=Settings.model_validate(values), connect=MagicMock()), llm
+    pipeline = Pipeline(
+        llm=llm,
+        settings=Settings.model_validate(values),
+        connect=MagicMock(),
+        history_loader=history_loader,
+    )
+    return pipeline, llm
 
 
 def ask(pipeline: Pipeline, question: str, conversation_id: str | None = "c1") -> AskResult:

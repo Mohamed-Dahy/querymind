@@ -24,10 +24,16 @@ from psycopg.rows import class_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict
 
+from querymind.agent.schemas import Clarification, Turn
+from querymind.agent.state import MAX_HISTORY_TURNS
 from querymind.config import Settings
 from querymind.db.connection import connect_app
 from querymind.db.errors import DatabaseUnavailableError
-from querymind.store.errors import ConversationNotFoundError, StoreUnavailableError
+from querymind.store.errors import (
+    ConversationNotFoundError,
+    StoreError,
+    StoreUnavailableError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +280,37 @@ class ConversationStore:
             )
             .fetchall()
         )
+
+
+def turn_from_saved(saved: SavedTurn) -> Turn:
+    """What the agent's memory holds about a saved turn: the same as `turn_from` for a live one."""
+    reply = saved.reply
+    match saved.kind:
+        case "answer":
+            return Turn(
+                question=saved.question,
+                kind="answer",
+                sql=saved.sql,
+                columns=reply["columns"],
+                row_count=reply["row_count"],
+            )
+        case "clarification":
+            asked = Clarification(question=reply["clarifying_question"], options=reply["options"])
+            return Turn(question=saved.question, kind="clarification", reply=asked.memory_text())
+        case "refusal":
+            return Turn(question=saved.question, kind="refusal", reply=reply["message"])
+
+
+def load_history(store: ConversationStore, conversation_id: str) -> list[Turn]:
+    """A conversation's last turns as the agent's memory. If the store fails, no memory.
+
+    A follow-up may then read less well, but the question is still answered.
+    """
+    try:
+        turns = store.recent_turns(UUID(conversation_id), limit=MAX_HISTORY_TURNS)
+    except StoreError:
+        return []
+    return [turn_from_saved(turn) for turn in turns]
 
 
 def create_store(settings: Settings) -> ConversationStore | None:

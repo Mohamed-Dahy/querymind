@@ -17,6 +17,7 @@ client (§9). A rate limit also says how long to wait, when the provider told us
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -31,31 +32,42 @@ from querymind.api.schemas import ErrorResponse
 from querymind.config import get_settings
 from querymind.llm import create_embedding_provider, create_llm_provider
 from querymind.logging_setup import configure_logging
+from querymind.store.conversations import ConversationStore, create_store, load_history
 
 logger = logging.getLogger(__name__)
 
 
-def create_app(pipeline: AnswersQuestions | StreamsAnswers | None = None) -> FastAPI:
-    """Build the app. Pass `pipeline` in tests; leave it out to build the real one at startup."""
+def create_app(
+    pipeline: AnswersQuestions | StreamsAnswers | None = None,
+    store: ConversationStore | None = None,
+) -> FastAPI:
+    """Build the app. Pass `pipeline` (and `store`) in tests; leave `pipeline` out to build the real
+    ones at startup. Without a store, history is off."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Runs once when the server starts (code before `yield`) and stops (after).
         if pipeline is not None:
             app.state.pipeline = pipeline
+            app.state.store = store
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
+            app.state.store = create_store(settings)  # None when APP_DB_USER isn't set
             app.state.pipeline = Pipeline(
                 llm=create_llm_provider(settings),
                 settings=settings,
                 embeddings=create_embedding_provider(settings),  # schema retrieval (3.3)
+                history_loader=(
+                    partial(load_history, app.state.store) if app.state.store else None
+                ),
             )
             logger.info(
                 "api started",
                 extra={
                     "provider": settings.llm_provider,
                     "schema_retrieval": settings.schema_retrieval,
+                    "history": settings.history_enabled,
                 },
             )
         yield

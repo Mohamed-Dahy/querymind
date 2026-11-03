@@ -14,8 +14,9 @@ Conversations (2.6): `ask(question, conversation_id="...")` continues that conve
 follow-up like "now only for 1997" works. LangGraph's in-memory checkpointer keeps each
 conversation's history (its last turns, no rows) between turns. Without an id, each question
 stands alone (evals, scripts).
-Limits: memory is lost on restart, only the last MAX_CONVERSATIONS are kept, and anyone with
-an id can continue its conversation (Phase 5 ties conversations to users).
+Only the last MAX_CONVERSATIONS are kept, and a restart loses them all. So with a
+`history_loader` (the saved conversations, U3.2), one not in memory is rebuilt when next asked.
+Limit: anyone with an id can continue its conversation (Phase 5 ties conversations to users).
 
 Schema retrieval (3.3): on a big schema the LLM sees only the tables a question needs. It's
 decided once, at the first question: SCHEMA_RETRIEVAL, the number of tables, an embedding
@@ -49,6 +50,7 @@ from querymind.agent.schemas import (
     ClarificationRequest,
     Refusal,
     SqlAttempt,
+    Turn,
 )
 from querymind.agent.state import CHECKPOINT_TYPES, AgentContext, AgentState, new_turn, require
 from querymind.config import ConfigError, Settings
@@ -83,11 +85,14 @@ class Pipeline:
         connect: Callable[[Settings], psycopg.Connection] = connect_readonly,
         embeddings: EmbeddingProvider | None = None,
         index_table: str = INDEX_TABLE,
+        history_loader: Callable[[str], list[Turn]] | None = None,
     ) -> None:
         """`connect` must open a *read-only* connection; it's a parameter so tests can swap it.
 
         `embeddings` (from `create_embedding_provider`) enables schema retrieval; None = the
         LLM always sees the whole schema. `index_table` lets tests use their own index.
+        `history_loader` gives a conversation's earlier turns when they aren't in memory (after a
+        restart). None = nothing outlives this object: what evals and scripts want.
 
         Raises:
             ConfigError: SCHEMA_RETRIEVAL=on without an embedding provider (GOOGLE_API_KEY).
@@ -99,6 +104,7 @@ class Pipeline:
         self._connect = connect
         self._embeddings = embeddings
         self._index_table = index_table
+        self._history_loader = history_loader
         # The serializer may only rebuild our own state classes from a saved checkpoint.
         serde = JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
         self._checkpointer = InMemorySaver(serde=serde)
@@ -156,6 +162,8 @@ class Pipeline:
         thread_id = conversation_id or f"standalone-{uuid.uuid4()}"
         with self._one_run_at_a_time(conversation_id):
             try:
+                if conversation_id is not None:
+                    self._restore_history(conversation_id)
                 catalog, retriever = self._schema_info()
                 start = new_turn(
                     question=question,
@@ -215,6 +223,30 @@ class Pipeline:
             finally:
                 self._keep_or_forget(thread_id, keep=conversation_id is not None)
         yield Finished(self._finish(question, state, reply, started, conversation_id))
+
+    def forget(self, conversation_id: str) -> None:
+        """Drop a conversation from memory, so a deleted conversation can't come back in a prompt.
+
+        Waits for any run of it to end first. Unknown ids are fine: there's nothing to do.
+        """
+        with self._one_run_at_a_time(conversation_id):
+            self._checkpointer.delete_thread(conversation_id)
+            with self._conversations_lock:
+                self._conversations.pop(conversation_id, None)
+
+    def _restore_history(self, conversation_id: str) -> None:
+        """Put a conversation's saved turns back into memory, if memory has none of them.
+
+        Called inside the conversation's lock, so no run of it can be under way.
+        """
+        if self._history_loader is None:
+            return
+        config: RunnableConfig = {"configurable": {"thread_id": conversation_id}}
+        if self._graph.get_state(config).values.get("history"):
+            return
+        turns = self._history_loader(conversation_id)
+        if turns:
+            self._graph.update_state(config, {"history": turns}, as_node="remember")
 
     def _one_run_at_a_time(self, conversation_id: str | None) -> AbstractContextManager[object]:
         """One run per conversation: the next one waits until the last has ended.

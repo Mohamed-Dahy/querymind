@@ -46,7 +46,7 @@ export interface paths {
          *     Each event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or
          *     `error` (its error body): the status is already sent, so a failed run still answers 200.
          *
-         *     Closing the connection stops the run after the step working now.
+         *     Closing the connection stops the run after the step working now, and nothing is saved.
          */
         post: operations["ask_stream_ask_stream_post"];
         delete?: never;

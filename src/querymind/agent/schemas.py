@@ -26,6 +26,10 @@ class Clarification(BaseModel):
         "e.g. 'by total revenue', 'by number of orders'"
     )
 
+    def memory_text(self) -> str:
+        """How this question back reads in the conversation's history, live or restored."""
+        return f"{self.question} Options: {'; '.join(self.options)}"
+
     @field_validator("options")
     @classmethod
     def _clean_options(cls, options: list[str]) -> list[str]:

@@ -1,8 +1,9 @@
 """The HTTP endpoints: POST /ask, POST /ask/stream and GET /health."""
 
-from collections.abc import Generator
+import logging
+from collections.abc import Generator, Sequence
 from typing import Annotated, Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from fastapi.sse import EventSourceResponse
@@ -13,6 +14,7 @@ from querymind.api.deps import (
     AnswersQuestions,
     StreamsAnswers,
     get_pipeline,
+    get_store,
     get_streaming_pipeline,
 )
 from querymind.api.errors import error_response
@@ -29,6 +31,10 @@ from querymind.api.schemas import (
     StreamEvent,
     reply_from,
 )
+from querymind.store.conversations import ConversationStore
+from querymind.store.errors import StoreError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -49,6 +55,29 @@ def close_runs_when_the_response_ends() -> Generator[OpenRuns]:
         run.close()
 
 
+def _save(
+    store: ConversationStore | None,
+    conversation_id: UUID,
+    reply: AskResponse | ClarificationResponse | RefusalResponse,
+    trace: Sequence[AgentEvent] = (),
+) -> None:
+    """Save a finished turn. A failure is logged and goes no further: the answer is already paid
+    for, so it must still reach the user, even though a reload won't find it."""
+    if store is None:
+        return
+    try:
+        store.save_turn(
+            conversation_id,
+            question=reply.question,
+            kind=reply.kind,
+            sql=reply.sql if isinstance(reply, AskResponse) else None,
+            reply=reply.model_dump(mode="json"),
+            trace=[event.model_dump(mode="json") for event in trace],
+        )
+    except StoreError:
+        logger.warning("turn not saved", extra={"conversation_id": str(conversation_id)})
+
+
 # Documented in OpenAPI so API users know every error shape in advance (handlers in main.py).
 _ERRORS: dict[int | str, dict[str, Any]] = {
     422: {"model": ErrorResponse, "description": "Invalid question, or unsafe generated SQL"},
@@ -61,7 +90,9 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
 
 @router.post("/ask", response_model=AskReply, responses=_ERRORS, tags=["questions"])
 def ask(
-    request: AskRequest, pipeline: Annotated[AnswersQuestions, Depends(get_pipeline)]
+    request: AskRequest,
+    pipeline: Annotated[AnswersQuestions, Depends(get_pipeline)],
+    store: Annotated[ConversationStore | None, Depends(get_store)],
 ) -> AskResponse | ClarificationResponse | RefusalResponse:
     """Answer a question about the data: the answer, the SQL that ran, and the rows.
 
@@ -75,7 +106,9 @@ def ask(
     # FastAPI runs it in a worker thread and the server stays free for other requests.
     conversation_id = request.conversation_id or uuid4()
     reply = pipeline.ask(request.question, conversation_id=str(conversation_id))
-    return reply_from(reply, conversation_id=conversation_id)
+    response = reply_from(reply, conversation_id=conversation_id)
+    _save(store, conversation_id, response)
+    return response
 
 
 @router.post(
@@ -88,23 +121,29 @@ def ask_stream(
     request: AskRequest,
     pipeline: Annotated[StreamsAnswers, Depends(get_streaming_pipeline)],
     runs: Annotated[OpenRuns, Depends(close_runs_when_the_response_ends)],
+    store: Annotated[ConversationStore | None, Depends(get_store)],
 ) -> Generator[StreamEvent]:
     """The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).
 
     Each event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or
     `error` (its error body): the status is already sent, so a failed run still answers 200.
 
-    Closing the connection stops the run after the step working now.
+    Closing the connection stops the run after the step working now, and nothing is saved.
     """
     # A plain `def`, as in `ask` above: FastAPI runs each step of this generator in a worker thread.
     conversation_id = request.conversation_id or uuid4()
     try:
         run = pipeline.stream(request.question, conversation_id=str(conversation_id))
         runs.append(run)
+        trace: list[AgentEvent] = []
         for event in run:
             if isinstance(event, Finished):
-                yield FinalEvent(reply=reply_from(event.reply, conversation_id=conversation_id))
+                response = reply_from(event.reply, conversation_id=conversation_id)
+                # Saved before the answer goes out, so a reload right after it finds the turn.
+                _save(store, conversation_id, response, trace)
+                yield FinalEvent(reply=response)
             else:
+                trace.append(event)
                 yield event
     except Exception as exc:
         _, body = error_response(exc)

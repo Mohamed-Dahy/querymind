@@ -300,8 +300,7 @@ def turn_from(state: AgentState) -> Turn:
     if draft is not None and draft.refusal is not None:
         return Turn(question=question, kind="refusal", reply=draft.refusal)
     if draft is not None and draft.clarification is not None:
-        asked = draft.clarification
-        reply = f"{asked.question} Options: {'; '.join(asked.options)}"
+        reply = draft.clarification.memory_text()
         return Turn(question=question, kind="clarification", reply=reply)
     return Turn(question=question, kind="failed")
 

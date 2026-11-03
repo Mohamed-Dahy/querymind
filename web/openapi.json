@@ -860,7 +860,7 @@
     },
     "/ask/stream": {
       "post": {
-        "description": "The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).\n\nEach event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or\n`error` (its error body): the status is already sent, so a failed run still answers 200.\n\nClosing the connection stops the run after the step working now.",
+        "description": "The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).\n\nEach event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or\n`error` (its error body): the status is already sent, so a failed run still answers 200.\n\nClosing the connection stops the run after the step working now, and nothing is saved.",
         "operationId": "ask_stream_ask_stream_post",
         "requestBody": {
           "content": {

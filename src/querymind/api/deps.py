@@ -11,6 +11,7 @@ from fastapi import Request
 
 from querymind.agent.events import AgentEvent, Finished
 from querymind.agent.schemas import AgentReply
+from querymind.store.conversations import ConversationStore
 
 
 class AnswersQuestions(Protocol):
@@ -38,3 +39,9 @@ def get_streaming_pipeline(request: Request) -> StreamsAnswers:
     """The same pipeline, for the streaming route."""
     pipeline: StreamsAnswers = request.app.state.pipeline
     return pipeline
+
+
+def get_store(request: Request) -> ConversationStore | None:
+    """The conversation store created at startup, or None when history is off."""
+    store: ConversationStore | None = request.app.state.store
+    return store
