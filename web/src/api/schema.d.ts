@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Catalog
+         * @description Every table with its columns, keys, business and approximate row count.
+         */
+        get: operations["get_catalog_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations": {
         parameters: {
             query?: never;
@@ -182,6 +202,26 @@ export interface paths {
          * @description Remove a saved question. Removing one that is already gone is fine.
          */
         delete: operations["remove_saved_question_saved_questions__saved_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/semantic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Semantic
+         * @description Per business: what the tables and columns mean, the terms and the preferred joins.
+         */
+        get: operations["get_semantic_semantic_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -324,6 +364,58 @@ export interface components {
              */
             type: "attempt_failed";
         };
+        /** BusinessMeaning */
+        BusinessMeaning: {
+            /** Database */
+            database: string;
+            /** Description */
+            description: string;
+            /** Joins */
+            joins: components["schemas"]["JoinMeaning"][];
+            /** Metrics */
+            metrics: components["schemas"]["MetricMeaning"][];
+            /** Tables */
+            tables: components["schemas"]["TableMeaning"][];
+        };
+        /** Catalog */
+        Catalog: {
+            /** Tables */
+            tables: components["schemas"]["CatalogTable"][];
+        };
+        /** CatalogColumn */
+        CatalogColumn: {
+            /** Data Type */
+            data_type: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CatalogForeignKey
+         * @description `columns` of this table point to `ref_columns` of `ref_table` (same order).
+         */
+        CatalogForeignKey: {
+            /** Columns */
+            columns: string[];
+            /** Ref Columns */
+            ref_columns: string[];
+            /** Ref Table */
+            ref_table: string;
+        };
+        /** CatalogTable */
+        CatalogTable: {
+            /** Business */
+            business: string | null;
+            /** Columns */
+            columns: components["schemas"]["CatalogColumn"][];
+            /** Foreign Keys */
+            foreign_keys: components["schemas"]["CatalogForeignKey"][];
+            /** Name */
+            name: string;
+            /** Primary Key */
+            primary_key: string[];
+            /** Row Count */
+            row_count: number | null;
+        };
         /**
          * CheckedEvent
          * @description The result was checked: these are the warning signs (none = it looks fine).
@@ -368,6 +460,19 @@ export interface components {
             options: string[];
             /** Question */
             question: string;
+        };
+        /** ColumnMeaning */
+        ColumnMeaning: {
+            /** Description */
+            description: string;
+            /** Dictionary Note */
+            dictionary_note: string;
+            /** Name */
+            name: string;
+            /** Pii */
+            pii: boolean;
+            /** Synonyms */
+            synonyms: string[];
         };
         /**
          * ConversationDetail
@@ -544,7 +649,34 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** JoinMeaning */
+        JoinMeaning: {
+            /** Left */
+            left: string;
+            /** Note */
+            note: string;
+            /** Right */
+            right: string;
+        };
         JsonValue: unknown;
+        /** MetricMeaning */
+        MetricMeaning: {
+            /** Description */
+            description: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "measure" | "condition";
+            /** Name */
+            name: string;
+            /** Sql */
+            sql: string;
+            /** Synonyms */
+            synonyms: string[];
+            /** Table */
+            table: string;
+        };
         /**
          * RefusalResponse
          * @description QueryMind won't do this (e.g. change data). Nothing in the database was changed.
@@ -691,6 +823,11 @@ export interface components {
              */
             type: "schema";
         };
+        /** SemanticOverview */
+        SemanticOverview: {
+            /** Businesses */
+            businesses: components["schemas"]["BusinessMeaning"][];
+        };
         /**
          * ShownSchema
          * @description Which tables the LLM saw, for people. SchemaSelection's raw fallback `reason` stays out.
@@ -750,6 +887,23 @@ export interface components {
              * @enum {string}
              */
             type: "step";
+        };
+        /** TableMeaning */
+        TableMeaning: {
+            /** Columns */
+            columns: components["schemas"]["ColumnMeaning"][];
+            /** Description */
+            description: string;
+            /** Dictionary Description */
+            dictionary_description: string;
+            /** Dictionary Reviewed */
+            dictionary_reviewed: boolean;
+            /** Name */
+            name: string;
+            /** Suggested Questions */
+            suggested_questions: string[];
+            /** Synonyms */
+            synonyms: string[];
         };
         /**
          * ValidatedEvent
@@ -871,6 +1025,35 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_catalog_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Catalog"];
+                };
+            };
+            /** @description The database isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1260,6 +1443,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_semantic_semantic_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticOverview"];
                 };
             };
         };

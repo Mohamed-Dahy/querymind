@@ -249,6 +249,173 @@
         "title": "AttemptFailedEvent",
         "type": "object"
       },
+      "BusinessMeaning": {
+        "properties": {
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "joins": {
+            "items": {
+              "$ref": "#/components/schemas/JoinMeaning"
+            },
+            "title": "Joins",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricMeaning"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableMeaning"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "database",
+          "description",
+          "tables",
+          "metrics",
+          "joins"
+        ],
+        "title": "BusinessMeaning",
+        "type": "object"
+      },
+      "Catalog": {
+        "properties": {
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogTable"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tables"
+        ],
+        "title": "Catalog",
+        "type": "object"
+      },
+      "CatalogColumn": {
+        "properties": {
+          "data_type": {
+            "title": "Data Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "data_type"
+        ],
+        "title": "CatalogColumn",
+        "type": "object"
+      },
+      "CatalogForeignKey": {
+        "description": "`columns` of this table point to `ref_columns` of `ref_table` (same order).",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "ref_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ref Columns",
+            "type": "array"
+          },
+          "ref_table": {
+            "title": "Ref Table",
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns",
+          "ref_table",
+          "ref_columns"
+        ],
+        "title": "CatalogForeignKey",
+        "type": "object"
+      },
+      "CatalogTable": {
+        "properties": {
+          "business": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "foreign_keys": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogForeignKey"
+            },
+            "title": "Foreign Keys",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "primary_key": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Primary Key",
+            "type": "array"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          }
+        },
+        "required": [
+          "name",
+          "business",
+          "row_count",
+          "columns",
+          "primary_key",
+          "foreign_keys"
+        ],
+        "title": "CatalogTable",
+        "type": "object"
+      },
       "CheckedEvent": {
         "description": "The result was checked: these are the warning signs (none = it looks fine).",
         "properties": {
@@ -319,6 +486,42 @@
           "options"
         ],
         "title": "ClarificationResponse",
+        "type": "object"
+      },
+      "ColumnMeaning": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "dictionary_note": {
+            "title": "Dictionary Note",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pii": {
+            "title": "Pii",
+            "type": "boolean"
+          },
+          "synonyms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Synonyms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "synonyms",
+          "pii",
+          "dictionary_note"
+        ],
+        "title": "ColumnMeaning",
         "type": "object"
       },
       "ConversationDetail": {
@@ -659,7 +862,75 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "JoinMeaning": {
+        "properties": {
+          "left": {
+            "title": "Left",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "right": {
+            "title": "Right",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right",
+          "note"
+        ],
+        "title": "JoinMeaning",
+        "type": "object"
+      },
       "JsonValue": {},
+      "MetricMeaning": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "measure",
+              "condition"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          },
+          "synonyms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Synonyms",
+            "type": "array"
+          },
+          "table": {
+            "title": "Table",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "table",
+          "sql",
+          "description",
+          "synonyms"
+        ],
+        "title": "MetricMeaning",
+        "type": "object"
+      },
       "RefusalResponse": {
         "description": "QueryMind won't do this (e.g. change data). Nothing in the database was changed.",
         "properties": {
@@ -956,6 +1227,22 @@
         "title": "SchemaEvent",
         "type": "object"
       },
+      "SemanticOverview": {
+        "properties": {
+          "businesses": {
+            "items": {
+              "$ref": "#/components/schemas/BusinessMeaning"
+            },
+            "title": "Businesses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "businesses"
+        ],
+        "title": "SemanticOverview",
+        "type": "object"
+      },
       "ShownSchema": {
         "description": "Which tables the LLM saw, for people. SchemaSelection's raw fallback `reason` stays out.",
         "properties": {
@@ -1070,6 +1357,58 @@
           "status"
         ],
         "title": "StepEvent",
+        "type": "object"
+      },
+      "TableMeaning": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMeaning"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "dictionary_description": {
+            "title": "Dictionary Description",
+            "type": "string"
+          },
+          "dictionary_reviewed": {
+            "title": "Dictionary Reviewed",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "suggested_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Questions",
+            "type": "array"
+          },
+          "synonyms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Synonyms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "synonyms",
+          "dictionary_description",
+          "dictionary_reviewed",
+          "columns",
+          "suggested_questions"
+        ],
+        "title": "TableMeaning",
         "type": "object"
       },
       "ValidatedEvent": {
@@ -1310,6 +1649,38 @@
         "summary": "Ask Stream",
         "tags": [
           "questions"
+        ]
+      }
+    },
+    "/catalog": {
+      "get": {
+        "description": "Every table with its columns, keys, business and approximate row count.",
+        "operationId": "get_catalog_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The database isn't available"
+          }
+        },
+        "summary": "Get Catalog",
+        "tags": [
+          "explorer"
         ]
       }
     },
@@ -1833,6 +2204,28 @@
         "summary": "Remove Saved Question",
         "tags": [
           "saved questions"
+        ]
+      }
+    },
+    "/semantic": {
+      "get": {
+        "description": "Per business: what the tables and columns mean, the terms and the preferred joins.",
+        "operationId": "get_semantic_semantic_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Semantic",
+        "tags": [
+          "explorer"
         ]
       }
     }

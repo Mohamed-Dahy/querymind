@@ -155,6 +155,44 @@ ORDER BY rel.relname, con.conname
 """
 
 
+# Postgres's own estimate, so a huge table costs nothing. -1: it has never been analyzed.
+_ROW_ESTIMATES_QUERY = """
+SELECT rel.relname::text, rel.reltuples::bigint
+FROM pg_class AS rel
+JOIN pg_namespace AS ns ON ns.oid = rel.relnamespace
+WHERE ns.nspname = %(schema)s AND rel.relkind IN ('r', 'p')
+"""
+
+
+def read_row_counts(
+    conn: psycopg.Connection, tables: Collection[str], *, schema: str = "public"
+) -> dict[str, int | None]:
+    """About how many rows each table has: Postgres's estimate, or else a real count.
+
+    A table with no estimate is counted, under the role's statement timeout. If that fails too (the
+    timeout, say), its count is None and the other tables still get theirs: one slow table mustn't
+    cost the whole list.
+    """
+    rows = conn.execute(_ROW_ESTIMATES_QUERY, {"schema": schema}).fetchall()
+    estimates = {name: estimate for name, estimate in rows}
+    counts: dict[str, int | None] = {}
+    for table in tables:
+        estimate = estimates.get(table, -1)
+        counts[table] = estimate if estimate >= 0 else _count_rows(conn, schema, table)
+    return counts
+
+
+def _count_rows(conn: psycopg.Connection, schema: str, table: str) -> int | None:
+    query = f"SELECT count(*) FROM {quote_name(schema)}.{quote_name(table)}"
+    try:
+        row = conn.execute(query.encode()).fetchone()
+    except psycopg.Error:
+        conn.rollback()  # a failed statement ends the transaction: the next table needs a new one
+        logger.warning("row count not available", extra={"table": table})
+        return None
+    return row[0] if row else None
+
+
 def introspect_schema(
     conn: psycopg.Connection, *, schema: str = "public", sample_rows: int = 3
 ) -> SchemaInfo:
