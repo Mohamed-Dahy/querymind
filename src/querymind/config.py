@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # Read-only role the agent connects with.
     analyst_ro_user: str
     analyst_ro_password: SecretStr
+    # The app's own role, for saved conversations (data/setup_app_db.py). Optional: not set =
+    # history is off, and scripts, evals and CI jobs that don't need it work without it.
+    app_db_user: str | None = None
+    app_db_password: SecretStr | None = None
 
     # --- LLM (Bedrock is added in Phase 6) ---
     llm_provider: Literal["groq", "gemini"]
@@ -104,6 +108,15 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
+    def _app_role_is_its_own(self) -> Self:
+        """Both or neither, and never a role the agent or the setup scripts use."""
+        if (self.app_db_user is None) != (self.app_db_password is None):
+            raise ValueError("APP_DB_USER and APP_DB_PASSWORD must be set together")
+        if self.app_db_user in (self.analyst_ro_user, self.postgres_admin_user):
+            raise ValueError("APP_DB_USER must be a role of its own, not the agent's or admin's")
+        return self
+
+    @model_validator(mode="after")
     def _active_provider_is_configured(self) -> Self:
         """Runs after all fields load: the chosen LLM provider must have its key and model."""
         missing = self._missing_llm_settings()
@@ -146,6 +159,17 @@ class Settings(BaseSettings):
     def admin_conninfo(self) -> str:
         """Connection string for the admin role. Setup scripts only."""
         return self._conninfo(self.postgres_admin_user, self.postgres_admin_password)
+
+    @property
+    def history_enabled(self) -> bool:
+        """Whether conversations are saved: only when the app's role is configured."""
+        return self.app_db_user is not None
+
+    def app_conninfo(self) -> str:
+        """Connection string for the app's role: saved conversations only, never agent queries."""
+        if self.app_db_user is None or self.app_db_password is None:
+            raise ConfigError("APP_DB_USER and APP_DB_PASSWORD are not set")
+        return self._conninfo(self.app_db_user, self.app_db_password)
 
     def _conninfo(self, user: str, password: SecretStr) -> str:
         # make_conninfo quotes each value correctly, even passwords with spaces or quotes.

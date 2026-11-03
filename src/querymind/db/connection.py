@@ -1,7 +1,8 @@
-"""The one place the agent opens database connections.
+"""The one place the app opens database connections.
 
 Every agent query goes through `connect_readonly`, so it always runs as the read-only role
-(analyst_ro). The admin connection is for setup scripts only and never used here.
+(analyst_ro). Saved conversations go through `connect_app`, as a role that can't see business data.
+The admin connection is for setup scripts only and never used here.
 """
 
 import logging
@@ -28,3 +29,16 @@ def connect_readonly(settings: Settings) -> psycopg.Connection:
         raise DatabaseUnavailableError(
             "Could not connect to the database. Please try again later."
         ) from exc
+
+
+def connect_app(settings: Settings) -> psycopg.Connection:
+    """Open a new connection as the app's role. The caller must close it (use `with`).
+
+    Raises:
+        DatabaseUnavailableError: the connection failed; see `connect_readonly`.
+    """
+    try:
+        return psycopg.connect(settings.app_conninfo())
+    except psycopg.OperationalError as exc:
+        logger.warning("app database connection failed", extra={"detail": str(exc)})
+        raise DatabaseUnavailableError("Could not connect to the app's database.") from exc

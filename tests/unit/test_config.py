@@ -158,3 +158,41 @@ def test_real_env_vars_override_env_file(clean_env: pytest.MonkeyPatch, tmp_path
     env_file.write_text("\n".join(f"{k}={v}" for k, v in VALID_ENV.items()), encoding="utf-8")
     clean_env.setenv("MAX_ROWS", "50")
     assert load_settings(env_file=str(env_file)).max_rows == 50
+
+
+def test_history_is_off_without_the_app_role(valid_env: pytest.MonkeyPatch) -> None:
+    settings = load_settings(env_file=None)
+
+    assert not settings.history_enabled
+    with pytest.raises(ConfigError, match="APP_DB_USER"):
+        settings.app_conninfo()
+
+
+def test_history_is_on_with_the_app_role(valid_env: pytest.MonkeyPatch) -> None:
+    valid_env.setenv("APP_DB_USER", "qm_app")
+    valid_env.setenv("APP_DB_PASSWORD", "secret-app")
+
+    settings = load_settings(env_file=None)
+
+    assert settings.history_enabled
+    assert "user=qm_app" in settings.app_conninfo()
+    assert "secret-app" not in repr(settings)
+
+
+@pytest.mark.parametrize("name", ["APP_DB_USER", "APP_DB_PASSWORD"])
+def test_the_app_role_needs_both_settings(valid_env: pytest.MonkeyPatch, name: str) -> None:
+    valid_env.setenv(name, "value")
+
+    with pytest.raises(ConfigError, match="set together"):
+        load_settings(env_file=None)
+
+
+@pytest.mark.parametrize("user", ["ANALYST_RO_USER", "POSTGRES_ADMIN_USER"])
+def test_the_app_role_cant_be_the_agents_or_the_admins(
+    valid_env: pytest.MonkeyPatch, user: str
+) -> None:
+    valid_env.setenv("APP_DB_USER", VALID_ENV[user])
+    valid_env.setenv("APP_DB_PASSWORD", "secret-app")
+
+    with pytest.raises(ConfigError, match="role of its own"):
+        load_settings(env_file=None)

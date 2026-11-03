@@ -58,6 +58,8 @@ jobs:
       POSTGRES_ADMIN_PASSWORD: ci-admin-password
       ANALYST_RO_USER: analyst_ro
       ANALYST_RO_PASSWORD: ci-readonly-password
+      APP_DB_USER: qm_app
+      APP_DB_PASSWORD: ci-app-password
       # Config requires the active LLM provider's settings; no LLM is called in these tests.
       LLM_PROVIDER: groq
       GROQ_API_KEY: ci-not-a-real-key
@@ -93,6 +95,9 @@ jobs:
 
       - name: Seed Chinook next to it (Phase 3.2)
         run: uv run python data/seed_chinook.py
+
+      - name: Create the app's own storage (UI U3.1)
+        run: uv run python data/setup_app_db.py
 
       - name: Integration tests
         run: uv run pytest -m integration
