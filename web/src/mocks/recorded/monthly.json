@@ -79,6 +79,10 @@
     "total_tables": 25,
     "search": "hybrid"
   },
+  "tables_used": [
+    "order_details",
+    "orders"
+  ],
   "search_question": null,
   "example_questions": [
     "What was the sales revenue in each quarter of 1997? Return the quarter (1-4) and the revenue.",

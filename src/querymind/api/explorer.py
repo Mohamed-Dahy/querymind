@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import psycopg
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi import Path as PathParam
 
-from querymind.api.schemas import ErrorResponse
+from querymind.api.conversations import Store
+from querymind.api.schemas import ErrorResponse, TableQuestionList
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError
@@ -91,6 +93,20 @@ Explorer = Annotated[ExplorerData, Depends(get_explorer)]
 def get_catalog(explorer: Explorer) -> Catalog:
     """Every table with its columns, keys, business and approximate row count."""
     return explorer.catalog()
+
+
+@router.get(
+    "/catalog/tables/{table}/questions",
+    response_model=TableQuestionList,
+    responses={503: {"model": ErrorResponse, "description": "History isn't available"}},
+)
+def get_table_questions(
+    table: Annotated[str, PathParam(max_length=63)],  # Postgres's longest name
+    store: Store,
+    limit: Annotated[int, Query(ge=1, le=20)] = 5,
+) -> TableQuestionList:
+    """Recent saved questions whose SQL read this table. No such table: an empty list."""
+    return TableQuestionList(questions=store.recent_questions_using(table, limit=limit))
 
 
 @router.get("/semantic", response_model=SemanticOverview)

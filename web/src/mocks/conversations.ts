@@ -10,6 +10,7 @@ import type {
   ConversationUpdate,
   RerunResult,
 } from '@/api/conversations'
+import type { TableQuestionList } from '@/api/explorer'
 import type { SavedQuestion } from '@/api/savedQuestions'
 import type { TraceEvent } from '@/api/stream'
 
@@ -122,6 +123,23 @@ export function rerunStored(id: string, n: number): RerunResult | undefined {
     truncated: false,
     ran_at: new Date().toISOString(),
   }
+}
+
+/** Like the real store: the newest saved questions whose SQL read this table. */
+export function questionsUsing(table: string, limit = 5): TableQuestionList {
+  const questions = load()
+    .flatMap(({ id, stored_turns: turns }) =>
+      turns
+        .filter(({ reply }) => reply.kind === 'answer' && reply.tables_used.includes(table))
+        .map(({ n, created_at, reply }) => ({
+          conversation_id: id,
+          n,
+          question: reply.question,
+          created_at,
+        })),
+    )
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  return { questions: questions.slice(0, limit) }
 }
 
 function loadSaved(): SavedQuestion[] {

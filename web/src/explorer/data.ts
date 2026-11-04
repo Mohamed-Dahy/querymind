@@ -70,6 +70,24 @@ export function joinData(catalog: Catalog, overview: SemanticOverview): Explorer
   return { tables, preferredJoins }
 }
 
+/** The tables one answer read, and those it was shown but didn't use (from the URL). */
+export type Highlights = { used: ReadonlySet<string>; shown: ReadonlySet<string> }
+
+function namesFrom(value: string | null, known: ReadonlySet<string>): string[] {
+  return (value ?? '').split(',').filter((name) => known.has(name))
+}
+
+/** From a link, so anything may be in it: a name that isn't a table is ignored. */
+export function highlightsFrom(
+  params: URLSearchParams,
+  tables: readonly ExplorerTable[],
+): Highlights {
+  const known = new Set(tables.map(({ name }) => name))
+  const used = new Set(namesFrom(params.get('used'), known))
+  const shown = new Set(namesFrom(params.get('shown'), known).filter((name) => !used.has(name)))
+  return { used, shown }
+}
+
 /** Finds a table by its name, another word for it, or one of its columns. */
 export function matchesSearch(table: ExplorerTable, search: string): boolean {
   const needle = search.trim().toLowerCase()

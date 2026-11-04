@@ -1,5 +1,6 @@
 import { TriangleAlert } from 'lucide-react'
 import type { ReactNode, RefObject } from 'react'
+import { Link } from 'react-router'
 
 import type { AskResponse } from '@/api/client'
 import {
@@ -12,7 +13,7 @@ import {
 import { diffWords } from '@/lib/diff'
 
 import { formatDuration } from './trace'
-import { triesOf, type FailedKind, type WorkTry } from './work'
+import { tablesPath, triesOf, type FailedKind, type WorkTry } from './work'
 
 const WHAT_WENT_WRONG: Record<FailedKind, string> = {
   unsafe: 'The validator refused it.',
@@ -45,7 +46,8 @@ type ShowYourWorkProps = {
 /** A side sheet with how an answer was made. It only reads the reply, so it works after any path. */
 export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWorkProps) {
   const tries = triesOf(reply)
-  const { schema_selection: selection, search_question: searchedAs } = reply
+  const { schema_selection: selection, search_question: searchedAs, tables_used: used } = reply
+  const explorerPath = tablesPath(reply)
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -81,6 +83,30 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
                   </li>
                 ))}
               </ul>
+            </Section>
+          )}
+
+          {explorerPath !== null && (
+            <Section title="Tables the SQL read">
+              {used.length > 0 ? (
+                <ul aria-label="Tables read" className="flex flex-wrap gap-1.5">
+                  {used.map((table) => (
+                    <li key={table} className="rounded border px-1.5 py-0.5 font-mono text-xs">
+                      {table}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-fg-muted">
+                  Not recorded for this answer: it was saved before QueryMind kept this.
+                </p>
+              )}
+              <Link
+                to={explorerPath}
+                className="mt-2 inline-flex min-h-8 items-center rounded-lg text-info underline underline-offset-4 pointer-coarse:min-h-11"
+              >
+                See these tables
+              </Link>
             </Section>
           )}
 

@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AskResponse } from '@/api/client'
@@ -9,7 +10,11 @@ import { triesOf } from './work'
 
 function renderWork(reply: AskResponse) {
   const onOpenChange = vi.fn<(open: boolean) => void>()
-  render(<ShowYourWork reply={reply} open onOpenChange={onOpenChange} opener={{ current: null }} />)
+  render(
+    <MemoryRouter>
+      <ShowYourWork reply={reply} open onOpenChange={onOpenChange} opener={{ current: null }} />
+    </MemoryRouter>,
+  )
   return screen.getByRole('dialog', { name: 'How this answer was made' })
 }
 
@@ -163,5 +168,65 @@ describe('triesOf', () => {
     const tries = triesOf({ ...answer, attempts: [suspicious], sql: 'SELECT 3' })
 
     expect(tries.map((one) => one.used)).toEqual([false, true])
+  })
+})
+
+describe('ShowYourWork and the explorer', () => {
+  const seeTables = (dialog: HTMLElement) =>
+    within(dialog).queryByRole('link', { name: 'See these tables' })
+  const paramsOf = (link: HTMLElement | null) =>
+    new URL(link?.getAttribute('href') ?? '', 'http://x').searchParams
+
+  it('lists the tables the SQL read, and links to them, with the shown ones apart', () => {
+    const reply: AskResponse = {
+      ...answer,
+      tables_used: ['orders'],
+      schema_selection: {
+        mode: 'retrieved',
+        tables: ['orders', 'customers'],
+        total_tables: 25,
+        search: 'hybrid',
+      },
+    }
+    const dialog = renderWork(reply)
+
+    const read = within(dialog).getByRole('list', { name: 'Tables read' })
+    expect(within(read).getByText('orders')).toBeInTheDocument()
+    const params = paramsOf(seeTables(dialog))
+    expect(params.get('used')).toBe('orders')
+    expect(params.get('shown')).toBe('customers')
+  })
+
+  it('the whole schema shown says nothing, so it is left out', () => {
+    const reply: AskResponse = {
+      ...answer,
+      tables_used: ['orders'],
+      schema_selection: {
+        mode: 'full',
+        tables: ['orders', 'customers'],
+        total_tables: 25,
+        search: '',
+      },
+    }
+
+    expect(paramsOf(seeTables(renderWork(reply))).get('shown')).toBeNull()
+  })
+
+  it('an answer saved before this existed says so, and still shows what it was shown', () => {
+    const reply: AskResponse = {
+      ...answer,
+      tables_used: [],
+      schema_selection: { mode: 'retrieved', tables: ['orders'], total_tables: 25, search: '' },
+    }
+    const dialog = renderWork(reply)
+
+    expect(within(dialog).getByText(/saved before QueryMind kept this/)).toBeInTheDocument()
+    expect(paramsOf(seeTables(dialog)).get('shown')).toBe('orders')
+  })
+
+  it('with nothing to show there is no link', () => {
+    const reply: AskResponse = { ...answer, tables_used: [], schema_selection: null }
+
+    expect(seeTables(renderWork(reply))).toBeNull()
   })
 })

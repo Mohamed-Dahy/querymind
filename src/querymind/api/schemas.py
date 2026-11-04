@@ -23,7 +23,7 @@ from querymind.agent.schemas import (
     ConfidenceLevel,
     ShownSchema,
 )
-from querymind.store.conversations import ConversationSummary, SavedQuestion
+from querymind.store.conversations import ConversationSummary, SavedQuestion, TableQuestion
 
 
 class AskRequest(BaseModel):
@@ -88,6 +88,9 @@ class AskResponse(BaseModel):
     schema_selection: ShownSchema | None = Field(
         default=None, description="Which tables the LLM was shown"
     )
+    tables_used: list[str] = Field(
+        default=[], description="The tables the SQL that ran really read"
+    )
     search_question: str | None = Field(
         default=None, description="A follow-up as the standalone question that was searched"
     )
@@ -119,6 +122,7 @@ class AskResponse(BaseModel):
                 for a in result.failed_attempts
             ],
             schema_selection=result.schema_selection,
+            tables_used=list(result.tables_used),
             search_question=result.search_question,
             example_questions=list(result.example_questions),
             sql_attempts=result.sql_attempts,
@@ -265,6 +269,12 @@ class ConversationUpdate(BaseModel):
         if self.title is None and self.pinned is None:
             raise ValueError("send a title or pinned")
         return self
+
+
+class TableQuestionList(BaseModel):
+    """Recent saved questions whose SQL read a table, newest first."""
+
+    questions: list[TableQuestion]
 
 
 class SavedQuestionList(BaseModel):

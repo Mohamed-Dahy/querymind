@@ -4,7 +4,8 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
 import type { AskRequest } from '@/api/client'
-import { catalog, clarification, semantic } from '@/mocks/fixtures'
+import { answer, catalog, clarification, semantic } from '@/mocks/fixtures'
+import { recordTurn } from '@/mocks/conversations'
 import { apiError, replyStream, STREAM_URL } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
@@ -196,6 +197,57 @@ describe('TablePage', () => {
     await router.navigate(-1)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'album' })).toBeInTheDocument()
+  })
+
+  it('lists saved questions that used it, and they open their conversation', async () => {
+    const id = crypto.randomUUID()
+    recordTurn(
+      {
+        ...answer,
+        question: 'Which albums sell best?',
+        conversation_id: id,
+        tables_used: ['album'],
+      },
+      [],
+    )
+    recordTurn(
+      {
+        ...answer,
+        question: 'Something else',
+        conversation_id: crypto.randomUUID(),
+        tables_used: ['track'],
+      },
+      [],
+    )
+    const user = userEvent.setup()
+    const { router } = renderApp('/explore/tables/album')
+
+    const recent = await section('Recent questions that used it')
+    expect(within(recent).queryByText('Something else')).toBeNull()
+    await user.click(within(recent).getByRole('link', { name: 'Which albums sell best?' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/c/${id}`))
+  })
+
+  it('says when no saved question has used it', async () => {
+    renderApp('/explore/tables/album')
+
+    expect(
+      within(await section('Recent questions that used it')).getByText(/No saved question/),
+    ).toBeInTheDocument()
+  })
+
+  it('with history off that section is not there, and the page is fine', async () => {
+    server.use(
+      http.get('/api/catalog/tables/:table/questions', () => apiError('history_unavailable')),
+    )
+    renderApp('/explore/tables/album')
+
+    await section('Questions to ask')
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Recent questions that used it' })).toBeNull(),
+    )
+    expect(screen.getByRole('heading', { level: 1, name: 'album' })).toBeInTheDocument()
   })
 
   it('links back to the explorer with this table chosen', async () => {

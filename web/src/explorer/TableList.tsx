@@ -10,16 +10,18 @@ import {
   matchesSearch,
   neighboursOf,
   type ExplorerTable,
+  type Highlights,
 } from './data'
 
 type TableListProps = {
   tables: readonly ExplorerTable[]
   focused: ExplorerTable | undefined
+  highlights: Highlights
   onFocus: (table: string | null) => void
 }
 
 /** Every table, by business: the way in by keyboard and on a phone, with what the graph shows. */
-export function TableList({ tables, focused, onFocus }: TableListProps) {
+export function TableList({ tables, focused, highlights, onFocus }: TableListProps) {
   const [search, setSearch] = useState('')
   const searchId = useId()
   const found = tables.filter((table) => matchesSearch(table, search))
@@ -66,6 +68,7 @@ export function TableList({ tables, focused, onFocus }: TableListProps) {
                       key={table.name}
                       table={table}
                       focused={table.name === focused?.name}
+                      highlights={highlights}
                       onFocus={onFocus}
                     />
                   ))}
@@ -81,10 +84,12 @@ export function TableList({ tables, focused, onFocus }: TableListProps) {
 function TableRow({
   table,
   focused,
+  highlights,
   onFocus,
 }: {
   table: ExplorerTable
   focused: boolean
+  highlights: Highlights
   onFocus: (table: string | null) => void
 }) {
   const near = neighboursOf(table)
@@ -111,6 +116,8 @@ function TableRow({
               PII
             </span>
           )}
+          {highlights.used.has(table.name) && <span className="font-medium text-signal">used</span>}
+          {highlights.shown.has(table.name) && <span className="text-info">shown</span>}
         </span>
       </button>
       {focused && (

@@ -406,3 +406,58 @@ def test_the_longest_question_the_api_takes_can_be_saved(store: ConversationStor
         assert saved.question == words
     finally:
         store.remove_saved_question(saved.id)
+
+
+# --- Recent questions per table -----------------------------------------------------------------
+
+
+def save_using(
+    store: ConversationStore, conversation_id: UUID, question: str, tables: list[str]
+) -> int:
+    return store.save_turn(
+        conversation_id,
+        question=question,
+        kind="answer",
+        sql="SELECT 1",
+        reply={**REPLY, "tables_used": tables},
+    )
+
+
+def test_recent_questions_find_the_tables_a_query_used(
+    store: ConversationStore, conversation: UUID
+) -> None:
+    table = f"table_{uuid4().hex}"
+    save_using(store, conversation, "First?", [table, "customers"])
+    n = save_using(store, conversation, "Second?", [table])
+    save_using(store, conversation, "Other?", ["customers"])
+
+    found = store.recent_questions_using(table, limit=5)
+
+    assert [one.question for one in found] == ["Second?", "First?"]
+    assert (found[0].conversation_id, found[0].n) == (conversation, n)
+
+
+def test_recent_questions_keep_to_the_limit(store: ConversationStore, conversation: UUID) -> None:
+    table = f"table_{uuid4().hex}"
+    for number in range(3):
+        save_using(store, conversation, f"Question {number}?", [table])
+
+    assert len(store.recent_questions_using(table, limit=2)) == 2
+
+
+def test_recent_questions_need_the_whole_name_and_treat_it_as_plain_text(
+    store: ConversationStore, conversation: UUID
+) -> None:
+    table = f"customers_{uuid4().hex}"
+    save_using(store, conversation, "Top?", [table])
+
+    assert store.recent_questions_using(table[:-1], limit=5) == []
+    assert store.recent_questions_using("' OR 1=1 --", limit=5) == []
+
+
+def test_a_turn_saved_before_tables_used_existed_is_simply_not_found(
+    store: ConversationStore, conversation: UUID
+) -> None:
+    save(store, conversation)  # REPLY has no tables_used
+
+    assert store.recent_questions_using("company_name", limit=5) == []

@@ -1,7 +1,9 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { highlightsFrom } from '@/explorer/data'
 import { LoadError } from '@/explorer/LoadError'
 import { TableList } from '@/explorer/TableList'
 import { useExplorerData } from '@/explorer/useExplorerData'
@@ -22,8 +24,18 @@ export default function ExplorePage() {
   const [params, setParams] = useSearchParams()
   const focused = data?.tables.find(({ name }) => name === params.get('table'))
 
+  const highlights = useMemo(
+    () => highlightsFrom(params, data?.tables ?? []),
+    [params, data?.tables],
+  )
+  const lit = highlights.used.size + highlights.shown.size > 0
+
   function onFocus(table: string | null) {
-    setParams(table === null ? {} : { table })
+    // Choosing a table keeps the answer's tables, so letting go of it brings them back.
+    const next = new URLSearchParams(params)
+    if (table === null) next.delete('table')
+    else next.set('table', table)
+    setParams(next)
   }
 
   return (
@@ -50,14 +62,40 @@ export default function ExplorePage() {
         ) : data === undefined ? (
           <LoadError error={error} onRetry={retry} />
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-            {wide && (
-              <Suspense fallback={<Skeleton className="h-96 w-full motion-reduce:animate-none" />}>
-                <Constellation data={data} focused={focused} onFocus={onFocus} />
-              </Suspense>
+          <>
+            {lit && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-surface px-3 py-2 text-sm">
+                <p>
+                  One answer&apos;s tables: <span className="font-medium text-signal">used</span>{' '}
+                  means its SQL read them, <span className="text-info">shown</span> means the AI saw
+                  them and didn&apos;t need them.
+                </p>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setParams({})}>
+                  Clear
+                </Button>
+              </div>
             )}
-            <TableList tables={data.tables} focused={focused} onFocus={onFocus} />
-          </div>
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+              {wide && (
+                <Suspense
+                  fallback={<Skeleton className="h-96 w-full motion-reduce:animate-none" />}
+                >
+                  <Constellation
+                    data={data}
+                    focused={focused}
+                    highlights={highlights}
+                    onFocus={onFocus}
+                  />
+                </Suspense>
+              )}
+              <TableList
+                tables={data.tables}
+                focused={focused}
+                highlights={highlights}
+                onFocus={onFocus}
+              />
+            </div>
+          </>
         )}
       </div>
     </div>

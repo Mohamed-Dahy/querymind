@@ -1,7 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, MessageSquarePlus, ShieldAlert } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 
+import { CONVERSATIONS_KEY } from '@/api/conversations'
+import { getTableQuestions } from '@/api/explorer'
 import { useDraftNew } from '@/canvas/useConversation'
 import { SqlCode } from '@/canvas/SqlView'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -87,6 +90,7 @@ function TableView({ details }: { details: TableDetails }) {
         <Joins relations={details.relations} />
         <Terms details={details} />
         <Questions questions={meaning?.suggested_questions ?? []} />
+        <RecentQuestions table={table.name} />
       </div>
     </div>
   )
@@ -306,6 +310,38 @@ function Questions({ questions }: { questions: readonly string[] }) {
             ))}
           </ul>
         </>
+      )}
+    </Section>
+  )
+}
+
+/** Saved questions whose SQL read this table. Nothing at all with history off. */
+function RecentQuestions({ table }: { table: string }) {
+  // Under the conversations' key, so a new answer refreshes it too.
+  const recent = useQuery({
+    queryKey: [...CONVERSATIONS_KEY, 'using', table],
+    queryFn: ({ signal }) => getTableQuestions(table, signal),
+    retry: false,
+  })
+  if (!recent.isSuccess) return null
+  const { questions } = recent.data
+  return (
+    <Section title="Recent questions that used it">
+      {questions.length === 0 ? (
+        <p className="text-fg-muted">No saved question has used this table yet.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {questions.map(({ conversation_id: id, n, question }) => (
+            <li key={`${id}-${n}`}>
+              <Link
+                to={`/c/${id}`}
+                className="inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
+              >
+                {question}
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
     </Section>
   )

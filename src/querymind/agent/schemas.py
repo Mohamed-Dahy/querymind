@@ -157,6 +157,7 @@ class AskResult(BaseModel):
     confidence: Confidence
     # How it got here (U2.1), for the "Show your work" drawer.
     schema_selection: ShownSchema | None = None
+    tables_used: tuple[str, ...] = ()  # what the SQL that ran read; fewer than it was shown, often
     search_question: str | None = (
         None  # the follow-up as a standalone question, if it was rewritten
     )

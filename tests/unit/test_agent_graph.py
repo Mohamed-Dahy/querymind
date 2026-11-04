@@ -393,3 +393,39 @@ def test_a_repair_that_asks_back_keeps_an_earlier_result(executor: StubExecutor)
     final = build_graph().invoke(START, context=context(FakeLLMProvider([GOOD, ASKS])))
     assert final["result"] == EMPTY  # answered with the result we have, and its warning
     assert [w.code for w in final["warnings"]] == ["empty"]
+
+
+def test_tables_used_are_what_the_query_read_not_what_it_was_shown(
+    executor: StubExecutor,
+) -> None:
+    query = draft("SELECT c.company_name FROM customers AS c JOIN orders AS o ON TRUE")
+    final = build_graph().invoke(START, context=context(FakeLLMProvider([query, "Done."])))
+
+    assert final["tables_used"] == ["customers", "orders"]
+
+
+def test_tables_used_leave_out_a_cte_s_own_name(executor: StubExecutor) -> None:
+    query = draft("WITH big AS (SELECT * FROM orders) SELECT * FROM big")
+    final = build_graph().invoke(START, context=context(FakeLLMProvider([query, "Done."])))
+
+    assert final["tables_used"] == ["orders"]
+
+
+def test_tables_used_follow_the_query_that_ran_after_a_repair(executor: StubExecutor) -> None:
+    executor.replies.append(db_error())
+    llm = FakeLLMProvider(
+        [draft("SELECT 1 FROM orders"), draft("SELECT 1 FROM customers"), "Done."]
+    )
+    final = build_graph().invoke(START, context=context(llm))
+
+    assert final["tables_used"] == ["customers"]
+
+
+def test_a_failed_repair_keeps_the_tables_of_the_query_it_kept(executor: StubExecutor) -> None:
+    # Empty result → repair → the repairs fail in the database → the empty result is what's kept.
+    executor.replies.extend([EMPTY, db_error(), db_error()])
+    repair = draft("SELECT 1 FROM customers")
+    llm = FakeLLMProvider([draft("SELECT 1 FROM orders"), repair, repair])
+    final = build_graph().invoke(START, context=context(llm))
+
+    assert final["tables_used"] == ["orders"]

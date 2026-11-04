@@ -130,6 +130,43 @@ describe('ExplorePage', () => {
     expect(within(tables).queryByRole('button', { pressed: true })).toBeNull()
   })
 
+  it('marks the tables an answer used and was shown, in words', async () => {
+    renderApp('/explore?used=orders,customers&shown=region')
+
+    expect(await row(/^orders/)).toHaveTextContent('used')
+    expect(await row(/^customers/)).toHaveTextContent('used')
+    expect(await row(/^region/)).toHaveTextContent('shown')
+    expect(await row(/^track/)).not.toHaveTextContent(/used|shown/)
+    expect(screen.getByText(/One answer's tables/)).toBeInTheDocument()
+  })
+
+  it('ignores a name in the link that is not a table, and a table in both lists is used', async () => {
+    renderApp('/explore?used=orders,nope&shown=orders')
+
+    expect(await row(/^orders/)).toHaveTextContent('used')
+    expect(await row(/^orders/)).not.toHaveTextContent('shown')
+  })
+
+  it('a link with nothing real in it marks nothing', async () => {
+    renderApp('/explore?used=nope')
+
+    await list()
+    expect(screen.queryByText(/One answer's tables/)).toBeNull()
+  })
+
+  it('choosing a table keeps the marks, and Clear removes everything', async () => {
+    const user = userEvent.setup()
+    const { router } = renderApp('/explore?used=orders')
+
+    await user.click(await row(/^region/))
+    await waitFor(() => expect(router.state.location.search).toContain('table=region'))
+    expect(router.state.location.search).toContain('used=orders')
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    await waitFor(() => expect(router.state.location.search).toBe(''))
+    expect(screen.queryByText(/One answer's tables/)).toBeNull()
+  })
+
   it('with the database down it says so, and Try again brings the tables back', async () => {
     let down = true
     server.use(

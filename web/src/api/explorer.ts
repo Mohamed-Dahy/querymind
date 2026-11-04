@@ -8,6 +8,7 @@ export type CatalogTable = Schemas['CatalogTable']
 export type TableMeaning = Schemas['TableMeaning']
 export type MetricMeaning = Schemas['MetricMeaning']
 export type SemanticOverview = Schemas['SemanticOverview']
+export type TableQuestionList = Schemas['TableQuestionList']
 
 const TIMEOUT_MS = 20_000 // the first read of the catalog may have to count a few tables
 
@@ -17,4 +18,11 @@ export function getCatalog(signal?: AbortSignal): Promise<Catalog> {
 
 export function getSemantic(signal?: AbortSignal): Promise<SemanticOverview> {
   return call(TIMEOUT_MS, signal, (s) => api.GET('/semantic', { signal: s }))
+}
+
+/** Recent saved questions whose SQL read this table. Fails with history off. */
+export function getTableQuestions(table: string, signal?: AbortSignal): Promise<TableQuestionList> {
+  return call(TIMEOUT_MS, signal, (s) =>
+    api.GET('/catalog/tables/{table}/questions', { params: { path: { table } }, signal: s }),
+  )
 }

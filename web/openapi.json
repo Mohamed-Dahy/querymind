@@ -181,6 +181,15 @@
             "description": "SQL queries tried, this one too",
             "title": "Sql Attempts"
           },
+          "tables_used": {
+            "default": [],
+            "description": "The tables the SQL that ran really read",
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables Used",
+            "type": "array"
+          },
           "truncated": {
             "description": "True if more rows existed than the row limit",
             "title": "Truncated",
@@ -841,6 +850,19 @@
         "title": "FinalEvent",
         "type": "object"
       },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -1411,6 +1433,54 @@
         "title": "TableMeaning",
         "type": "object"
       },
+      "TableQuestion": {
+        "description": "A saved question whose SQL read a certain table, and where to find it.",
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "n",
+          "question",
+          "created_at"
+        ],
+        "title": "TableQuestion",
+        "type": "object"
+      },
+      "TableQuestionList": {
+        "description": "Recent saved questions whose SQL read a table, newest first.",
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/TableQuestion"
+            },
+            "title": "Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "title": "TableQuestionList",
+        "type": "object"
+      },
       "ValidatedEvent": {
         "description": "Try number `attempt` passed the SQL validator and is about to run.",
         "properties": {
@@ -1429,6 +1499,46 @@
           "attempt"
         ],
         "title": "ValidatedEvent",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       }
     }
@@ -1679,6 +1789,72 @@
           }
         },
         "summary": "Get Catalog",
+        "tags": [
+          "explorer"
+        ]
+      }
+    },
+    "/catalog/tables/{table}/questions": {
+      "get": {
+        "description": "Recent saved questions whose SQL read this table. No such table: an empty list.",
+        "operationId": "get_table_questions_catalog_tables__table__questions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "maxLength": 63,
+              "title": "Table",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableQuestionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "History isn't available"
+          }
+        },
+        "summary": "Get Table Questions",
         "tags": [
           "explorer"
         ]

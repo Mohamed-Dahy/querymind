@@ -124,6 +124,9 @@
     "total_tables": 25,
     "search": "hybrid"
   },
+  "tables_used": [
+    "customers"
+  ],
   "search_question": null,
   "example_questions": [
     "How many open orders are going to each country? Return the destination country and the count.",

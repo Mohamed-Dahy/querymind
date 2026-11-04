@@ -81,6 +81,17 @@ class Conversation(ConversationSummary):
     saved_turns: list[SavedTurn]
 
 
+class TableQuestion(BaseModel):
+    """A saved question whose SQL read a certain table, and where to find it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    conversation_id: UUID
+    n: int
+    question: str
+    created_at: datetime
+
+
 class SavedQuestion(BaseModel):
     """A question kept to ask again. Only its words: no answer, no SQL, no rows."""
 
@@ -291,6 +302,25 @@ class ConversationStore:
             ).fetchone()
         if deleted is None:
             raise ConversationNotFoundError(_NOT_FOUND)
+
+    def recent_questions_using(self, table: str, *, limit: int) -> list[TableQuestion]:
+        """The newest saved questions whose SQL read `table`. Older turns have no `tables_used`.
+
+        `?` asks whether a JSON array has that string. The table name is a parameter like any other.
+        """
+        with self._transaction() as conn:
+            return (
+                conn.cursor(row_factory=class_row(TableQuestion))
+                .execute(
+                    """
+                    SELECT conversation_id, n, question, created_at FROM querymind_app.turns
+                    WHERE reply->'tables_used' ? %s
+                    ORDER BY created_at DESC, conversation_id, n LIMIT %s
+                    """,
+                    (table, limit),
+                )
+                .fetchall()
+            )
 
     def list_saved_questions(self) -> list[SavedQuestion]:
         """The saved questions, newest first."""

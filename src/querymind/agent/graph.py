@@ -173,7 +173,7 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
 
     A fixable failure is returned as a new attempt (with the SQL that was really tried: the
     validated one if it got that far) instead of raised, so the graph can route to a repair.
-    A success replaces `sql`, `explanation` and `result` together.
+    A success replaces `sql`, `explanation`, `result` and `tables_used` together.
     """
     settings = runtime.context.settings
     draft = require(state.get("draft"), "draft")
@@ -201,6 +201,7 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
         "sql": sql,
         "explanation": draft.explanation,
         "result": result,
+        "tables_used": sorted(query.tables),
         "self_assessment": draft.self_assessment,
         "needs_repair": False,
     }

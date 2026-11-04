@@ -75,6 +75,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/tables/{table}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Table Questions
+         * @description Recent saved questions whose SQL read this table. No such table: an empty list.
+         */
+        get: operations["get_table_questions_catalog_tables__table__questions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations": {
         parameters: {
             query?: never;
@@ -332,6 +352,12 @@ export interface components {
              * @description SQL queries tried, this one too
              */
             sql_attempts?: number | null;
+            /**
+             * Tables Used
+             * @description The tables the SQL that ran really read
+             * @default []
+             */
+            tables_used: string[];
             /**
              * Truncated
              * @description True if more rows existed than the row limit
@@ -639,6 +665,11 @@ export interface components {
              */
             type: "final";
         };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -906,6 +937,34 @@ export interface components {
             synonyms: string[];
         };
         /**
+         * TableQuestion
+         * @description A saved question whose SQL read a certain table, and where to find it.
+         */
+        TableQuestion: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** N */
+            n: number;
+            /** Question */
+            question: string;
+        };
+        /**
+         * TableQuestionList
+         * @description Recent saved questions whose SQL read a table, newest first.
+         */
+        TableQuestionList: {
+            /** Questions */
+            questions: components["schemas"]["TableQuestion"][];
+        };
+        /**
          * ValidatedEvent
          * @description Try number `attempt` passed the SQL validator and is about to run.
          */
@@ -917,6 +976,19 @@ export interface components {
              * @enum {string}
              */
             type: "validated";
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
     };
     responses: never;
@@ -1048,6 +1120,48 @@ export interface operations {
                 };
             };
             /** @description The database isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_table_questions_catalog_tables__table__questions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                table: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableQuestionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description History isn't available */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -22,10 +22,11 @@ import {
   neighboursOf,
   type ExplorerData,
   type ExplorerTable,
+  type Highlights,
 } from './data'
 import { layoutTables, NODE_HEIGHT, NODE_WIDTH, type Layout } from './layout'
 
-type Emphasis = 'focused' | 'near' | 'dimmed' | 'plain'
+type Emphasis = 'focused' | 'near' | 'used' | 'shown' | 'dimmed' | 'plain'
 type TableNode = Node<{ table: ExplorerTable; emphasis: Emphasis }, 'table'>
 type BlockNode = Node<{ label: string }, 'block'>
 
@@ -38,6 +39,8 @@ function TableCard({ data: { table, emphasis } }: NodeProps<TableNode>) {
         'flex size-full cursor-pointer flex-col justify-center rounded-lg border bg-surface px-3 shadow-sm',
         emphasis === 'focused' && 'border-2 border-signal',
         emphasis === 'near' && 'border-2 border-info',
+        emphasis === 'used' && 'border-2 border-signal',
+        emphasis === 'shown' && 'border-2 border-dashed border-info',
         // A faint frame, not lower opacity: the text has to stay readable.
         emphasis === 'dimmed' && 'border-border bg-transparent shadow-none',
         emphasis === 'plain' && 'border-input',
@@ -64,6 +67,8 @@ function TableCard({ data: { table, emphasis } }: NodeProps<TableNode>) {
             PII
           </span>
         )}
+        {emphasis === 'used' && <span className="font-medium text-signal">used</span>}
+        {emphasis === 'shown' && <span className="text-info">shown</span>}
       </span>
     </div>
   )
@@ -86,16 +91,25 @@ function aspectRatioOf({ blocks }: Layout): string {
   return `${width} / ${height}`
 }
 
-function emphasisOf(name: string, focused: ExplorerTable | undefined): Emphasis {
-  if (focused === undefined) return 'plain'
-  if (name === focused.name) return 'focused'
-  return neighboursOf(focused).includes(name) ? 'near' : 'dimmed'
+function emphasisOf(
+  name: string,
+  focused: ExplorerTable | undefined,
+  { used, shown }: Highlights,
+): Emphasis {
+  if (focused !== undefined) {
+    if (name === focused.name) return 'focused'
+    return neighboursOf(focused).includes(name) ? 'near' : 'dimmed'
+  }
+  if (used.has(name)) return 'used'
+  if (shown.has(name)) return 'shown'
+  return used.size + shown.size > 0 ? 'dimmed' : 'plain'
 }
 
 function buildNodes(
   tables: readonly ExplorerTable[],
   { blocks, tables: placed }: Layout,
   focused: ExplorerTable | undefined,
+  highlights: Highlights,
 ): (TableNode | BlockNode)[] {
   const byName = new Map(tables.map((table) => [table.name, table]))
   const frames = blocks.map(({ business, x, y, width, height }): BlockNode => ({
@@ -113,7 +127,10 @@ function buildNodes(
     id: name,
     type: 'table',
     position: { x, y },
-    data: { table: byName.get(name) as ExplorerTable, emphasis: emphasisOf(name, focused) },
+    data: {
+      table: byName.get(name) as ExplorerTable,
+      emphasis: emphasisOf(name, focused, highlights),
+    },
     width: NODE_WIDTH,
     height: NODE_HEIGHT,
   }))
@@ -124,12 +141,16 @@ function buildEdges(
   tables: readonly ExplorerTable[],
   preferredJoins: ReadonlySet<string>,
   focused: ExplorerTable | undefined,
+  { used }: Highlights,
 ): Edge[] {
   return tables.flatMap((table) =>
     table.references.map((target): Edge => {
       const preferred = preferredJoins.has(joinKey(table.name, target))
-      const touchesFocus =
-        focused === undefined || focused.name === table.name || focused.name === target
+      // A chosen table's own lines; or, with none chosen, the lines between tables the SQL read.
+      const lit =
+        focused !== undefined
+          ? focused.name === table.name || focused.name === target
+          : used.size === 0 || (used.has(table.name) && used.has(target))
       return {
         id: `${table.name}->${target}`,
         source: table.name,
@@ -137,17 +158,27 @@ function buildEdges(
         style: {
           stroke: preferred ? 'var(--info)' : 'var(--input)',
           strokeWidth: preferred ? 2 : 1,
-          opacity: touchesFocus ? 1 : 0.2,
+          opacity: lit ? 1 : 0.2,
         },
       }
     }),
   )
 }
 
-function describe({ tables }: ExplorerData, focused: ExplorerTable | undefined): string {
+function describe(
+  { tables }: ExplorerData,
+  focused: ExplorerTable | undefined,
+  { used, shown }: Highlights,
+): string {
   const joins = tables.reduce((sum, table) => sum + table.references.length, 0)
   const whole = `Graph of ${tables.length} tables and the ${joins} joins between them. The list has the same tables and joins.`
-  if (focused === undefined) return whole
+  if (focused === undefined) {
+    const lit = [
+      used.size > 0 && `The answer's SQL read ${[...used].join(', ')}.`,
+      shown.size > 0 && `It was also shown ${[...shown].join(', ')}.`,
+    ].filter(Boolean)
+    return [whole, ...lit].join(' ')
+  }
   return `${whole} ${focused.name} is highlighted, with the ${neighboursOf(focused).length} tables it joins.`
 }
 
@@ -192,6 +223,7 @@ function ZoomButtons() {
 type ConstellationProps = {
   data: ExplorerData
   focused: ExplorerTable | undefined
+  highlights: Highlights
   onFocus: (table: string | null) => void
 }
 
@@ -200,13 +232,16 @@ type ConstellationProps = {
  * to it, which holds the same tables and joins. So the graph is labelled with a description, and its
  * nodes aren't Tab stops. The only controls are the buttons outside it; the only link is the credit.
  */
-export function Constellation({ data, focused, onFocus }: ConstellationProps) {
+export function Constellation({ data, focused, highlights, onFocus }: ConstellationProps) {
   const { tables, preferredJoins } = data
   const layout = useMemo(() => layoutTables(tables), [tables])
-  const nodes = useMemo(() => buildNodes(tables, layout, focused), [tables, layout, focused])
+  const nodes = useMemo(
+    () => buildNodes(tables, layout, focused, highlights),
+    [tables, layout, focused, highlights],
+  )
   const edges = useMemo(
-    () => buildEdges(tables, preferredJoins, focused),
-    [tables, preferredJoins, focused],
+    () => buildEdges(tables, preferredJoins, focused, highlights),
+    [tables, preferredJoins, focused, highlights],
   )
 
   return (
@@ -221,7 +256,7 @@ export function Constellation({ data, focused, onFocus }: ConstellationProps) {
         </div>
         <div
           role="group"
-          aria-label={describe(data, focused)}
+          aria-label={describe(data, focused, highlights)}
           // The graph's own proportions, so fitting it to the width keeps the names readable. It may
           // be taller than the screen: the page scrolls, and the list stays beside it.
           style={{ aspectRatio: aspectRatioOf(layout) }}

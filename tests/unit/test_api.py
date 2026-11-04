@@ -87,6 +87,7 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         # Added for the web UI's drawer (U2.2); optional, so other clients aren't affected.
         "attempts": [],
         "schema_selection": None,
+        "tables_used": [],
         "search_question": None,
         "example_questions": [],
         "sql_attempts": 1,

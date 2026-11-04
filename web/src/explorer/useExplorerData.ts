@@ -23,6 +23,9 @@ export function useExplorerData() {
     queryKey: ['catalog'],
     queryFn: ({ signal }) => getCatalog(signal),
     staleTime: STALE_MS,
+    // A failure has already waited out the server's 10 s connect timeout. Trying again only makes
+    // the message later, and the page has a Try again button.
+    retry: false,
   })
   const semantic = useSemanticOverview()
   const data = useMemo(

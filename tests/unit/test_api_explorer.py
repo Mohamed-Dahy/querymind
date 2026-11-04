@@ -1,14 +1,19 @@
 """The explorer endpoints over the real YAML files, with the database replaced. No DB, no LLM."""
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from querymind.api.explorer import ExplorerData
 from querymind.api.main import create_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.schema import Column, SchemaInfo, Table
+from querymind.store.conversations import TableQuestion
+from querymind.store.errors import StoreUnavailableError
 
 LAYERS = [Path("semantic_layer/northwind.yaml"), Path("semantic_layer/chinook.yaml")]
 SECRET = "Maria Anders"
@@ -114,3 +119,63 @@ def test_the_routes_are_in_the_api_schema() -> None:
 
     assert {"/catalog", "/semantic"} <= set(paths)
     assert "503" in paths["/catalog"]["get"]["responses"]
+
+
+class FakeStore:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.asked: list[tuple[str, int]] = []
+
+    def recent_questions_using(self, table: str, *, limit: int) -> list[TableQuestion]:
+        if self.error is not None:
+            raise self.error
+        self.asked.append((table, limit))
+        return [
+            TableQuestion(
+                conversation_id=uuid4(),
+                n=2,
+                question="Top customers?",
+                created_at=datetime(2026, 11, 3, tzinfo=UTC),
+            )
+        ]
+
+
+def client_with(store: FakeStore | None) -> TestClient:
+    explorer = ExplorerData(LAYERS, FakeDatabase())
+    app = create_app(pipeline=object(), store=store, explorer=explorer)  # type: ignore[arg-type]
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_recent_questions_for_a_table() -> None:
+    store = FakeStore()
+
+    with client_with(store) as api:
+        body = api.get("/catalog/tables/customers/questions").json()
+
+    assert body["questions"][0]["question"] == "Top customers?"
+    assert body["questions"][0]["n"] == 2
+    assert store.asked == [("customers", 5)]
+
+
+@pytest.mark.parametrize("path", ["questions?limit=0", "questions?limit=21"])
+def test_recent_questions_refuse_a_silly_limit(path: str) -> None:
+    with client_with(FakeStore()) as api:
+        assert api.get(f"/catalog/tables/customers/{path}").status_code == 422
+
+
+def test_recent_questions_refuse_a_name_longer_than_postgres_allows() -> None:
+    with client_with(FakeStore()) as api:
+        assert api.get(f"/catalog/tables/{'x' * 64}/questions").status_code == 422
+
+
+@pytest.mark.parametrize(
+    "store",
+    [None, FakeStore(StoreUnavailableError("down"))],
+    ids=["history off", "database down"],
+)
+def test_recent_questions_without_the_store_say_so(store: FakeStore | None) -> None:
+    with client_with(store) as api:
+        response = api.get("/catalog/tables/customers/questions")
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "history_unavailable"

@@ -520,7 +520,9 @@ for (const theme of THEMES) {
 
     // The drawer still works on a saved answer.
     await cell.getByRole('button', { name: 'Show your work' }).click()
-    await expect(page.getByRole('dialog').getByRole('heading', { name: 'The SQL' })).toBeVisible()
+    await expect(
+      page.getByRole('dialog').getByRole('heading', { name: 'The SQL', exact: true }),
+    ).toBeVisible()
   })
 }
 

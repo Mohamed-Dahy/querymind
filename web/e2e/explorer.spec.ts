@@ -244,3 +244,42 @@ test('on a phone the glossary has no sideways scroll on the page', async ({ page
   ).toBeLessThanOrEqual(0)
   expect(await seriousA11yIssues(page)).toEqual([])
 })
+
+for (const theme of THEMES) {
+  test(`${theme} theme: answer, drawer, the tables lit, a table's page, and back to the question`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await useTheme(page, theme)
+    await page.goto('/')
+    const question = 'What is the total sales amount per category?'
+    const box = page.getByRole('textbox', { name: 'Your question' })
+    await box.fill(question)
+    await box.press('Control+Enter')
+    const cell = page.getByRole('article', { name: question })
+    await expect(cell.getByRole('button', { name: 'Show your work' })).toBeVisible()
+    await expect(page).toHaveURL(/\/c\//)
+    const conversation = page.url()
+
+    await cell.getByRole('button', { name: 'Show your work' }).click()
+    await page.getByRole('dialog').getByRole('link', { name: 'See these tables' }).click()
+
+    await expect(page).toHaveURL(/\/explore\?/)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    const card = (name: string) => page.locator(`.react-flow__node-table[data-id="${name}"]`)
+    await expect(card('products')).toContainText('used')
+    await expect(card('categories')).toContainText('used')
+    await expect(card('region')).not.toContainText('used')
+    await expect(page.getByText(/One answer's tables/)).toBeVisible()
+    expect(await seriousA11yIssues(page)).toEqual([])
+
+    const list = page.getByRole('region', { name: 'List of tables' })
+    await list.getByRole('button', { name: /^products/ }).click()
+    await list.getByRole('link', { name: 'Everything about products' }).click()
+    const recent = page.getByRole('region', { name: 'Recent questions that used it' })
+    await recent.getByRole('link', { name: question }).click()
+
+    await expect(page).toHaveURL(conversation)
+    await expect(page.getByRole('article', { name: question })).toBeVisible()
+  })
+}

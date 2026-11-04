@@ -6,6 +6,7 @@ import {
   getStored,
   listSavedQuestions,
   listStored,
+  questionsUsing,
   recordTurn,
   removeSavedQuestion,
   rerunStored,
@@ -190,6 +191,9 @@ export const handlers = [
   }),
   http.get('/api/catalog', () => HttpResponse.json(catalog)),
   http.get('/api/semantic', () => HttpResponse.json(semantic)),
+  http.get('/api/catalog/tables/:table/questions', ({ params }) =>
+    HttpResponse.json(questionsUsing(String(params['table']))),
+  ),
   http.get(SAVED_QUESTIONS_URL, () => HttpResponse.json({ questions: listSavedQuestions() })),
   http.post(SAVED_QUESTIONS_URL, async ({ request }) => {
     const { question } = (await request.json()) as { question: string }

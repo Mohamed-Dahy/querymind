@@ -68,6 +68,7 @@ class AgentState(TypedDict, total=False):
     sql: str | None
     explanation: str | None
     result: QueryResult | None
+    tables_used: list[str]  # what that query read, from the validator's parse (not what was shown)
     self_assessment: ConfidenceLevel | None  # the LLM's own view of the query that ran
     warnings: list[SanityWarning]  # signs that `result` may be wrong (check_result)
     # Failed or suspicious tries, oldest first. `operator.add` is a *reducer*: a node returns
@@ -97,6 +98,7 @@ def new_turn(*, question: str, schema_text: str, table_names: list[str]) -> Agen
         "sql": None,
         "explanation": None,
         "result": None,
+        "tables_used": [],
         "self_assessment": None,
         "warnings": [],
         # A reducer would *append* [] to the saved attempts (old + [] = old). Overwrite tells

@@ -348,6 +348,7 @@ class Pipeline:
                 if selection is not None
                 else None
             ),
+            tables_used=tuple(state.get("tables_used", [])),
             search_question=state.get("search_question"),
             example_questions=tuple(e.question for e in state.get("examples", [])),
             duration_ms=round((time.perf_counter() - started) * 1000),

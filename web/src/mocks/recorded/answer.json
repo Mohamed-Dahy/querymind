@@ -62,6 +62,11 @@
     "total_tables": 25,
     "search": "hybrid"
   },
+  "tables_used": [
+    "categories",
+    "order_details",
+    "products"
+  ],
   "search_question": null,
   "example_questions": [
     "What is the value of the stock in each category (unit price times units in stock)? Return the category name and the stock value.",

@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AskResponse } from '@/api/client'
@@ -15,7 +16,11 @@ import { AnswerCell } from './AnswerCell'
 // Variants of the recorded answer, built by spreading it: still the API's type, never hand-copied.
 function renderAnswer(changes: Partial<AskResponse> = {}) {
   const user = userEvent.setup()
-  render(<AnswerCell reply={{ ...answer, ...changes }} />)
+  render(
+    <MemoryRouter>
+      <AnswerCell reply={{ ...answer, ...changes }} />
+    </MemoryRouter>,
+  )
   return user
 }
 
