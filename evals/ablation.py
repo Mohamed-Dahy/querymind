@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from evals.report import Outcome, SavedReport, load_report, summarize_outcomes
+from evals.report import Outcome, SavedReport, Score, load_report, summarize_outcomes
 
 REPORT_DIR = Path("docs/eval-reports")
 # Settings that make an arm "plain": no retries, no definitions, the whole schema, no examples.
@@ -204,6 +204,46 @@ def collect(study: Study, report_dir: Path = REPORT_DIR) -> list[ArmResult]:
     return results
 
 
+@dataclass(frozen=True)
+class ArmRow:
+    """One arm's numbers. The Markdown table and evals/snapshot.py both read these."""
+
+    match: Score
+    ex: Score
+    delta: float | None  # the headline's change in points against the row above
+    not_scored: int
+    repairs: float  # per scored question
+    input_tokens: float  # mean per scored question
+    output_tokens: float
+    median_seconds: float
+
+
+def arm_rows(study: Study, results: Sequence[ArmResult]) -> list[ArmRow | None]:
+    """The numbers for each arm, in order; None for an arm with nothing scored yet."""
+    rows: list[ArmRow | None] = []
+    previous: float | None = None
+    for result in results:
+        if not result.scored:
+            rows.append(None)
+            continue
+        summary = summarize_outcomes(result.outcomes)
+        score = summary.ex if study.headline == "ex" else summary.accuracy
+        rows.append(
+            ArmRow(
+                match=summary.accuracy,
+                ex=summary.ex,
+                delta=None if previous is None else score.percent - previous,
+                not_scored=len(summary.not_scored),
+                repairs=statistics.mean(max(o.sql_attempts - 1, 0) for o in result.scored),
+                input_tokens=summary.input_tokens,
+                output_tokens=summary.output_tokens,
+                median_seconds=statistics.median(o.seconds for o in result.scored),
+            )
+        )
+        previous = score.percent
+    return rows
+
+
 def table(study: Study, results: Sequence[ArmResult], report_dir: Path = REPORT_DIR) -> str:
     """The Markdown table for one study: one row per arm, the change against the row above."""
     llm = next((r.llm for r in results if r.llm), "not run yet")
@@ -217,27 +257,21 @@ def table(study: Study, results: Sequence[ArmResult], report_dir: Path = REPORT_
         "| Tokens / q (in + out) | Median s / q | Reports |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
-    previous: float | None = None
-    for result in results:
+    for result, row in zip(results, arm_rows(study, results), strict=True):
         links = " · ".join(
             f"[{p.stem}]({p.relative_to(report_dir).as_posix()})" for p in result.reports
         )
         if result.missing:
             links += f" (not run yet: {', '.join(result.missing)})"
-        if not result.scored:
+        if row is None:
             lines.append(f"| {result.arm.key} | {result.arm.adds} | | | | | | | | {links} |")
             continue
-        summary = summarize_outcomes(result.outcomes)
-        score = summary.ex if study.headline == "ex" else summary.accuracy
-        delta = "" if previous is None else f"{score.percent - previous:+.1f} pts"
-        previous = score.percent
-        repairs = statistics.mean(max(o.sql_attempts - 1, 0) for o in result.scored)
-        median = statistics.median(o.seconds for o in result.scored)
+        delta = "" if row.delta is None else f"{row.delta:+.1f} pts"
         lines.append(
-            f"| {result.arm.key} | {result.arm.adds} | {summary.accuracy} | {summary.ex} | {delta} "
-            f"| {len(summary.not_scored)} | {repairs:.2f} "
-            f"| {summary.input_tokens:,.0f} + {summary.output_tokens:,.0f} "
-            f"| {median:.1f} | {links} |"
+            f"| {result.arm.key} | {result.arm.adds} | {row.match} | {row.ex} | {delta} "
+            f"| {row.not_scored} | {row.repairs:.2f} "
+            f"| {row.input_tokens:,.0f} + {row.output_tokens:,.0f} "
+            f"| {row.median_seconds:.1f} | {links} |"
         )
     return "\n".join(lines)
 

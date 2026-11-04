@@ -42,6 +42,10 @@ AGENT_FLAGS = STUDIES["golden"].arms[-1].flags
 SAME_SETTINGS = ("Suite", "Max SQL attempts", "Semantic layer", "Schema retrieval",
                  "Few-shot examples")  # fmt: skip
 STUDY_SUITES = {"golden": ("golden", "business", "chinook"), "bird": ("bird",)}
+STUDY_TITLES = {
+    "golden": "Golden 58 (Northwind 30 + business 13 + Chinook 15)",
+    "bird": "BIRD-100 (the fixed subset, evidence on)",
+}
 
 
 class ModelsError(Exception):
@@ -245,8 +249,7 @@ def table(study: str, runs: Sequence[ModelRun], prices: Prices,
     """The Markdown section for one study: one row per model that has every suite."""
     ids = common_ids(runs)
     complete = [r for r in runs if not r.missing]
-    title = {"golden": "Golden 58 (Northwind 30 + business 13 + Chinook 15)",
-             "bird": "BIRD-100 (the fixed subset, evidence on)"}[study]  # fmt: skip
+    title = STUDY_TITLES[study]
     if suites and set(suites) != set(STUDY_SUITES[study]):
         title += f": so far only {', '.join(suites)}"  # until every model has run them all
     lines = [f"## {title}", ""]
@@ -289,13 +292,9 @@ def _dollars(value: float | None) -> str:
     return f"${value:.5f}" if value < 0.01 else f"${value:.2f}"
 
 
-def build_report(sections: Sequence[str], prices: Prices) -> str:
-    notes = [
-        "# Phase 4.6: model comparison (our harness)",
-        "",
-        "Same agent (4.4 arm D: 3 SQL tries, semantic layer, schema retrieval, few-shot), one "
-        "question at a time; only the LLM changes.",
-        "",
+def report_notes(prices: Prices) -> list[str]:
+    """What to know when reading the numbers. In the report, and on the evals page."""
+    return [
         f"- **Cost** = list-price equivalent, paid tier, prices checked {prices.checked} "
         "(`evals/prices.yaml`, with sources); our runs were on free tiers. It covers the SQL "
         "path the eval runs: the user-facing summary adds one more call per answer, and the "
@@ -304,6 +303,17 @@ def build_report(sections: Sequence[str], prices: Prices) -> str:
         "different hardware, so it compares services, not only models. p50 is the headline.",
         "- **Noise:** one run per model. Two runs of the same setup differ by about 1-2 "
         "questions on 58 and about 3 on BIRD-100, so smaller gaps aren't real.",
+    ]
+
+
+def build_report(sections: Sequence[str], prices: Prices) -> str:
+    notes = [
+        "# Phase 4.6: model comparison (our harness)",
+        "",
+        "Same agent (4.4 arm D: 3 SQL tries, semantic layer, schema retrieval, few-shot), one "
+        "question at a time; only the LLM changes.",
+        "",
+        *report_notes(prices),
     ]
     return "\n".join([*notes, "", *("\n\n".join(sections).splitlines())]) + "\n"
 

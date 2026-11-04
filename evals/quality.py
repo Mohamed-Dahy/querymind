@@ -33,7 +33,7 @@ import statistics
 import sys
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -69,6 +69,11 @@ from querymind.semantic.retrieval import SchemaRetriever
 
 REPORT = Path("docs/eval-reports/phase4-quality.md")
 METRIC_NAMES = ("answer_relevancy", "faithfulness", "hallucination")  # judges.METRICS
+METRIC_ASKS = {
+    "answer_relevancy": "does the answer address the question?",
+    "faithfulness": "is every claim supported by the data it was given?",
+    "hallucination": "does it contradict that data?",
+}
 QUALITY_FORMAT = 1  # bump when the JSON shape changes
 
 
@@ -394,6 +399,74 @@ def build_report(run: QualityRun) -> str:
     return "\n".join(lines) + "\n"
 
 
+@dataclass(frozen=True)
+class MetricSummary:
+    """One DeepEval metric over all judged answers."""
+
+    metric: str
+    asks: str
+    mean: float | None
+    passed: int
+    judged: int
+    not_scored: int  # answers with a summary but no score (incl. not judged yet)
+
+
+def metric_summaries(run: QualityRun) -> list[MetricSummary]:
+    judged = {j.id: j for j in run.judged}
+    with_summary = sum(bool(c.summary) for c in run.answers)
+    summaries = []
+    for metric in METRIC_NAMES:
+        verdicts = [v for j in judged.values() if (v := j.get(metric))]
+        scored = [v for v in verdicts if v.score is not None]
+        summaries.append(
+            MetricSummary(
+                metric=metric,
+                asks=METRIC_ASKS[metric],
+                mean=(
+                    statistics.mean(v.score for v in scored if v.score is not None)
+                    if scored
+                    else None
+                ),
+                passed=sum(bool(v.passed) for v in scored),
+                judged=len(scored),
+                not_scored=with_summary - len(scored),
+            )
+        )
+    return summaries
+
+
+@dataclass(frozen=True)
+class RetrievalSummary:
+    """Schema retrieval's RAGAS numbers."""
+
+    questions: int
+    complete: int  # questions that got every table they need
+    id_recall: float
+    id_precision: float
+    sample: int  # questions the LLM metric was run on
+    llm_precision: float | None
+    id_precision_sample: float | None
+
+
+def retrieval_summary(cases: Sequence[RetrievalCase]) -> RetrievalSummary | None:
+    if not cases:
+        return None
+    sampled = [c for c in cases if c.llm_precision is not None]
+    return RetrievalSummary(
+        questions=len(cases),
+        complete=sum(c.id_recall == 1 for c in cases),
+        id_recall=statistics.mean(c.id_recall for c in cases),
+        id_precision=statistics.mean(c.id_precision for c in cases),
+        sample=len(sampled),
+        llm_precision=(
+            statistics.mean(c.llm_precision for c in sampled if c.llm_precision is not None)
+            if sampled
+            else None
+        ),
+        id_precision_sample=statistics.mean(c.id_precision for c in sampled) if sampled else None,
+    )
+
+
 def _answers_section(run: QualityRun) -> list[str]:
     judged = {j.id: j for j in run.judged}
     with_summary = [c for c in run.answers if c.summary]
@@ -408,19 +481,10 @@ def _answers_section(run: QualityRun) -> list[str]:
         "| Metric | Asks | Mean | Pass | Not scored |",
         "|---|---|---|---|---|",
     ]
-    asks = {
-        "answer_relevancy": "does the answer address the question?",
-        "faithfulness": "is every claim supported by the data it was given?",
-        "hallucination": "does it contradict that data?",
-    }
-    for metric in METRIC_NAMES:
-        verdicts = [v for j in judged.values() if (v := j.get(metric))]
-        scored = [v for v in verdicts if v.score is not None]
-        mean = statistics.mean(v.score for v in scored if v.score is not None) if scored else None
-        passed = sum(bool(v.passed) for v in scored)
+    for m in metric_summaries(run):
         lines.append(
-            f"| {metric} | {asks[metric]} | {_number(mean)} | {passed}/{len(scored)} "
-            f"| {len(with_summary) - len(scored)} |"  # incl. not judged yet
+            f"| {m.metric} | {m.asks} | {_number(m.mean)} | {m.passed}/{m.judged} "
+            f"| {m.not_scored} |"
         )
     lines += ["", *_grounding_section(with_summary, judged)]
     wrong_sql = [c for c in with_summary if c.sql_match is False]
@@ -488,8 +552,9 @@ def _grounding_section(cases: list[AnswerCase], judged: dict[str, Judged]) -> li
 
 
 def _retrieval_section(cases: list[RetrievalCase]) -> list[str]:
+    summary = retrieval_summary(cases)
+    assert summary is not None  # only called with cases
     sampled = [c for c in cases if c.llm_precision is not None]
-    complete = sum(c.id_recall == 1 for c in cases)
     lines = [
         "## Schema retrieval: RAGAS",
         "",
@@ -500,17 +565,16 @@ def _retrieval_section(cases: list[RetrievalCase]) -> list[str]:
         "",
         "| Metric | Value | Questions |",
         "|---|---|---|",
-        f"| ID-based context recall | {statistics.mean(c.id_recall for c in cases):.3f} "
-        f"| {len(cases)} ({complete} with every table) |",
-        f"| ID-based context precision | {statistics.mean(c.id_precision for c in cases):.3f} "
-        f"| {len(cases)} |",
+        f"| ID-based context recall | {summary.id_recall:.3f} "
+        f"| {summary.questions} ({summary.complete} with every table) |",
+        f"| ID-based context precision | {summary.id_precision:.3f} | {summary.questions} |",
     ]
     if sampled:
-        llm_mean = statistics.mean(c.llm_precision for c in sampled if c.llm_precision is not None)
-        id_mean = statistics.mean(c.id_precision for c in sampled)
         lines += [
-            f"| LLM context precision (judge) | {llm_mean:.3f} | {len(sampled)} (sample) |",
-            f"| ID-based precision, same sample | {id_mean:.3f} | {len(sampled)} |",
+            f"| LLM context precision (judge) | {summary.llm_precision:.3f} "
+            f"| {summary.sample} (sample) |",
+            f"| ID-based precision, same sample | {summary.id_precision_sample:.3f} "
+            f"| {summary.sample} |",
             "",
             "LLM context precision asks the judge, table by table, whether it helped write the "
             "reference SQL (one call per table). It is *average precision*: 1.0 when the useful "

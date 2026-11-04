@@ -8,6 +8,7 @@ messages never reach the client (§9).
 import logging
 import math
 
+from querymind.api.evals import EvalsUnavailableError
 from querymind.api.schemas import ErrorResponse
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.llm import LLMError, LLMOutputError, LLMProviderError, LLMRateLimitError
@@ -34,6 +35,7 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     ConversationNotFoundError: (404, "conversation_not_found"),
     TurnNotFoundError: (404, "turn_not_found"),
     StoreUnavailableError: (503, "history_unavailable"),
+    EvalsUnavailableError: (503, "evals_unavailable"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

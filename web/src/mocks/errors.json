@@ -32,5 +32,9 @@
     "status": 503,
     "message": "Saved conversations aren't available right now."
   },
+  "evals_unavailable": {
+    "status": 503,
+    "message": "The eval results aren't available on this server."
+  },
   "internal_error": { "status": 500, "message": "Something went wrong. Please try again." }
 }

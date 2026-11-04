@@ -12,6 +12,10 @@ on:
       - "src/querymind/semantic/**"
       - "semantic_layer/**"
       - "evals/**"
+      # The evals page's numbers: they can't change what the gate measures.
+      - "!evals/snapshot.json"
+      - "!evals/snapshot.py"
+      - "!evals/milestones.yaml"
       - ".github/workflows/evals.yml"
   push:
     branches: [main]
@@ -20,6 +24,10 @@ on:
       - "src/querymind/semantic/**"
       - "semantic_layer/**"
       - "evals/**"
+      # The evals page's numbers: they can't change what the gate measures.
+      - "!evals/snapshot.json"
+      - "!evals/snapshot.py"
+      - "!evals/milestones.yaml"
       - ".github/workflows/evals.yml"
   workflow_dispatch: # a "Run workflow" button on the Actions tab, for a manual run
 

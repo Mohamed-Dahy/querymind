@@ -163,6 +163,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Eval Results
+         * @description Every saved eval result: scores, ablations, models, answer quality and the CI baseline.
+         */
+        get: operations["get_eval_results_evals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -251,6 +271,62 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AblationArm
+         * @description One row of the ablation table. The numbers are None when the arm hasn't run.
+         */
+        AblationArm: {
+            /** Adds */
+            adds: string;
+            /** Delta Points */
+            delta_points: number | null;
+            ex: components["schemas"]["EvalScore"] | null;
+            /** Input Tokens */
+            input_tokens: number | null;
+            /** Key */
+            key: string;
+            match: components["schemas"]["EvalScore"] | null;
+            /** Median Seconds */
+            median_seconds: number | null;
+            /** Missing */
+            missing: string[];
+            /** Not Scored */
+            not_scored: number;
+            /** Output Tokens */
+            output_tokens: number | null;
+            /** Repairs Per Question */
+            repairs_per_question: number | null;
+            /** Reports */
+            reports: string[];
+        };
+        /** AblationStudy */
+        AblationStudy: {
+            /**
+             * Headline
+             * @enum {string}
+             */
+            headline: "match" | "ex";
+            /** Llm */
+            llm: string | null;
+            /** Name */
+            name: string;
+            /** Noise Questions */
+            noise_questions: number;
+            /** Title */
+            title: string;
+            /** Views */
+            views: components["schemas"]["AblationView"][];
+        };
+        /**
+         * AblationView
+         * @description The same arms over all of a study's suites ("all"), or over one suite.
+         */
+        AblationView: {
+            /** Arms */
+            arms: components["schemas"]["AblationArm"][];
+            /** Scope */
+            scope: string;
+        };
         /** AskRequest */
         AskRequest: {
             /**
@@ -389,6 +465,18 @@ export interface components {
              * @enum {string}
              */
             type: "attempt_failed";
+        };
+        /**
+         * BirdInfo
+         * @description Who BIRD's data belongs to, and what to know about the version.
+         */
+        BirdInfo: {
+            /** Licence */
+            licence: string;
+            /** Url */
+            url: string;
+            /** Version Note */
+            version_note: string;
         };
         /** BusinessMeaning */
         BusinessMeaning: {
@@ -615,6 +703,135 @@ export interface components {
             retry_after_seconds?: number | null;
         };
         /**
+         * EvalBreakdown
+         * @description One tier's or one database's two scores.
+         */
+        EvalBreakdown: {
+            ex: components["schemas"]["EvalScore"];
+            match: components["schemas"]["EvalScore"];
+            /** Name */
+            name: string;
+        };
+        /**
+         * EvalOutcome
+         * @description How one run did on one question. Never the rows it got.
+         */
+        EvalOutcome: {
+            /** Ex */
+            ex: boolean;
+            /** Ex Reason */
+            ex_reason: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Passed */
+            passed: boolean;
+            /** Question Id */
+            question_id: string;
+            /** Reason */
+            reason: string;
+            /** Scored */
+            scored: boolean;
+            /** Seconds */
+            seconds: number;
+            /** Sql */
+            sql: string | null;
+            /** Sql Attempts */
+            sql_attempts: number;
+        };
+        /** EvalQuestion */
+        EvalQuestion: {
+            /** Database */
+            database: string | null;
+            /** Id */
+            id: string;
+            /** Question */
+            question: string | null;
+            /** Reference Sql */
+            reference_sql: string | null;
+            /**
+             * Study
+             * @enum {string}
+             */
+            study: "golden" | "bird";
+            /** Suite */
+            suite: string;
+            /** Tier */
+            tier: string;
+        };
+        /**
+         * EvalRun
+         * @description One saved report: one suite on one setup.
+         */
+        EvalRun: {
+            /** By Database */
+            by_database: components["schemas"]["EvalBreakdown"][];
+            /** By Tier */
+            by_tier: components["schemas"]["EvalBreakdown"][];
+            /** Code */
+            code: string;
+            /** Date */
+            date: string;
+            ex: components["schemas"]["EvalScore"];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Latency Valid */
+            latency_valid: boolean;
+            /** Llm */
+            llm: string;
+            match: components["schemas"]["EvalScore"];
+            /** Not Scored */
+            not_scored: string[];
+            /** Outcomes */
+            outcomes: components["schemas"]["EvalOutcome"][];
+            /**
+             * Study
+             * @enum {string}
+             */
+            study: "golden" | "bird";
+            /** Suite */
+            suite: string;
+            /** Wall Time */
+            wall_time: string | null;
+        };
+        /** EvalScore */
+        EvalScore: {
+            /** Passed */
+            passed: number;
+            /** Total */
+            total: number;
+        };
+        /** EvalsReply */
+        EvalsReply: {
+            /** Ablations */
+            ablations: components["schemas"]["AblationStudy"][];
+            bird: components["schemas"]["BirdInfo"];
+            /**
+             * Bird Text Available
+             * @default false
+             */
+            bird_text_available: boolean;
+            /**
+             * Format
+             * @default 1
+             */
+            format: number;
+            gate: components["schemas"]["GateInfo"];
+            /** Milestones */
+            milestones: components["schemas"]["Milestone"][];
+            models: components["schemas"]["ModelComparison"];
+            quality: components["schemas"]["QualityPanel"] | null;
+            /** Questions */
+            questions: components["schemas"]["EvalQuestion"][];
+            /** Runs */
+            runs: components["schemas"]["EvalRun"][];
+            /** Speed Ups */
+            speed_ups: components["schemas"]["SpeedUp"][];
+        };
+        /**
          * EventWarning
          * @description A sign the result may be wrong: the words for people, not the hint for the LLM.
          */
@@ -665,6 +882,28 @@ export interface components {
              */
             type: "final";
         };
+        /**
+         * GateInfo
+         * @description The CI gate's baseline. Its live status is on GitHub, at `actions_url`.
+         */
+        GateInfo: {
+            /** Actions Url */
+            actions_url: string;
+            /** Allowed Regressions */
+            allowed_regressions: number;
+            /** Failed */
+            failed: number;
+            /** Failure Proven */
+            failure_proven: boolean;
+            /** Llm */
+            llm: string;
+            /** Note */
+            note: string;
+            /** Passed */
+            passed: number;
+            /** Questions */
+            questions: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -707,6 +946,163 @@ export interface components {
             synonyms: string[];
             /** Table */
             table: string;
+        };
+        /**
+         * Milestone
+         * @description A headline number. Different question sets and models: these points aren't a trend.
+         */
+        Milestone: {
+            /** Date */
+            date: string;
+            /** Llm */
+            llm: string;
+            /**
+             * Not Scored
+             * @default 0
+             */
+            not_scored: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Passed */
+            passed: number;
+            /** Phase */
+            phase: string;
+            /** Question Set */
+            question_set: string;
+            /** Report */
+            report: string;
+            /** Title */
+            title: string;
+            /** Total */
+            total: number;
+        };
+        /** ModelComparison */
+        ModelComparison: {
+            /** Notes */
+            notes: string[];
+            /** Prices Checked */
+            prices_checked: string;
+            /** Studies */
+            studies: components["schemas"]["ModelStudy"][];
+        };
+        /** ModelNotRun */
+        ModelNotRun: {
+            /** Llm */
+            llm: string;
+            /** Missing */
+            missing: string[];
+        };
+        /** ModelRow */
+        ModelRow: {
+            /** Cost Per Correct */
+            cost_per_correct: number | null;
+            /** Cost Per Question */
+            cost_per_question: number | null;
+            /** Ex */
+            ex: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Llm */
+            llm: string;
+            /** Output Tokens */
+            output_tokens: number;
+            /** P50 Seconds */
+            p50_seconds: number;
+            /** P95 Seconds */
+            p95_seconds: number;
+            /** Passed */
+            passed: number;
+            /** Price Note */
+            price_note: string;
+            /** Questions */
+            questions: number;
+        };
+        /** ModelStudy */
+        ModelStudy: {
+            /** Name */
+            name: string;
+            /** Not Run */
+            not_run: components["schemas"]["ModelNotRun"][];
+            /** Only One Model */
+            only_one_model: boolean;
+            /** Partial Note */
+            partial_note: string | null;
+            /** Questions */
+            questions: number;
+            /** Reports */
+            reports: string[];
+            /** Rows */
+            rows: components["schemas"]["ModelRow"][];
+            /** Suites */
+            suites: string[];
+            /** Title */
+            title: string;
+        };
+        /** QualityMetric */
+        QualityMetric: {
+            /** Asks */
+            asks: string;
+            /** Judged */
+            judged: number;
+            /** Mean */
+            mean: number | null;
+            /** Metric */
+            metric: string;
+            /** Not Scored */
+            not_scored: number;
+            /** Passed */
+            passed: number;
+        };
+        /**
+         * QualityPanel
+         * @description Answer quality comes from its own run, not from any run in `runs`.
+         */
+        QualityPanel: {
+            /** Agent Llm */
+            agent_llm: string;
+            /** Answers */
+            answers: number;
+            /** Code */
+            code: string;
+            /** Date */
+            date: string;
+            /** Judge Llm */
+            judge_llm: string;
+            /** Judged Answers */
+            judged_answers: number;
+            /** Metrics */
+            metrics: components["schemas"]["QualityMetric"][];
+            /** Questions */
+            questions: components["schemas"]["QualityQuestion"][];
+            /** Report */
+            report: string;
+            retrieval: components["schemas"]["RetrievalQuality"] | null;
+        };
+        /**
+         * QualityQuestion
+         * @description Only the scores: the judge's reasons and the answer quote data rows, so they stay out.
+         */
+        QualityQuestion: {
+            /** Note */
+            note: string;
+            /** Question Id */
+            question_id: string;
+            /** Scores */
+            scores: components["schemas"]["QualityScore"][];
+            /** Sql Match */
+            sql_match: boolean | null;
+        };
+        /** QualityScore */
+        QualityScore: {
+            /** Metric */
+            metric: string;
+            /** Passed */
+            passed: boolean | null;
+            /** Score */
+            score: number | null;
         };
         /**
          * RefusalResponse
@@ -770,6 +1166,23 @@ export interface components {
              * @example Some rows appear more than once, which can mean a join counted things twice.
              */
             message: string;
+        };
+        /** RetrievalQuality */
+        RetrievalQuality: {
+            /** Complete */
+            complete: number;
+            /** Id Precision */
+            id_precision: number;
+            /** Id Precision Sample */
+            id_precision_sample: number | null;
+            /** Id Recall */
+            id_recall: number;
+            /** Llm Precision */
+            llm_precision: number | null;
+            /** Questions */
+            questions: number;
+            /** Sample */
+            sample: number;
         };
         /**
          * RewriteEvent
@@ -878,6 +1291,21 @@ export interface components {
             tables: string[];
             /** Total Tables */
             total_tables: number;
+        };
+        /** SpeedUp */
+        SpeedUp: {
+            /** After */
+            after: string;
+            /** Before */
+            before: string;
+            /** Factor */
+            factor: string;
+            /** Note */
+            note: string;
+            /** Report */
+            report: string;
+            /** Title */
+            title: string;
         };
         /**
          * SqlEvent
@@ -1413,6 +1841,35 @@ export interface operations {
                 };
             };
             /** @description Saved conversations aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_eval_results_evals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalsReply"];
+                };
+            };
+            /** @description The results file isn't available */
             503: {
                 headers: {
                     [name: string]: unknown;

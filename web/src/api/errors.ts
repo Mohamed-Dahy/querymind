@@ -10,6 +10,7 @@ export const ERROR_TITLES = {
   conversation_not_found: 'Conversation not found.',
   turn_not_found: "This question can't be run again.",
   history_unavailable: "History isn't available.",
+  evals_unavailable: "The eval results aren't available.",
   llm_rate_limited: 'The AI model has reached its usage limit.',
   llm_unavailable: 'The AI model is unavailable right now. Please try again.',
   llm_bad_output: 'The AI model gave an unusable answer. Please try rephrasing.',

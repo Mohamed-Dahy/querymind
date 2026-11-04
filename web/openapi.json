@@ -1,6 +1,202 @@
 {
   "components": {
     "schemas": {
+      "AblationArm": {
+        "description": "One row of the ablation table. The numbers are None when the arm hasn't run.",
+        "properties": {
+          "adds": {
+            "title": "Adds",
+            "type": "string"
+          },
+          "delta_points": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Points"
+          },
+          "ex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvalScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvalScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "median_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Seconds"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "not_scored": {
+            "title": "Not Scored",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "repairs_per_question": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repairs Per Question"
+          },
+          "reports": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reports",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "adds",
+          "match",
+          "ex",
+          "delta_points",
+          "not_scored",
+          "repairs_per_question",
+          "input_tokens",
+          "output_tokens",
+          "median_seconds",
+          "reports",
+          "missing"
+        ],
+        "title": "AblationArm",
+        "type": "object"
+      },
+      "AblationStudy": {
+        "properties": {
+          "headline": {
+            "enum": [
+              "match",
+              "ex"
+            ],
+            "title": "Headline",
+            "type": "string"
+          },
+          "llm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "noise_questions": {
+            "title": "Noise Questions",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "views": {
+            "items": {
+              "$ref": "#/components/schemas/AblationView"
+            },
+            "title": "Views",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "headline",
+          "llm",
+          "noise_questions",
+          "views"
+        ],
+        "title": "AblationStudy",
+        "type": "object"
+      },
+      "AblationView": {
+        "description": "The same arms over all of a study's suites (\"all\"), or over one suite.",
+        "properties": {
+          "arms": {
+            "items": {
+              "$ref": "#/components/schemas/AblationArm"
+            },
+            "title": "Arms",
+            "type": "array"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "arms"
+        ],
+        "title": "AblationView",
+        "type": "object"
+      },
       "AskRequest": {
         "properties": {
           "conversation_id": {
@@ -256,6 +452,30 @@
           "message"
         ],
         "title": "AttemptFailedEvent",
+        "type": "object"
+      },
+      "BirdInfo": {
+        "description": "Who BIRD's data belongs to, and what to know about the version.",
+        "properties": {
+          "licence": {
+            "title": "Licence",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "version_note": {
+            "title": "Version Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "licence",
+          "version_note"
+        ],
+        "title": "BirdInfo",
         "type": "object"
       },
       "BusinessMeaning": {
@@ -740,6 +960,371 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "EvalBreakdown": {
+        "description": "One tier's or one database's two scores.",
+        "properties": {
+          "ex": {
+            "$ref": "#/components/schemas/EvalScore"
+          },
+          "match": {
+            "$ref": "#/components/schemas/EvalScore"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "match",
+          "ex"
+        ],
+        "title": "EvalBreakdown",
+        "type": "object"
+      },
+      "EvalOutcome": {
+        "description": "How one run did on one question. Never the rows it got.",
+        "properties": {
+          "ex": {
+            "title": "Ex",
+            "type": "boolean"
+          },
+          "ex_reason": {
+            "title": "Ex Reason",
+            "type": "string"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "boolean"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql"
+          },
+          "sql_attempts": {
+            "title": "Sql Attempts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question_id",
+          "scored",
+          "passed",
+          "ex",
+          "reason",
+          "ex_reason",
+          "sql",
+          "sql_attempts",
+          "seconds",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "title": "EvalOutcome",
+        "type": "object"
+      },
+      "EvalQuestion": {
+        "properties": {
+          "database": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "reference_sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Sql"
+          },
+          "study": {
+            "enum": [
+              "golden",
+              "bird"
+            ],
+            "title": "Study",
+            "type": "string"
+          },
+          "suite": {
+            "title": "Suite",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "study",
+          "suite",
+          "tier",
+          "database",
+          "question",
+          "reference_sql"
+        ],
+        "title": "EvalQuestion",
+        "type": "object"
+      },
+      "EvalRun": {
+        "description": "One saved report: one suite on one setup.",
+        "properties": {
+          "by_database": {
+            "items": {
+              "$ref": "#/components/schemas/EvalBreakdown"
+            },
+            "title": "By Database",
+            "type": "array"
+          },
+          "by_tier": {
+            "items": {
+              "$ref": "#/components/schemas/EvalBreakdown"
+            },
+            "title": "By Tier",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "ex": {
+            "$ref": "#/components/schemas/EvalScore"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latency_valid": {
+            "title": "Latency Valid",
+            "type": "boolean"
+          },
+          "llm": {
+            "title": "Llm",
+            "type": "string"
+          },
+          "match": {
+            "$ref": "#/components/schemas/EvalScore"
+          },
+          "not_scored": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Scored",
+            "type": "array"
+          },
+          "outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/EvalOutcome"
+            },
+            "title": "Outcomes",
+            "type": "array"
+          },
+          "study": {
+            "enum": [
+              "golden",
+              "bird"
+            ],
+            "title": "Study",
+            "type": "string"
+          },
+          "suite": {
+            "title": "Suite",
+            "type": "string"
+          },
+          "wall_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Time"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "study",
+          "suite",
+          "llm",
+          "date",
+          "code",
+          "wall_time",
+          "latency_valid",
+          "match",
+          "ex",
+          "not_scored",
+          "by_tier",
+          "by_database",
+          "outcomes"
+        ],
+        "title": "EvalRun",
+        "type": "object"
+      },
+      "EvalScore": {
+        "properties": {
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "passed",
+          "total"
+        ],
+        "title": "EvalScore",
+        "type": "object"
+      },
+      "EvalsReply": {
+        "properties": {
+          "ablations": {
+            "items": {
+              "$ref": "#/components/schemas/AblationStudy"
+            },
+            "title": "Ablations",
+            "type": "array"
+          },
+          "bird": {
+            "$ref": "#/components/schemas/BirdInfo"
+          },
+          "bird_text_available": {
+            "default": false,
+            "title": "Bird Text Available",
+            "type": "boolean"
+          },
+          "format": {
+            "default": 1,
+            "title": "Format",
+            "type": "integer"
+          },
+          "gate": {
+            "$ref": "#/components/schemas/GateInfo"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/Milestone"
+            },
+            "title": "Milestones",
+            "type": "array"
+          },
+          "models": {
+            "$ref": "#/components/schemas/ModelComparison"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QualityPanel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/EvalQuestion"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/EvalRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "speed_ups": {
+            "items": {
+              "$ref": "#/components/schemas/SpeedUp"
+            },
+            "title": "Speed Ups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bird",
+          "questions",
+          "runs",
+          "ablations",
+          "models",
+          "quality",
+          "gate",
+          "milestones",
+          "speed_ups"
+        ],
+        "title": "EvalsReply",
+        "type": "object"
+      },
       "EventWarning": {
         "description": "A sign the result may be wrong: the words for people, not the hint for the LLM.",
         "properties": {
@@ -850,6 +1435,55 @@
         "title": "FinalEvent",
         "type": "object"
       },
+      "GateInfo": {
+        "description": "The CI gate's baseline. Its live status is on GitHub, at `actions_url`.",
+        "properties": {
+          "actions_url": {
+            "title": "Actions Url",
+            "type": "string"
+          },
+          "allowed_regressions": {
+            "title": "Allowed Regressions",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "failure_proven": {
+            "title": "Failure Proven",
+            "type": "boolean"
+          },
+          "llm": {
+            "title": "Llm",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "questions": {
+            "title": "Questions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "llm",
+          "questions",
+          "passed",
+          "failed",
+          "allowed_regressions",
+          "failure_proven",
+          "note",
+          "actions_url"
+        ],
+        "title": "GateInfo",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -951,6 +1585,456 @@
           "synonyms"
         ],
         "title": "MetricMeaning",
+        "type": "object"
+      },
+      "Milestone": {
+        "description": "A headline number. Different question sets and models: these points aren't a trend.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "llm": {
+            "title": "Llm",
+            "type": "string"
+          },
+          "not_scored": {
+            "default": 0,
+            "title": "Not Scored",
+            "type": "integer"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "question_set": {
+            "title": "Question Set",
+            "type": "string"
+          },
+          "report": {
+            "title": "Report",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "phase",
+          "title",
+          "question_set",
+          "passed",
+          "total",
+          "llm",
+          "date",
+          "report"
+        ],
+        "title": "Milestone",
+        "type": "object"
+      },
+      "ModelComparison": {
+        "properties": {
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "prices_checked": {
+            "title": "Prices Checked",
+            "type": "string"
+          },
+          "studies": {
+            "items": {
+              "$ref": "#/components/schemas/ModelStudy"
+            },
+            "title": "Studies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prices_checked",
+          "notes",
+          "studies"
+        ],
+        "title": "ModelComparison",
+        "type": "object"
+      },
+      "ModelNotRun": {
+        "properties": {
+          "llm": {
+            "title": "Llm",
+            "type": "string"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "llm",
+          "missing"
+        ],
+        "title": "ModelNotRun",
+        "type": "object"
+      },
+      "ModelRow": {
+        "properties": {
+          "cost_per_correct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Per Correct"
+          },
+          "cost_per_question": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Per Question"
+          },
+          "ex": {
+            "title": "Ex",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "llm": {
+            "title": "Llm",
+            "type": "string"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "p50_seconds": {
+            "title": "P50 Seconds",
+            "type": "number"
+          },
+          "p95_seconds": {
+            "title": "P95 Seconds",
+            "type": "number"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "price_note": {
+            "title": "Price Note",
+            "type": "string"
+          },
+          "questions": {
+            "title": "Questions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "llm",
+          "questions",
+          "passed",
+          "ex",
+          "p50_seconds",
+          "p95_seconds",
+          "input_tokens",
+          "output_tokens",
+          "cost_per_question",
+          "cost_per_correct",
+          "price_note"
+        ],
+        "title": "ModelRow",
+        "type": "object"
+      },
+      "ModelStudy": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "not_run": {
+            "items": {
+              "$ref": "#/components/schemas/ModelNotRun"
+            },
+            "title": "Not Run",
+            "type": "array"
+          },
+          "only_one_model": {
+            "title": "Only One Model",
+            "type": "boolean"
+          },
+          "partial_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Note"
+          },
+          "questions": {
+            "title": "Questions",
+            "type": "integer"
+          },
+          "reports": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reports",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ModelRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "suites": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suites",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "suites",
+          "partial_note",
+          "questions",
+          "only_one_model",
+          "rows",
+          "not_run",
+          "reports"
+        ],
+        "title": "ModelStudy",
+        "type": "object"
+      },
+      "QualityMetric": {
+        "properties": {
+          "asks": {
+            "title": "Asks",
+            "type": "string"
+          },
+          "judged": {
+            "title": "Judged",
+            "type": "integer"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "not_scored": {
+            "title": "Not Scored",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "metric",
+          "asks",
+          "mean",
+          "passed",
+          "judged",
+          "not_scored"
+        ],
+        "title": "QualityMetric",
+        "type": "object"
+      },
+      "QualityPanel": {
+        "description": "Answer quality comes from its own run, not from any run in `runs`.",
+        "properties": {
+          "agent_llm": {
+            "title": "Agent Llm",
+            "type": "string"
+          },
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "judge_llm": {
+            "title": "Judge Llm",
+            "type": "string"
+          },
+          "judged_answers": {
+            "title": "Judged Answers",
+            "type": "integer"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/QualityMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QualityQuestion"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "report": {
+            "title": "Report",
+            "type": "string"
+          },
+          "retrieval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetrievalQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "report",
+          "date",
+          "code",
+          "agent_llm",
+          "judge_llm",
+          "answers",
+          "judged_answers",
+          "metrics",
+          "questions",
+          "retrieval"
+        ],
+        "title": "QualityPanel",
+        "type": "object"
+      },
+      "QualityQuestion": {
+        "description": "Only the scores: the judge's reasons and the answer quote data rows, so they stay out.",
+        "properties": {
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/QualityScore"
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "sql_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql Match"
+          }
+        },
+        "required": [
+          "question_id",
+          "sql_match",
+          "scores",
+          "note"
+        ],
+        "title": "QualityQuestion",
+        "type": "object"
+      },
+      "QualityScore": {
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "metric",
+          "score",
+          "passed"
+        ],
+        "title": "QualityScore",
         "type": "object"
       },
       "RefusalResponse": {
@@ -1057,6 +2141,63 @@
           "message"
         ],
         "title": "ResultWarning",
+        "type": "object"
+      },
+      "RetrievalQuality": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "integer"
+          },
+          "id_precision": {
+            "title": "Id Precision",
+            "type": "number"
+          },
+          "id_precision_sample": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Precision Sample"
+          },
+          "id_recall": {
+            "title": "Id Recall",
+            "type": "number"
+          },
+          "llm_precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Precision"
+          },
+          "questions": {
+            "title": "Questions",
+            "type": "integer"
+          },
+          "sample": {
+            "title": "Sample",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "questions",
+          "complete",
+          "id_recall",
+          "id_precision",
+          "sample",
+          "llm_precision",
+          "id_precision_sample"
+        ],
+        "title": "RetrievalQuality",
         "type": "object"
       },
       "RewriteEvent": {
@@ -1300,6 +2441,44 @@
           "total_tables"
         ],
         "title": "ShownSchema",
+        "type": "object"
+      },
+      "SpeedUp": {
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "string"
+          },
+          "before": {
+            "title": "Before",
+            "type": "string"
+          },
+          "factor": {
+            "title": "Factor",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "report": {
+            "title": "Report",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "before",
+          "after",
+          "factor",
+          "note",
+          "report"
+        ],
+        "title": "SpeedUp",
         "type": "object"
       },
       "SqlEvent": {
@@ -2219,6 +3398,38 @@
         "summary": "Rerun Turn",
         "tags": [
           "conversations"
+        ]
+      }
+    },
+    "/evals": {
+      "get": {
+        "description": "Every saved eval result: scores, ablations, models, answer quality and the CI baseline.",
+        "operationId": "get_eval_results_evals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalsReply"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The results file isn't available"
+          }
+        },
+        "summary": "Get Eval Results",
+        "tags": [
+          "evals"
         ]
       }
     },

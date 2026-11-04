@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # Business definitions shown to the LLM (metrics, synonyms, joins), one file per part of the
     # database. In .env: comma-separated, relative to where the app starts (the repo root).
     # Empty = none. NoDecode: read the env value as plain text, not as JSON.
+    # The evals lab (UI U5.1): the committed results, and BIRD's downloaded questions (optional:
+    # only they hold BIRD's text, which isn't committed).
+    evals_snapshot_path: Path = Path("evals/snapshot.json")
+    bird_questions_path: Path = Path("data/raw/bird/mini_dev_postgresql.json")
     semantic_layer_paths: Annotated[list[Path], NoDecode] = [
         Path("semantic_layer/northwind.yaml"),
         Path("semantic_layer/chinook.yaml"),

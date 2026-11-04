@@ -1,0 +1,82 @@
+# Numbers written by hand, for what has no JSON report: Phases 1-3 wrote Markdown only, the Ray
+# measurements are one hand-written report, and a few facts live nowhere else. evals/snapshot.py
+# copies this into evals/snapshot.json. Every number names the report it came from; a local test
+# checks that the number really is in that report (the reports are git-ignored: docs/eval-reports/).
+#
+# After changing this: uv run python -m evals.snapshot
+
+# Different question sets and models, so these are separate points, never one rising line.
+milestones:
+  - phase: "1"
+    title: First baseline
+    question_set: Northwind 30
+    passed: 29
+    total: 30
+    llm: groq / openai/gpt-oss-120b
+    date: "2026-10-21"
+    report: phase1-baseline
+    note: Two runs combined. 3 questions lost to the daily limit were rerun; the real failure was not.
+  - phase: "2"
+    title: Self-correction and sanity checks
+    question_set: Northwind 30
+    passed: 28
+    total: 28
+    not_scored: 2
+    llm: groq / openai/gpt-oss-120b
+    date: "2026-10-22"
+    report: phase2-final
+    note: Two runs combined. 2 hard questions hit the daily limit twice.
+  - phase: "3.1"
+    title: Semantic layer
+    question_set: Business terms 13
+    passed: 13
+    total: 13
+    llm: gemini / gemini-3.5-flash-lite
+    date: "2026-10-23"
+    report: phase3-semantic-layer
+    note: 5/13 without the layer, same model. These questions need the company's own definitions.
+  - phase: "3.5"
+    title: Few-shot examples
+    question_set: Golden 58
+    passed: 58
+    total: 58
+    llm: gemini / gemini-3.5-flash-lite
+    date: "2026-10-23"
+    report: phase3-few-shot
+    note: 56/58 without examples, same model. One run each, so this gap is about the noise.
+
+speed_ups:
+  - title: A live BIRD-100 run with 4 Ray workers
+    before: 798 s
+    after: 508 s
+    factor: 1.6×
+    note: The shared rate limiter was the bottleneck, as designed. More workers wouldn't help on this free tier.
+    report: phase4-parallel
+  - title: Rescoring a saved run, 4 workers already running
+    before: 9.8 s
+    after: 3.7 s
+    factor: 2.7×
+    note: No LLM, only Postgres. Ray's start-up of about 8 s costs more than this at this size.
+    report: phase4-parallel
+
+# Two runs of one setup differ by about this many questions (phase4-models.md, phase4-parallel.md).
+noise_questions:
+  golden: 2
+  bird: 3
+
+# Warnings shown beside a score. Why: PLAN.md 4.5.
+quality_notes:
+  e03_german_customers: Judge noise. The judge garbled umlaut names in the rows; the SQL matched the reference.
+  e04_out_of_stock: Judge noise. The judge garbled umlaut names in the rows; the SQL matched the reference.
+
+gate:
+  failure_proven: false
+  note: A deliberately broken prompt hasn't been tried yet, so the gate hasn't been seen failing.
+  actions_url: https://github.com/Mohamed-Dahy/querymind/actions/workflows/evals.yml
+
+bird:
+  url: https://bird-bench.github.io
+  licence: CC BY-SA 4.0
+  version_note: >-
+    Run on the BIRD Mini-Dev version pinned in data/seed_bird.py. BIRD revised its questions and gold
+    SQL in 2026, after these runs, so don't compare this number with results on the new version.

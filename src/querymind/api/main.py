@@ -28,6 +28,8 @@ from querymind.agent.pipeline import Pipeline
 from querymind.api.conversations import router as conversations_router
 from querymind.api.deps import AnswersQuestions, ManagesConversations, StreamsAnswers
 from querymind.api.errors import ERROR_MAP, INTERNAL_ERROR, error_response
+from querymind.api.evals import EvalsData, create_evals
+from querymind.api.evals import router as evals_router
 from querymind.api.explorer import ExplorerData, create_explorer
 from querymind.api.explorer import router as explorer_router
 from querymind.api.routes import router
@@ -45,6 +47,7 @@ def create_app(
     pipeline: AnswersQuestions | StreamsAnswers | ManagesConversations | None = None,
     store: ConversationStore | None = None,
     explorer: ExplorerData | None = None,
+    evals: EvalsData | None = None,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and `store`) in tests; leave `pipeline` out to build the real
     ones at startup. Without a store, history is off."""
@@ -56,11 +59,13 @@ def create_app(
             app.state.pipeline = pipeline
             app.state.store = store
             app.state.explorer = explorer
+            app.state.evals = evals
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
             app.state.store = create_store(settings)  # None when APP_DB_USER isn't set
             app.state.explorer = create_explorer(settings)
+            app.state.evals = create_evals(settings)
             app.state.pipeline = Pipeline(
                 llm=create_llm_provider(settings),
                 settings=settings,
@@ -89,6 +94,7 @@ def create_app(
     app.include_router(conversations_router)
     app.include_router(saved_questions_router)
     app.include_router(explorer_router)
+    app.include_router(evals_router)
     for error_type in ERROR_MAP:
         app.add_exception_handler(error_type, _handle_known_error)
     app.add_exception_handler(RequestValidationError, _handle_invalid_request)
