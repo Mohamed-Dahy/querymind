@@ -18,6 +18,11 @@ const ROUTES = [
   },
   { path: '/explore/tables/orders', heading: 'orders', title: 'Data explorer · QueryMind' },
   { path: '/evals', heading: 'Evals lab', title: 'Evals lab · QueryMind' },
+  {
+    path: '/evals/ablations',
+    heading: 'What each part adds',
+    title: 'What each part adds · QueryMind',
+  },
   { path: '/no/such/page', heading: 'Page not found', title: 'Page not found · QueryMind' },
   { path: '/styleguide', heading: 'QueryMind · style guide', title: 'QueryMind' },
 ]

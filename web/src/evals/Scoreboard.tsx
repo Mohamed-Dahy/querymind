@@ -1,4 +1,5 @@
 import { ExternalLink } from 'lucide-react'
+import { Link } from 'react-router'
 
 import type { EvalsReply, Milestone, QualityPanel, SpeedUp } from '@/api/evals'
 
@@ -81,7 +82,11 @@ function Timeline({ milestones }: { milestones: Milestone[] }) {
       </h2>
       <p className="mt-1 text-sm text-fg-muted">
         These aren&rsquo;t a trend: the questions got harder and the model changed. To compare parts
-        of the agent on equal terms, see what each part adds.
+        of the agent on equal terms, see{' '}
+        <Link to="/evals/ablations" className="text-info underline underline-offset-4">
+          what each part adds
+        </Link>
+        .
       </p>
       <ol className="mt-3 grid gap-3 md:grid-cols-2">
         {milestones.map((point) => (

@@ -3,7 +3,13 @@ import { createBrowserRouter, type RouteObject } from 'react-router'
 
 import { AppShell } from '@/layout/AppShell'
 import { CanvasPage } from '@/pages/CanvasPage'
-import { LazyEvalsPage, LazyExplorePage, LazyGlossaryPage, LazyTablePage } from '@/pages/LazyPages'
+import {
+  LazyAblationsPage,
+  LazyEvalsPage,
+  LazyExplorePage,
+  LazyGlossaryPage,
+  LazyTablePage,
+} from '@/pages/LazyPages'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 /** What a route tells the shell: its page name, shown in the browser tab (useFocusOnRouteChange). */
@@ -57,6 +63,11 @@ export const routes: RouteObject[] = [
         path: 'evals',
         element: <LazyEvalsPage />,
         handle: { title: 'Evals lab' } satisfies RouteHandle,
+      },
+      {
+        path: 'evals/ablations',
+        element: <LazyAblationsPage />,
+        handle: { title: 'What each part adds' } satisfies RouteHandle,
       },
       // Any other path inside the shell: the 404 page, with the rail still there to get back.
       {

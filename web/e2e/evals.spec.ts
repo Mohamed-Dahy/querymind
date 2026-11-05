@@ -2,6 +2,42 @@ import { expect, test } from '@playwright/test'
 
 import { seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
 
+test.describe('what each part adds', () => {
+  for (const theme of THEMES) {
+    test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {
+      await useTheme(page, theme)
+      await page.goto('/evals/ablations')
+      await expect(page.getByRole('listitem', { name: 'Arm C' })).toBeVisible()
+
+      expect(await seriousA11yIssues(page)).toEqual([])
+    })
+  }
+
+  test('a phone reads the bars, and only the table scrolls sideways', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 })
+    await page.goto('/evals/ablations')
+
+    await expect(page.getByRole('listitem', { name: 'Arm C' })).toContainText('+20.7 pts')
+    const overflow = (await page.evaluate(
+      'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+    )) as number
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('the keyboard reaches the suites and scrolls the table', async ({ page }) => {
+    await page.goto('/evals/ablations')
+    const business = page.getByRole('link', { name: 'Business terms 13' })
+    await business.focus()
+    await page.keyboard.press('Enter')
+
+    await expect(page).toHaveURL(/scope=business/)
+    await expect(page.getByRole('listitem', { name: 'Arm A' })).toContainText('6/13')
+    const table = page.getByRole('region', { name: /^Golden 58.*every number/ })
+    await table.focus()
+    await expect(table).toBeFocused()
+  })
+})
+
 test.describe('the scoreboard', () => {
   for (const theme of THEMES) {
     test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {
