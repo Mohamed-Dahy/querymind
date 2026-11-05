@@ -468,6 +468,7 @@
  "gate": {
   "actions_url": "https://github.com/Mohamed-Dahy/querymind/actions/workflows/evals.yml",
   "allowed_regressions": 1,
+  "baseline_date": "2026-10-25",
   "failed": 0,
   "failure_proven": false,
   "llm": "groq / openai/gpt-oss-20b",

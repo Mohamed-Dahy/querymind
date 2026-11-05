@@ -13,6 +13,7 @@ from evals.report import Outcome, load_report, write_reports
 from evals.snapshot import (
     MAX_REASON,
     MILESTONES_FILE,
+    MOCK_FILE,
     SNAPSHOT_FILE,
     SnapshotError,
     build_snapshot,
@@ -327,6 +328,10 @@ def test_the_committed_file_keeps_no_raw_provider_reply() -> None:
     assert "Failed to parse" not in text
 
 
+def test_the_web_uis_fake_api_serves_the_same_bytes() -> None:
+    assert MOCK_FILE.read_bytes() == SNAPSHOT_FILE.read_bytes()
+
+
 def test_the_committed_file_is_small_enough_for_the_commit_hook() -> None:
     assert SNAPSHOT_FILE.stat().st_size < 500 * 1024
 
@@ -345,6 +350,10 @@ def test_every_hand_written_number_is_in_its_report() -> None:
     for point in hand.milestones:
         report = (REAL_REPORTS / f"{point.report}.md").read_text(encoding="utf-8")
         assert f"{point.passed}/{point.total}" in report, point.report
+    baseline = (REAL_REPORTS / "ci-baseline" / "phase4-models-gpt-oss-20b-chinook.md").read_text(
+        encoding="utf-8"
+    )
+    assert hand.gate.baseline_date in baseline
     for speed_up in hand.speed_ups:
         report = (REAL_REPORTS / f"{speed_up.report}.md").read_text(encoding="utf-8")
         for number in (speed_up.before, speed_up.after, speed_up.factor):

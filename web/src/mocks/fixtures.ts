@@ -1,3 +1,4 @@
+import type { EvalsReply } from '@/api/evals'
 import type { Catalog, SemanticOverview } from '@/api/explorer'
 import type {
   AskResponse,
@@ -11,6 +12,7 @@ import errorsJson from './errors.json'
 import answerJson from './recorded/answer.json'
 import catalogJson from './recorded/catalog.json'
 import clarificationJson from './recorded/clarification.json'
+import evalsJson from './recorded/evals.json'
 import followupJson from './recorded/followup.json'
 import monthlyJson from './recorded/monthly.json'
 import refusalJson from './recorded/refusal.json'
@@ -30,6 +32,8 @@ import singleStreamJson from './recorded/streams/single.json'
 // Pydantic models, so the casts are safe.
 export const catalog = catalogJson as Catalog
 export const semantic = semanticJson as SemanticOverview
+// Written by `uv run python -m evals.snapshot`, the same bytes as evals/snapshot.json.
+export const evals = evalsJson as EvalsReply
 export const answer = answerJson as AskResponse
 export const followup = followupJson as AskResponse
 export const clarification = clarificationJson as ClarificationResponse

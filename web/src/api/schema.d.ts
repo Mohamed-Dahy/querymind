@@ -891,6 +891,8 @@ export interface components {
             actions_url: string;
             /** Allowed Regressions */
             allowed_regressions: number;
+            /** Baseline Date */
+            baseline_date: string;
             /** Failed */
             failed: number;
             /** Failure Proven */

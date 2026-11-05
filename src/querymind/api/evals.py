@@ -217,6 +217,7 @@ class GateInfo(BaseModel):
     passed: int
     failed: int
     allowed_regressions: int
+    baseline_date: str
     failure_proven: bool  # a deliberately broken prompt has made it fail
     note: str
     actions_url: str

@@ -1446,6 +1446,10 @@
             "title": "Allowed Regressions",
             "type": "integer"
           },
+          "baseline_date": {
+            "title": "Baseline Date",
+            "type": "string"
+          },
           "failed": {
             "title": "Failed",
             "type": "integer"
@@ -1477,6 +1481,7 @@
           "passed",
           "failed",
           "allowed_regressions",
+          "baseline_date",
           "failure_proven",
           "note",
           "actions_url"

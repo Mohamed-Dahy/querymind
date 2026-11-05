@@ -58,6 +58,8 @@ from querymind.api.evals import (
 )
 
 SNAPSHOT_FILE = Path(__file__).parent / "snapshot.json"
+#: The web UI's fake API serves the same bytes, so its tests see the real numbers.
+MOCK_FILE = Path(__file__).parents[1] / "web" / "src" / "mocks" / "recorded" / "evals.json"
 MILESTONES_FILE = Path(__file__).parent / "milestones.yaml"
 REPORT_DIR = Path("docs/eval-reports")
 QUALITY_REPORT = "phase4-quality"
@@ -75,6 +77,7 @@ class SnapshotError(Exception):
 class _GateFacts(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    baseline_date: str
     failure_proven: bool
     note: str
     actions_url: str
@@ -426,6 +429,7 @@ def _gate(facts: _GateFacts, baseline_path: Path) -> GateInfo:
         passed=len(baseline.passed),
         failed=len(baseline.failed),
         allowed_regressions=ALLOWED_REGRESSIONS,
+        baseline_date=facts.baseline_date,
         failure_proven=facts.failure_proven,
         note=facts.note,
         actions_url=facts.actions_url,
@@ -519,6 +523,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     write_snapshot(snapshot, args.out)
+    if args.out == SNAPSHOT_FILE:
+        write_snapshot(snapshot, MOCK_FILE)
     print(
         f"Written {args.out}: {len(snapshot.runs)} runs, {len(snapshot.questions)} questions, "
         f"{args.out.stat().st_size // 1024} kB"

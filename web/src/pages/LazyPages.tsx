@@ -4,6 +4,7 @@ import { lazy, Suspense } from 'react'
 const ExplorePage = lazy(() => import('./ExplorePage'))
 const TablePage = lazy(() => import('@/explorer/TablePage'))
 const GlossaryPage = lazy(() => import('@/explorer/GlossaryPage'))
+const EvalsPage = lazy(() => import('./EvalsPage'))
 
 export function LazyExplorePage() {
   return (
@@ -17,6 +18,14 @@ export function LazyTablePage() {
   return (
     <Suspense fallback={null}>
       <TablePage />
+    </Suspense>
+  )
+}
+
+export function LazyEvalsPage() {
+  return (
+    <Suspense fallback={null}>
+      <EvalsPage />
     </Suspense>
   )
 }

@@ -24,6 +24,7 @@ import {
   clarification,
   clarificationStream,
   errors,
+  evals,
   followup,
   followupStream,
   health,
@@ -191,6 +192,7 @@ export const handlers = [
   }),
   http.get('/api/catalog', () => HttpResponse.json(catalog)),
   http.get('/api/semantic', () => HttpResponse.json(semantic)),
+  http.get('/api/evals', () => HttpResponse.json(evals)),
   http.get('/api/catalog/tables/:table/questions', ({ params }) =>
     HttpResponse.json(questionsUsing(String(params['table']))),
   ),

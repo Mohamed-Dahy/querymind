@@ -70,6 +70,7 @@ quality_notes:
   e04_out_of_stock: Judge noise. The judge garbled umlaut names in the rows; the SQL matched the reference.
 
 gate:
+  baseline_date: "2026-10-25"
   failure_proven: false
   note: A deliberately broken prompt hasn't been tried yet, so the gate hasn't been seen failing.
   actions_url: https://github.com/Mohamed-Dahy/querymind/actions/workflows/evals.yml
