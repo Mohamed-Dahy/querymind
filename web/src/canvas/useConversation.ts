@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext } from 'react'
 
 import type { ConversationDetail, RerunResult } from '@/api/conversations'
 
-import { conversationAt, type CanvasStore, type Conversation } from './state'
+import { conversationAt, NEW_CONVERSATION, type CanvasStore, type Conversation } from './state'
 
 /** Navigation state: the question to put in the composer on arrival. */
 export type DraftState = { draft: string }
@@ -79,4 +79,13 @@ export function useDraftNew(): (question: string) => void {
 /** Starts over at an empty `/`. The old conversation stays at its own URL. */
 export function useNewConversation(): () => void {
   return useCanvas().newConversation
+}
+
+/**
+ * A question is running at `/` with no conversation id yet. Starting over (a new conversation)
+ * would cancel it, because its answer would have nowhere to land.
+ */
+export function useNewConversationBusy(): boolean {
+  const conversation = conversationAt(useCanvas().store, NEW_CONVERSATION)
+  return conversation.id === null && conversation.cells.some(({ status }) => status === 'running')
 }

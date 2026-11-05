@@ -73,13 +73,15 @@ test('keyboard only: skip link first, then every control, and Enter navigates', 
 
   // Walk the page with Tab and write down what gets focus, in order.
   const stops: string[] = []
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 10; i++) {
     await page.keyboard.press('Tab')
-    stops.push((await page.locator(':focus').innerText()).trim())
+    // One line per stop: the Search button also shows its shortcut on a second line.
+    stops.push((await page.locator(':focus').innerText()).trim().split('\n')[0] ?? '')
   }
   expect(stops).toEqual([
     'Skip to content',
     'QueryMind',
+    'Search',
     'New conversation',
     'Dark',
     'Light',

@@ -48,6 +48,9 @@ if (typeof window.ResizeObserver !== 'function') {
 // jsdom has no pointer capture; a toast asks for it the moment one of its buttons is pressed.
 HTMLElement.prototype.setPointerCapture ??= () => {}
 
+// jsdom doesn't scroll either; the command palette (cmdk) scrolls the selected item into view.
+Element.prototype.scrollIntoView ??= () => {}
+
 // jsdom lays nothing out, so every element is 0 × 0 px, and a virtualized list (ResultTable) would
 // draw no rows. Give elements the size of the table's scroll area instead: a window of rows appears,
 // as in a browser.

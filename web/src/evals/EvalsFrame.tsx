@@ -7,13 +7,7 @@ import { LoadError } from '@/explorer/LoadError'
 import { cn } from '@/lib/utils'
 
 import { useEvals } from './useEvals'
-
-const VIEWS = [
-  { to: '/evals', label: 'Scoreboard', end: true },
-  { to: '/evals/ablations', label: 'What each part adds', end: false },
-  { to: '/evals/models', label: 'Models', end: false },
-  { to: '/evals/questions', label: 'Questions', end: false },
-]
+import { EVAL_VIEWS } from './views'
 
 type EvalsFrameProps = {
   title: string
@@ -29,7 +23,7 @@ export function EvalsFrame({ title, intro, children }: EvalsFrameProps) {
       <h1 className="text-2xl [overflow-wrap:anywhere]">{title}</h1>
       <p className="mt-2 text-fg-muted">{intro}</p>
       <nav aria-label="Evals lab views" className="mt-4 flex flex-wrap gap-2">
-        {VIEWS.map(({ to, label, end }) => (
+        {EVAL_VIEWS.map(({ to, label, end }) => (
           <NavLink
             key={to}
             to={to}

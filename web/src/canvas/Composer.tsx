@@ -10,13 +10,10 @@ import {
 } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { MODIFIER } from '@/lib/keys'
 import { cn } from '@/lib/utils'
 
 import { checkQuestion, limitAnnouncement, MAX_QUESTION_LENGTH, questionLength } from './question'
-
-// Only the hint text differs: both Ctrl and ⌘ send on every system.
-const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform)
-const MODIFIER = IS_MAC ? '⌘' : 'Ctrl'
 
 /** What the page can do to the composer from outside (React's `ref` on a component). */
 export type ComposerHandle = {
