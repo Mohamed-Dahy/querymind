@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import type { EvalQuestion, EvalsReply } from '@/api/evals'
@@ -60,12 +61,19 @@ function Matrix({ data }: { data: EvalsReply }) {
   }
   const shown = filterQuestions(questions, columns, filters, study)
 
+  // react-router gives every update the params of the last redraw, not the last update, so two
+  // changes before a redraw (a busy browser) would drop the first. Build on our own latest instead.
+  const pending = useRef<URLSearchParams | null>(null)
+  useEffect(() => {
+    pending.current = null
+  }, [params])
   const change = (name: string, value: string | null) =>
     setParams(
       (previous) => {
-        const next = new URLSearchParams(previous)
+        const next = new URLSearchParams(pending.current ?? previous)
         if (value === null || value === '') next.delete(name)
         else next.set(name, value)
+        pending.current = next
         return next
       },
       { replace: true },

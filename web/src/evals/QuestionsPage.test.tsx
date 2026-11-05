@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -160,6 +160,22 @@ describe('QuestionsPage', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Failures only' }))
     expect(router.state.location.search).toContain('failures=1')
+  })
+
+  it('keeps both filters when two change before the page redraws', async () => {
+    const { router } = renderApp('/evals/questions')
+    await table()
+
+    // One act: no redraw between the two changes, as when a busy browser is slow to redraw.
+    act(() => {
+      fireEvent.change(screen.getByRole('combobox', { name: 'Suite' }), {
+        target: { value: 'chinook' },
+      })
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Failures only' }))
+    })
+
+    await waitFor(() => expect(router.state.location.search).toContain('failures=1'))
+    expect(router.state.location.search).toContain('suite=chinook')
   })
 
   it('reads the filters from the link', async () => {
