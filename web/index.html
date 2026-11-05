@@ -22,9 +22,33 @@
         document.documentElement.dataset.theme = light ? 'light' : 'dark'
       })()
     </script>
+    <style>
+      /* Until the app's own CSS arrives with its code: the theme's page colours (tokens.css --bg and
+         --fg; keep in sync), so the first paint is never a white flash, and a line saying why it's empty. */
+      html[data-theme='dark'] body {
+        background: #0f172a;
+        color: #f8fafc;
+      }
+      html[data-theme='light'] body {
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      .boot {
+        display: flex;
+        min-height: 100dvh;
+        margin: 0;
+        align-items: center;
+        justify-content: center;
+        font:
+          16px system-ui,
+          sans-serif;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- React replaces this when it starts. -->
+    <div id="root"><p class="boot">Loading QueryMind…</p></div>
+    <noscript><p class="boot">QueryMind needs JavaScript to run.</p></noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

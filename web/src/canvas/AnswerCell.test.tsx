@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AskResponse } from '@/api/client'
 import type { RerunResult } from '@/api/conversations'
+import { Toaster } from '@/components/ui/sonner'
 import * as csv from '@/lib/csv'
 import { answer, monthly, single } from '@/mocks/fixtures'
 import { server } from '@/mocks/server'
@@ -19,6 +20,7 @@ function renderAnswer(changes: Partial<AskResponse> = {}) {
   render(
     <MemoryRouter>
       <AnswerCell reply={{ ...answer, ...changes }} />
+      <Toaster />
     </MemoryRouter>,
   )
   return user
@@ -128,6 +130,11 @@ describe('AnswerCell', () => {
       'what-is-the-total-sales-amount-per-category.csv',
       csv.toCsv(answer.columns, answer.rows),
     )
+    // The browser's download shows nowhere in the page, so a toast says it happened.
+    const toast = (
+      await screen.findByText('Downloaded what-is-the-total-sales-amount-per-category.csv')
+    ).closest('li') as HTMLElement
+    expect(toast).toHaveTextContent(`${answer.rows.length} rows`)
   })
 
   it('shows the SQL coloured, with its explanation, on the SQL tab', async () => {

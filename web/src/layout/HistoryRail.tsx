@@ -6,8 +6,9 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
 import {
+  conversationListQuery,
   CONVERSATIONS_KEY,
-  listConversations,
+  HISTORY_PAGE,
   updateConversation,
   type ConversationSummary,
   type ConversationUpdate,
@@ -22,7 +23,6 @@ import { cn } from '@/lib/utils'
 import { groupConversations } from './history'
 import type { DeleteWithUndo } from './useDeleteWithUndo'
 
-const PAGE = 30
 const SEARCH_DELAY_MS = 250
 
 type HistoryRailProps = {
@@ -35,7 +35,7 @@ type HistoryRailProps = {
 export function HistoryRail({ deletes, onOpen }: HistoryRailProps) {
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
-  const [limit, setLimit] = useState(PAGE)
+  const [limit, setLimit] = useState(HISTORY_PAGE)
   const searchBox = useRef<HTMLInputElement>(null)
   const labelId = useId()
 
@@ -46,8 +46,7 @@ export function HistoryRail({ deletes, onOpen }: HistoryRailProps) {
   }, [search])
 
   const conversations = useQuery({
-    queryKey: [...CONVERSATIONS_KEY, query, limit],
-    queryFn: ({ signal }) => listConversations({ q: query, limit }, signal),
+    ...conversationListQuery(query, limit),
     placeholderData: (previous) => previous, // the list stays while a new search loads
   })
   const visible = (conversations.data?.conversations ?? []).filter(
@@ -120,7 +119,7 @@ export function HistoryRail({ deletes, onOpen }: HistoryRailProps) {
               variant="ghost"
               size="sm"
               className="mt-2 w-full"
-              onClick={() => setLimit((current) => current + PAGE)}
+              onClick={() => setLimit((current) => current + HISTORY_PAGE)}
             >
               Show more
             </Button>

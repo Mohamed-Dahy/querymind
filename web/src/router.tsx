@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, type RouteObject } from 'react-router'
 
+import { PageSkeleton } from '@/components/PageSkeleton'
 import { AppShell } from '@/layout/AppShell'
 import { CanvasPage } from '@/pages/CanvasPage'
 import {
@@ -27,7 +28,7 @@ const styleguideRoutes: RouteObject[] = Styleguide
       {
         path: '/styleguide',
         element: (
-          <Suspense fallback={null}>
+          <Suspense fallback={<PageSkeleton />}>
             <Styleguide />
           </Suspense>
         ),

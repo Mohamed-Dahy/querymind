@@ -7,6 +7,75 @@ import openapi from '../openapi.json' with { type: 'json' }
 export const VERSION = openapi.info.version
 export const THEMES = ['dark', 'light'] as const
 
+/**
+ * Every route, with its page heading and tab title, and `code`: the lazy file the page downloads
+ * on its own (a test holds it back to see the loading state). /styleguide exists because the tests
+ * run on a dev server.
+ */
+export const ROUTES: { path: string; heading: string; title: string; code?: string }[] = [
+  { path: '/', heading: 'Ask about your data', title: 'Canvas · QueryMind' },
+  {
+    path: '/c/3f2a9c1e-0000-4000-8000-000000000000',
+    heading: 'Ask about your data',
+    title: 'Canvas · QueryMind',
+  },
+  {
+    path: '/explore',
+    heading: 'Data explorer',
+    title: 'Data explorer · QueryMind',
+    code: 'src/pages/ExplorePage.tsx',
+  },
+  {
+    path: '/explore/glossary',
+    heading: 'Business glossary',
+    title: 'Business glossary · QueryMind',
+    code: 'src/explorer/GlossaryPage.tsx',
+  },
+  {
+    path: '/explore/tables/orders',
+    heading: 'orders',
+    title: 'Data explorer · QueryMind',
+    code: 'src/explorer/TablePage.tsx',
+  },
+  {
+    path: '/evals',
+    heading: 'Evals lab',
+    title: 'Evals lab · QueryMind',
+    code: 'src/pages/EvalsPage.tsx',
+  },
+  {
+    path: '/evals/ablations',
+    heading: 'What each part adds',
+    title: 'What each part adds · QueryMind',
+    code: 'src/evals/AblationsPage.tsx',
+  },
+  {
+    path: '/evals/models',
+    heading: 'Model comparison',
+    title: 'Model comparison · QueryMind',
+    code: 'src/evals/ModelsPage.tsx',
+  },
+  {
+    path: '/evals/questions',
+    heading: 'Every question',
+    title: 'Every question · QueryMind',
+    code: 'src/evals/QuestionsPage.tsx',
+  },
+  {
+    path: '/evals/questions/b01_key_account_count',
+    heading: 'Question b01_key_account_count',
+    title: 'Question · QueryMind',
+    code: 'src/evals/QuestionPage.tsx',
+  },
+  { path: '/no/such/page', heading: 'Page not found', title: 'Page not found · QueryMind' },
+  {
+    path: '/styleguide',
+    heading: 'QueryMind · style guide',
+    title: 'QueryMind',
+    code: 'src/pages/Styleguide.tsx',
+  },
+]
+
 /** Problems axe finds that block people (serious or critical), under WCAG 2.1 A and AA. */
 export async function seriousA11yIssues(page: Page) {
   const results = await new AxeBuilder({ page })

@@ -1,10 +1,12 @@
 import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Download, Info, ListChecks, RotateCw, TriangleAlert } from 'lucide-react'
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 
 import { ApiError, type AskResponse } from '@/api/client'
 import { rerunTurn, type RerunResult } from '@/api/conversations'
 import { errorTitle } from '@/api/errors'
+import { OverlayLoading } from '@/components/OverlayLoading'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -69,7 +71,7 @@ export function AnswerCell({
         </Button>
       </div>
       {workLoaded && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<OverlayLoading />}>
           <ShowYourWork
             reply={reply}
             open={workOpen}
@@ -127,9 +129,14 @@ export function AnswerCell({
               type="button"
               variant="outline"
               disabled={reply.rows.length === 0}
-              onClick={() =>
-                downloadCsv(csvFileName(reply.question), toCsv(reply.columns, reply.rows))
-              }
+              onClick={() => {
+                const name = csvFileName(reply.question)
+                downloadCsv(name, toCsv(reply.columns, reply.rows))
+                // A download gives no sign in the page itself; this one is polite and goes by itself.
+                toast(`Downloaded ${name}`, {
+                  description: `${reply.rows.length.toLocaleString('en')} ${reply.rows.length === 1 ? 'row' : 'rows'}`,
+                })
+              }}
             >
               <Download aria-hidden="true" />
               Download CSV

@@ -1,33 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { apiStatusLoaded, seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
-
-// Every route, with its page heading and tab title. /styleguide exists because this is a dev server.
-const ROUTES = [
-  { path: '/', heading: 'Ask about your data', title: 'Canvas · QueryMind' },
-  {
-    path: '/c/3f2a9c1e-0000-4000-8000-000000000000',
-    heading: 'Ask about your data',
-    title: 'Canvas · QueryMind',
-  },
-  { path: '/explore', heading: 'Data explorer', title: 'Data explorer · QueryMind' },
-  {
-    path: '/explore/glossary',
-    heading: 'Business glossary',
-    title: 'Business glossary · QueryMind',
-  },
-  { path: '/explore/tables/orders', heading: 'orders', title: 'Data explorer · QueryMind' },
-  { path: '/evals', heading: 'Evals lab', title: 'Evals lab · QueryMind' },
-  {
-    path: '/evals/ablations',
-    heading: 'What each part adds',
-    title: 'What each part adds · QueryMind',
-  },
-  { path: '/evals/models', heading: 'Model comparison', title: 'Model comparison · QueryMind' },
-  { path: '/evals/questions', heading: 'Every question', title: 'Every question · QueryMind' },
-  { path: '/no/such/page', heading: 'Page not found', title: 'Page not found · QueryMind' },
-  { path: '/styleguide', heading: 'QueryMind · style guide', title: 'QueryMind' },
-]
+import { apiStatusLoaded, ROUTES, seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
 
 test('the page loads and shows the API version from the mock API', async ({ page }) => {
   const health = page.waitForResponse('**/api/health')

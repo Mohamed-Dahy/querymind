@@ -150,7 +150,26 @@ export function errorStream(code: MockErrorCode) {
   ])
 }
 
+/**
+ * Mock mode and tests only: `localStorage['querymind-mock-delay'] = '3000'` holds every reply that
+ * many milliseconds, to see (and test) the loading states. Unset, the fake API answers at once.
+ */
+export const MOCK_DELAY_KEY = 'querymind-mock-delay'
+
+function mockDelayMs(): number {
+  try {
+    return Number(localStorage.getItem(MOCK_DELAY_KEY)) || 0
+  } catch {
+    return 0
+  }
+}
+
 export const handlers = [
+  // Returns nothing, so after its wait MSW goes on to the handler that really answers.
+  http.all('/api/*', async () => {
+    const ms = mockDelayMs()
+    if (ms > 0) await delay(ms)
+  }),
   http.get(HEALTH_URL, () => HttpResponse.json(health)),
   http.post(STREAM_URL, async ({ request }) => {
     const body = (await request.json()) as AskRequest

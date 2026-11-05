@@ -9,6 +9,7 @@ import { errorTitle } from '@/api/errors'
 import { Cell } from '@/canvas/Cell'
 import { Composer, type ComposerHandle } from '@/canvas/Composer'
 import { EmptyCanvas } from '@/canvas/EmptyCanvas'
+import { FirstRunHint } from '@/canvas/FirstRunHint'
 import { NEW_CONVERSATION, type Cell as CellData } from '@/canvas/state'
 import { railFrom, repairAnnouncement } from '@/canvas/trace'
 import { useConversation, type DraftState } from '@/canvas/useConversation'
@@ -120,6 +121,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
         ) : cells.length === 0 ? (
           <>
             {saved.error && <NotLoadedNotice error={saved.error} />}
+            <FirstRunHint />
             <EmptyCanvas onAsk={ask} busy={busy} />
           </>
         ) : (

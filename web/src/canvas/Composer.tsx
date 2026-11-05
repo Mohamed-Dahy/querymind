@@ -9,6 +9,7 @@ import {
   type Ref,
 } from 'react'
 
+import { Kbd } from '@/components/Kbd'
 import { Button } from '@/components/ui/button'
 import { MODIFIER } from '@/lib/keys'
 import { cn } from '@/lib/utils'
@@ -163,11 +164,5 @@ export function Composer({
         {limitAnnouncement(length)}
       </p>
     </form>
-  )
-}
-
-function Kbd({ children }: { children: string }) {
-  return (
-    <kbd className="rounded border border-input bg-muted px-1 font-mono text-xs">{children}</kbd>
   )
 }

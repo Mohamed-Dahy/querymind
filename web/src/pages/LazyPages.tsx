@@ -1,4 +1,6 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
+
+import { PageSkeleton } from '@/components/PageSkeleton'
 
 // Their own download: most visits are to the canvas, and these pages have a lot of their own.
 const ExplorePage = lazy(() => import('./ExplorePage'))
@@ -10,66 +12,71 @@ const ModelsPage = lazy(() => import('@/evals/ModelsPage'))
 const QuestionsPage = lazy(() => import('@/evals/QuestionsPage'))
 const QuestionPage = lazy(() => import('@/evals/QuestionPage'))
 
+/** While a page's code downloads, the page's shape shows, not an empty screen. */
+function Page({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
+}
+
 export function LazyExplorePage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <ExplorePage />
-    </Suspense>
+    </Page>
   )
 }
 
 export function LazyTablePage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <TablePage />
-    </Suspense>
+    </Page>
   )
 }
 
 export function LazyEvalsPage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <EvalsPage />
-    </Suspense>
+    </Page>
   )
 }
 
 export function LazyAblationsPage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <AblationsPage />
-    </Suspense>
+    </Page>
   )
 }
 
 export function LazyModelsPage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <ModelsPage />
-    </Suspense>
+    </Page>
   )
 }
 
 export function LazyQuestionsPage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <QuestionsPage />
-    </Suspense>
+    </Page>
   )
 }
 
 export function LazyQuestionPage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <QuestionPage />
-    </Suspense>
+    </Page>
   )
 }
 
 export function LazyGlossaryPage() {
   return (
-    <Suspense fallback={null}>
+    <Page>
       <GlossaryPage />
-    </Suspense>
+    </Page>
   )
 }

@@ -14,6 +14,8 @@ import { Link, Outlet, useLocation } from 'react-router'
 
 import { CanvasProvider } from '@/canvas/CanvasProvider'
 import { useNewConversation } from '@/canvas/useConversation'
+import { Kbd } from '@/components/Kbd'
+import { OverlayLoading } from '@/components/OverlayLoading'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Button } from '@/components/ui/button'
 import { isPaletteShortcut, MODIFIER } from '@/lib/keys'
@@ -88,12 +90,10 @@ function Frame() {
             >
               <Search aria-hidden="true" />
               Search
-              <kbd
-                aria-hidden="true"
-                className="hidden rounded border border-input bg-muted px-1 font-mono text-xs sm:inline"
-              >
-                {MODIFIER} K
-              </kbd>
+              {/* Not read out: aria-keyshortcuts says it. Hidden on phones, which have no Ctrl key. */}
+              <span aria-hidden="true" className="hidden sm:inline">
+                <Kbd>{`${MODIFIER} K`}</Kbd>
+              </span>
             </Button>
             <NewConversationButton />
             <ApiStatus />
@@ -111,7 +111,7 @@ function Frame() {
       </div>
 
       {palette.loaded && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<OverlayLoading />}>
           <CommandPalette
             open={palette.open}
             onOpenChange={palette.setOpen}
@@ -229,7 +229,7 @@ function NavRail({ deletes }: { deletes: DeleteWithUndo }) {
       </section>
 
       {sheetLoaded && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<OverlayLoading />}>
           <HistorySheet
             open={sheetOpen}
             onOpenChange={setSheetOpen}

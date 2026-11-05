@@ -1,4 +1,6 @@
 /** Saved conversations: list, read, rename, pin, delete, and re-run a turn for fresh rows. */
+import { queryOptions } from '@tanstack/react-query'
+
 import { api, call } from './client'
 import type { components } from './schema'
 
@@ -15,6 +17,17 @@ export const CONVERSATIONS_KEY = ['conversations'] as const
 
 const TIMEOUT_MS = 10_000
 const RERUN_TIMEOUT_MS = 30_000 // a query can take a while
+
+/** How many conversations the history rail asks for at first (and per "Show more"). */
+export const HISTORY_PAGE = 30
+
+/** The history list as TanStack Query fetches it. Shared, so two places asking share one request. */
+export function conversationListQuery(query: string, limit: number) {
+  return queryOptions({
+    queryKey: [...CONVERSATIONS_KEY, query, limit],
+    queryFn: ({ signal }) => listConversations({ q: query, limit }, signal),
+  })
+}
 
 export function listConversations(
   { q, limit }: { q?: string | undefined; limit: number },

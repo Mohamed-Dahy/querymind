@@ -5,6 +5,11 @@ import { defineConfig, devices } from '@playwright/test'
 const PORT = 5199
 const BASE_URL = `http://localhost:${PORT}`
 
+// The fake API is a service worker (MSW), and Chromium hides the requests it passes on from
+// Playwright's routes unless this is on. The loading tests (e2e/loading.spec.ts) hold back a page's
+// code with a route, so they need it. Set here, before Playwright starts any browser.
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS ??= '1'
+
 // https://playwright.dev/docs/test-configuration
 export default defineConfig({
   testDir: './e2e',
