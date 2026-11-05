@@ -11,6 +11,7 @@ import { useEvals } from './useEvals'
 const VIEWS = [
   { to: '/evals', label: 'Scoreboard', end: true },
   { to: '/evals/ablations', label: 'What each part adds', end: false },
+  { to: '/evals/models', label: 'Models', end: false },
 ]
 
 type EvalsFrameProps = {

@@ -23,6 +23,7 @@ const ROUTES = [
     heading: 'What each part adds',
     title: 'What each part adds · QueryMind',
   },
+  { path: '/evals/models', heading: 'Model comparison', title: 'Model comparison · QueryMind' },
   { path: '/no/such/page', heading: 'Page not found', title: 'Page not found · QueryMind' },
   { path: '/styleguide', heading: 'QueryMind · style guide', title: 'QueryMind' },
 ]

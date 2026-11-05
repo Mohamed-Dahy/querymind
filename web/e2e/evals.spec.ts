@@ -2,6 +2,68 @@ import { expect, test } from '@playwright/test'
 
 import { seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
 
+test('on a wide screen every number table fits, with no column cut off', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  for (const path of ['/evals/models', '/evals/ablations']) {
+    await page.goto(path)
+    await expect(page.getByRole('region', { name: /every number$/ }).first()).toBeVisible()
+    const overflows = (await page.evaluate(
+      `[...document.querySelectorAll('[role=region][aria-label$="every number"]')].map((box) => box.scrollWidth - box.clientWidth)`,
+    )) as number[]
+    expect(overflows.length).toBeGreaterThan(0)
+    expect(Math.max(...overflows)).toBeLessThanOrEqual(0)
+  }
+})
+
+test.describe('the model comparison', () => {
+  for (const theme of THEMES) {
+    test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {
+      await useTheme(page, theme)
+      await page.goto('/evals/models')
+      await expect(page.getByRole('img', { name: /^Scatter chart/ })).toBeVisible()
+      await expect(page.locator('.recharts-scatter-symbol').first()).toBeVisible()
+
+      expect(await seriousA11yIssues(page)).toEqual([])
+    })
+  }
+
+  test('draws one labelled point per model', async ({ page }) => {
+    await page.goto('/evals/models')
+
+    const chart = page.getByRole('img', { name: /^Scatter chart/ })
+    await expect(chart.locator('.recharts-scatter-symbol')).toHaveCount(3)
+    for (const name of ['gemini-3.5-flash-lite', 'qwen3.8-27b', 'gpt-oss-20b']) {
+      await expect(chart.locator('text', { hasText: name })).toBeVisible()
+    }
+  })
+
+  test('a phone reads it, and only the table scrolls sideways', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 })
+    await page.goto('/evals/models')
+
+    await expect(page.locator('.recharts-scatter-symbol')).toHaveCount(3)
+    await expect(page.getByRole('listitem', { name: 'Speed of qwen3.8-27b' })).toContainText(
+      'p95 29.4 s',
+    )
+    const overflow = (await page.evaluate(
+      'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+    )) as number
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+
+  test('the keyboard reaches the view and scrolls the table', async ({ page }) => {
+    await page.goto('/evals')
+    const link = page.getByRole('link', { name: 'Models', exact: true })
+    await link.focus()
+    await page.keyboard.press('Enter')
+
+    await expect(page).toHaveURL(/\/evals\/models$/)
+    const table = page.getByRole('region', { name: /^Golden 58.*every number/ })
+    await table.focus()
+    await expect(table).toBeFocused()
+  })
+})
+
 test.describe('what each part adds', () => {
   for (const theme of THEMES) {
     test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {

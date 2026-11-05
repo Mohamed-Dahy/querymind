@@ -8,6 +8,7 @@ import {
   LazyEvalsPage,
   LazyExplorePage,
   LazyGlossaryPage,
+  LazyModelsPage,
   LazyTablePage,
 } from '@/pages/LazyPages'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -68,6 +69,11 @@ export const routes: RouteObject[] = [
         path: 'evals/ablations',
         element: <LazyAblationsPage />,
         handle: { title: 'What each part adds' } satisfies RouteHandle,
+      },
+      {
+        path: 'evals/models',
+        element: <LazyModelsPage />,
+        handle: { title: 'Model comparison' } satisfies RouteHandle,
       },
       // Any other path inside the shell: the 404 page, with the rail still there to get back.
       {

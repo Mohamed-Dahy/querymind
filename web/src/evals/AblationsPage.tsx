@@ -112,6 +112,8 @@ function Study({ study }: { study: AblationStudy }) {
 
 const TEXT = 'px-3 py-2 text-left align-top'
 const NUMBER = 'px-3 py-2 text-right align-top tabular-nums whitespace-nowrap'
+// Headings may wrap: the numbers under them are what must stay on one line.
+const NUMBER_HEAD = 'px-3 py-2 text-right align-bottom'
 
 const both = (score: AblationArm['match']) =>
   score ? `${scoreText(score)} (${percentText(score)})` : 'not run yet'
@@ -131,25 +133,25 @@ function ArmTable({ study, arms }: { study: AblationStudy; arms: AblationArm[] }
             <th scope="col" className={TEXT}>
               Arm
             </th>
-            <th scope="col" className={NUMBER}>
+            <th scope="col" className={NUMBER_HEAD}>
               QueryMind match
             </th>
-            <th scope="col" className={NUMBER}>
+            <th scope="col" className={NUMBER_HEAD}>
               BIRD EX
             </th>
-            <th scope="col" className={NUMBER}>
+            <th scope="col" className={NUMBER_HEAD}>
               Change
             </th>
-            <th scope="col" className={NUMBER}>
+            <th scope="col" className={NUMBER_HEAD}>
               Not scored
             </th>
-            <th scope="col" className={NUMBER}>
+            <th scope="col" className={NUMBER_HEAD}>
               Repairs / question
             </th>
-            <th scope="col" className={NUMBER}>
+            <th scope="col" className={NUMBER_HEAD}>
               Tokens / question (in + out)
             </th>
-            <th scope="col" className={NUMBER}>
+            <th scope="col" className={NUMBER_HEAD}>
               Median seconds
             </th>
           </tr>
