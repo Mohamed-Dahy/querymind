@@ -10,6 +10,8 @@ export type Tile = {
   date: string
   model: string
   link?: { label: string; href: string }
+  // Inside the app: the questions behind the number.
+  questions?: { label: string; to: string }
 }
 
 export const scoreText = ({ passed, total }: EvalScore) => `${passed}/${total}`
@@ -67,6 +69,7 @@ function goldenTile(data: EvalsReply): Tile | null {
     sources: arm.reports,
     date: newestDay(data, arm.reports),
     model: golden.llm ?? 'unknown',
+    questions: { label: 'See every question', to: '/evals/questions' },
   }
 }
 
@@ -91,6 +94,7 @@ function birdTile(data: EvalsReply): Tile | null {
     date: newestDay(data, arm.reports),
     model: bird.llm ?? 'unknown',
     link: { label: `BIRD's data (${data.bird.licence})`, href: data.bird.url },
+    questions: { label: 'See every BIRD question', to: '/evals/questions?study=bird' },
   }
 }
 

@@ -35,7 +35,7 @@ export function Scoreboard({ data }: { data: EvalsReply }) {
 }
 
 function HeadlineTile({ tile }: { tile: Tile }) {
-  const { title, value, caption, details, sources, date, model, link } = tile
+  const { title, value, caption, details, sources, date, model, link, questions } = tile
   return (
     <li aria-label={title} className="flex flex-col rounded-cell border bg-surface p-4">
       <h3 className="text-sm font-semibold">{title}</h3>
@@ -46,6 +46,14 @@ function HeadlineTile({ tile }: { tile: Tile }) {
           {detail}
         </p>
       ))}
+      {questions && (
+        <Link
+          to={questions.to}
+          className="mt-2 inline-flex min-h-11 w-fit items-center rounded-lg text-sm text-info underline underline-offset-4"
+        >
+          {questions.label}
+        </Link>
+      )}
       {link && (
         <a
           href={link.href}

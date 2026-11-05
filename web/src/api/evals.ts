@@ -5,6 +5,8 @@ import type { components } from './schema'
 type Schemas = components['schemas']
 export type EvalsReply = Schemas['EvalsReply']
 export type EvalRun = Schemas['EvalRun']
+export type EvalOutcome = Schemas['EvalOutcome']
+export type EvalQuestion = Schemas['EvalQuestion']
 export type EvalScore = Schemas['EvalScore']
 export type AblationStudy = Schemas['AblationStudy']
 export type AblationArm = Schemas['AblationArm']

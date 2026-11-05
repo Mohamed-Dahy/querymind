@@ -15,6 +15,89 @@ test('on a wide screen every number table fits, with no column cut off', async (
   }
 })
 
+test.describe('every question', () => {
+  for (const theme of THEMES) {
+    test(`${theme} theme: the matrix and a question have no serious accessibility problem`, async ({
+      page,
+    }) => {
+      await useTheme(page, theme)
+      await page.goto('/evals/questions')
+      await expect(page.getByRole('region', { name: 'Questions against runs' })).toBeVisible()
+      expect(await seriousA11yIssues(page)).toEqual([])
+
+      await page.goto('/evals/questions/b01_key_account_count')
+      await expect(page.getByRole('region', { name: "Every run's verdict" })).toBeVisible()
+      expect(await seriousA11yIssues(page)).toEqual([])
+
+      await page.goto('/evals/questions/bird_100')
+      await expect(page.getByRole('link', { name: /Read them on BIRD/ })).toBeVisible()
+      expect(await seriousA11yIssues(page)).toEqual([])
+    })
+  }
+
+  test('a failing question is two clicks from the evals lab', async ({ page }) => {
+    await page.goto('/evals')
+    await page.getByRole('link', { name: 'Questions', exact: true }).click()
+    await page.getByRole('link', { name: 'How many key accounts do we have?' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Arm A: failed' })).toBeVisible()
+    await expect(page.getByText("no column matches the values of 'count'")).toBeVisible()
+  })
+
+  test('so is a failing BIRD question', async ({ page }) => {
+    await page.goto('/evals')
+    await page.getByRole('link', { name: 'See every BIRD question' }).click()
+    await page.getByRole('link', { name: 'bird_95', exact: true }).click()
+
+    await expect(page.getByRole('region', { name: /: failed$/ })).toContainText(
+      'BIRD EX: Failed. asked back instead of answering',
+    )
+  })
+
+  test('the keyboard alone: Tab goes row to row, and Enter opens a question', async ({ page }) => {
+    await page.goto('/evals/questions')
+    const first = page.getByRole('link', { name: 'How many key accounts do we have?' })
+    await first.focus()
+    await page.keyboard.press('Tab')
+
+    // The next stop is the next row's question, not the six cells beside this one.
+    const focused = page.locator(':focus')
+    await expect(focused).toHaveAttribute('href', /^\/evals\/questions\/[^?]+$/)
+    await page.keyboard.press('Enter')
+
+    await expect(page).toHaveURL(/\/evals\/questions\/[^?]+$/)
+    await expect(page.getByRole('region', { name: "Every run's verdict" })).toBeVisible()
+  })
+
+  test('filters stay in the URL through a reload', async ({ page }) => {
+    await page.goto('/evals/questions')
+    await page.getByRole('combobox', { name: 'Suite' }).selectOption('chinook')
+    // Its state comes from the URL, a moment after the click, so not .check(), which looks at once.
+    await page.getByRole('checkbox', { name: 'Failures only' }).click()
+    await expect(page.getByRole('checkbox', { name: 'Failures only' })).toBeChecked()
+    await expect(page).toHaveURL(/suite=chinook/)
+    await expect(page).toHaveURL(/failures=1/)
+
+    await page.reload()
+
+    await expect(page.getByRole('combobox', { name: 'Suite' })).toHaveValue('chinook')
+    await expect(page.getByRole('checkbox', { name: 'Failures only' })).toBeChecked()
+  })
+
+  for (const path of ['/evals/questions', '/evals/questions/b01_key_account_count']) {
+    test(`on a phone ${path} has no sideways page scroll`, async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 800 })
+      await page.goto(path)
+      await expect(page.getByRole('region').first()).toBeVisible()
+
+      const overflow = (await page.evaluate(
+        'document.documentElement.scrollWidth - document.documentElement.clientWidth',
+      )) as number
+      expect(overflow).toBeLessThanOrEqual(0)
+    })
+  }
+})
+
 test.describe('the model comparison', () => {
   for (const theme of THEMES) {
     test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {

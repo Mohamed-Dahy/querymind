@@ -20,7 +20,10 @@ export async function seriousA11yIssues(page: Page) {
 
 /** The shell's health line has loaded (so checks see the page people see, not the spinner). */
 export async function apiStatusLoaded(page: Page) {
-  await expect(page.getByRole('status')).toHaveText(`API ok · version ${VERSION}`)
+  // In the top bar: a page can have status lines of its own (the question matrix's count).
+  await expect(page.getByRole('banner').getByRole('status')).toHaveText(
+    `API ok · version ${VERSION}`,
+  )
 }
 
 /** Open the page with a saved theme, like a returning user's choice (index.html applies it first). */

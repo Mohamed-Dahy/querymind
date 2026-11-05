@@ -47,6 +47,17 @@ describe('EvalsPage', () => {
     expect(link).toHaveAttribute('target', '_blank')
   })
 
+  it('links each score to the questions behind it', async () => {
+    renderApp('/evals')
+
+    expect(
+      within(await tile('Golden 58')).getByRole('link', { name: 'See every question' }),
+    ).toHaveAttribute('href', '/evals/questions')
+    expect(
+      within(await tile('BIRD-100')).getByRole('link', { name: 'See every BIRD question' }),
+    ).toHaveAttribute('href', '/evals/questions?study=bird')
+  })
+
   it('links to the live gate status instead of claiming one', async () => {
     renderApp('/evals')
 

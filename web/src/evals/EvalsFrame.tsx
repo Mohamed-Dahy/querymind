@@ -12,6 +12,7 @@ const VIEWS = [
   { to: '/evals', label: 'Scoreboard', end: true },
   { to: '/evals/ablations', label: 'What each part adds', end: false },
   { to: '/evals/models', label: 'Models', end: false },
+  { to: '/evals/questions', label: 'Questions', end: false },
 ]
 
 type EvalsFrameProps = {
@@ -25,7 +26,7 @@ export function EvalsFrame({ title, intro, children }: EvalsFrameProps) {
   const { data, error, isPending, refetch } = useEvals()
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="text-2xl">{title}</h1>
+      <h1 className="text-2xl [overflow-wrap:anywhere]">{title}</h1>
       <p className="mt-2 text-fg-muted">{intro}</p>
       <nav aria-label="Evals lab views" className="mt-4 flex flex-wrap gap-2">
         {VIEWS.map(({ to, label, end }) => (

@@ -9,6 +9,8 @@ import {
   LazyExplorePage,
   LazyGlossaryPage,
   LazyModelsPage,
+  LazyQuestionPage,
+  LazyQuestionsPage,
   LazyTablePage,
 } from '@/pages/LazyPages'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -74,6 +76,16 @@ export const routes: RouteObject[] = [
         path: 'evals/models',
         element: <LazyModelsPage />,
         handle: { title: 'Model comparison' } satisfies RouteHandle,
+      },
+      {
+        path: 'evals/questions',
+        element: <LazyQuestionsPage />,
+        handle: { title: 'Every question' } satisfies RouteHandle,
+      },
+      {
+        path: 'evals/questions/:id',
+        element: <LazyQuestionPage />,
+        handle: { title: 'Question' } satisfies RouteHandle,
       },
       // Any other path inside the shell: the 404 page, with the rail still there to get back.
       {

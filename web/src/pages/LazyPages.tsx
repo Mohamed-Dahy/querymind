@@ -7,6 +7,8 @@ const GlossaryPage = lazy(() => import('@/explorer/GlossaryPage'))
 const EvalsPage = lazy(() => import('./EvalsPage'))
 const AblationsPage = lazy(() => import('@/evals/AblationsPage'))
 const ModelsPage = lazy(() => import('@/evals/ModelsPage'))
+const QuestionsPage = lazy(() => import('@/evals/QuestionsPage'))
+const QuestionPage = lazy(() => import('@/evals/QuestionPage'))
 
 export function LazyExplorePage() {
   return (
@@ -44,6 +46,22 @@ export function LazyModelsPage() {
   return (
     <Suspense fallback={null}>
       <ModelsPage />
+    </Suspense>
+  )
+}
+
+export function LazyQuestionsPage() {
+  return (
+    <Suspense fallback={null}>
+      <QuestionsPage />
+    </Suspense>
+  )
+}
+
+export function LazyQuestionPage() {
+  return (
+    <Suspense fallback={null}>
+      <QuestionPage />
     </Suspense>
   )
 }
