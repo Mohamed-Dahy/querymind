@@ -11,6 +11,7 @@
     "dev": "vite",
     "dev:mock": "vite --mode mock",
     "build": "tsc -b && vite build",
+    "size": "node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "lint": "oxlint --deny-warnings",
     "typecheck": "tsc -b",

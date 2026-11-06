@@ -1,7 +1,7 @@
 # CI: runs on every push and pull request.
 #   checks       -> ruff (lint + format), mypy, unit tests (no database, no real LLM)
 #   integration  -> real Postgres + pgvector, seeded, then the read-only role tests
-#   web          -> the React UI: lint, types, tests, build, browser smoke, OpenAPI drift check
+#   web          -> the React UI: lint, types, tests, build, bundle budget, browser smoke, OpenAPI drift check
 name: CI
 
 on:
@@ -103,7 +103,7 @@ jobs:
         run: uv run pytest -m integration
 
   web:
-    name: Web UI (lint, types, tests, build, browser smoke, API drift)
+    name: Web UI (lint, types, tests, build, bundle budget, browser smoke, API drift)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # npm commands run in web/; the Python and git steps say `working-directory: .`.
@@ -151,6 +151,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # First-load JS (the entry + its modulepreload links in dist/index.html) must stay under
+      # 250 kB gzip, so a heavy library pulled into the first screen fails here (UI U6.5).
+      - name: Bundle budget
+        run: npm run size
 
       - name: Install the Playwright browser
         run: npx playwright install --with-deps chromium

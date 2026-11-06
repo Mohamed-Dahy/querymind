@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import type { Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 // Where uvicorn runs in dev (`uv run uvicorn querymind.api.main:app --reload`).
@@ -17,9 +18,56 @@ const apiProxy = {
   },
 }
 
+// Fonts to download alongside the JS instead of after it. Without a preload the browser only finds a
+// font once the CSS has loaded and the page has rendered. Only Fira Sans 400 (latin), the body text
+// and the canvas's largest text: on a slow phone every preload shares bandwidth with the JS, and
+// preloading all four first-screen fonts made the page slower (docs/lighthouse/README.md). The other
+// weights, Fira Code and other alphabets still load on demand, only if a page uses them.
+const PRELOAD_FONTS = [/^assets\/fira-sans-latin-400-normal-[\w-]+\.woff2$/]
+
+// Adds a <link rel="preload"> to dist/index.html for each font above. Build only: the dev server
+// has no hashed file names to point at. The file names change with each font release, so they are
+// read from the finished bundle; a pattern that matches nothing fails the build instead of quietly
+// preloading nothing.
+function preloadFonts(): Plugin {
+  let base = '/'
+  return {
+    name: 'querymind:preload-fonts',
+    apply: 'build',
+    configResolved(config) {
+      base = config.base
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const files = Object.keys(ctx.bundle ?? {})
+        return PRELOAD_FONTS.map((pattern) => {
+          const file = files.find((name) => pattern.test(name))
+          if (!file) {
+            throw new Error(`preloadFonts: no font file matches ${pattern}; check index.css`)
+          }
+          return {
+            tag: 'link',
+            // `crossorigin` is required for fonts: without it, the preload is not reused and the
+            // font downloads twice.
+            attrs: {
+              rel: 'preload',
+              as: 'font',
+              type: 'font/woff2',
+              href: base + file,
+              crossorigin: '',
+            },
+            injectTo: 'head' as const,
+          }
+        })
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), preloadFonts()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
