@@ -249,6 +249,9 @@ for (const theme of THEMES) {
   test(`${theme} theme: the whole flow, from an example to a new conversation`, async ({
     page,
   }) => {
+    // About 17 s alone, but 26–28 s when the full suite runs in parallel: too close to the 30 s
+    // limit (it failed twice in one full run). slow() gives it three times as long.
+    test.slow()
     await useTheme(page, theme)
     await page.goto('/')
     await apiStatusLoaded(page)
