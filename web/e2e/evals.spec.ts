@@ -1,6 +1,5 @@
-import { expect, test } from '@playwright/test'
-
-import { seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
+import { expect, test } from './fixtures.ts'
+import { a11yIssues, THEMES, useTheme } from './helpers.ts'
 
 test('on a wide screen every number table fits, with no column cut off', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
@@ -17,21 +16,21 @@ test('on a wide screen every number table fits, with no column cut off', async (
 
 test.describe('every question', () => {
   for (const theme of THEMES) {
-    test(`${theme} theme: the matrix and a question have no serious accessibility problem`, async ({
+    test(`${theme} theme: the matrix and a question have no accessibility problem`, async ({
       page,
     }) => {
       await useTheme(page, theme)
       await page.goto('/evals/questions')
       await expect(page.getByRole('region', { name: 'Questions against runs' })).toBeVisible()
-      expect(await seriousA11yIssues(page)).toEqual([])
+      expect(await a11yIssues(page)).toEqual([])
 
       await page.goto('/evals/questions/b01_key_account_count')
       await expect(page.getByRole('region', { name: "Every run's verdict" })).toBeVisible()
-      expect(await seriousA11yIssues(page)).toEqual([])
+      expect(await a11yIssues(page)).toEqual([])
 
       await page.goto('/evals/questions/bird_100')
       await expect(page.getByRole('link', { name: /Read them on BIRD/ })).toBeVisible()
-      expect(await seriousA11yIssues(page)).toEqual([])
+      expect(await a11yIssues(page)).toEqual([])
     })
   }
 
@@ -100,13 +99,13 @@ test.describe('every question', () => {
 
 test.describe('the model comparison', () => {
   for (const theme of THEMES) {
-    test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {
+    test(`${theme} theme: no accessibility problem`, async ({ page }) => {
       await useTheme(page, theme)
       await page.goto('/evals/models')
       await expect(page.getByRole('img', { name: /^Scatter chart/ })).toBeVisible()
       await expect(page.locator('.recharts-scatter-symbol').first()).toBeVisible()
 
-      expect(await seriousA11yIssues(page)).toEqual([])
+      expect(await a11yIssues(page)).toEqual([])
     })
   }
 
@@ -149,12 +148,12 @@ test.describe('the model comparison', () => {
 
 test.describe('what each part adds', () => {
   for (const theme of THEMES) {
-    test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {
+    test(`${theme} theme: no accessibility problem`, async ({ page }) => {
       await useTheme(page, theme)
       await page.goto('/evals/ablations')
       await expect(page.getByRole('listitem', { name: 'Arm C' })).toBeVisible()
 
-      expect(await seriousA11yIssues(page)).toEqual([])
+      expect(await a11yIssues(page)).toEqual([])
     })
   }
 
@@ -185,12 +184,12 @@ test.describe('what each part adds', () => {
 
 test.describe('the scoreboard', () => {
   for (const theme of THEMES) {
-    test(`${theme} theme: no serious accessibility problem`, async ({ page }) => {
+    test(`${theme} theme: no accessibility problem`, async ({ page }) => {
       await useTheme(page, theme)
       await page.goto('/evals')
       await expect(page.getByRole('listitem', { name: 'Golden 58' })).toBeVisible()
 
-      expect(await seriousA11yIssues(page)).toEqual([])
+      expect(await a11yIssues(page)).toEqual([])
     })
   }
 

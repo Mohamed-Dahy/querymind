@@ -1,6 +1,5 @@
-import { expect, test } from '@playwright/test'
-
-import { apiStatusLoaded, seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
+import { expect, test } from './fixtures.ts'
+import { apiStatusLoaded, a11yIssues, THEMES, useTheme } from './helpers.ts'
 
 // The ⌘K / Ctrl+K command palette, in a real browser against the fake API.
 
@@ -59,10 +58,10 @@ for (const theme of THEMES) {
 
     await page.keyboard.press('Control+k')
     await expect(page.getByRole('option', { name: /New conversation/ })).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await page.keyboard.type('late')
     await expect(page.getByRole('option', { name: /Late shipment/ })).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
   })
 }

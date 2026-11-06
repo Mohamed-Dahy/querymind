@@ -1,5 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
+import { expect, test } from './fixtures.ts'
 import { apiStatusLoaded, ROUTES } from './helpers.ts'
 
 // "No screen is ever blank or frozen" (U6.2): with a page's own code and every API reply held back,

@@ -186,7 +186,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-const CODE = 'overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs whitespace-pre-wrap'
+// Wraps, long words too (break-words), so a narrow or zoomed screen never gets a sideways scroll
+// box that the keyboard cannot reach.
+const CODE =
+  'overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs break-words whitespace-pre-wrap'
 
 function TryItem({
   attempt,

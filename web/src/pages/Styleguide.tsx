@@ -179,7 +179,8 @@ export default function Styleguide() {
                 {label}
               </p>
             ))}
-            <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
+            {/* Wraps instead of scrolling: at 320 px a scroll box here had no keyboard access. */}
+            <pre className="rounded-lg bg-muted p-4 text-sm break-words whitespace-pre-wrap">
               <code>{'SELECT category, SUM(amount) AS total\nFROM sales\nGROUP BY category;'}</code>
             </pre>
             <table className="text-sm tabular-nums">

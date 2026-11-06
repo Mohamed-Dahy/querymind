@@ -1,5 +1,6 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import type { Page, TestInfo } from '@playwright/test'
 
+import { expect, test } from './fixtures.ts'
 import { apiStatusLoaded, ROUTES } from './helpers.ts'
 
 // U6.3: every screen at the four design widths (phone, tablet, laptop, desktop). The page itself
@@ -26,14 +27,15 @@ for (const width of WIDTHS) {
   test.describe(`${width} px wide`, () => {
     test.use({ viewport: { width, height: 800 } })
 
-    test('no route scrolls sideways', async ({ page }, testInfo) => {
-      for (const { path, heading } of ROUTES) {
+    // One test per route: all 12 in one test ran past the 30 s limit once the suite grew (U6.4).
+    for (const { path, heading } of ROUTES) {
+      test(`${path} does not scroll sideways`, async ({ page }, testInfo) => {
         await page.goto(path)
         await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
-        expect(await sidewaysScroll(page), path).toBeLessThanOrEqual(0)
+        expect(await sidewaysScroll(page)).toBeLessThanOrEqual(0)
         await keepScreenshot(page, testInfo, `${width}${path.replaceAll('/', '_')}`)
-      }
-    })
+      })
+    }
 
     test('an answer, and its drawer, fit without scrolling sideways', async ({
       page,

@@ -68,7 +68,9 @@ function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPr
   return (
     <TabsPrimitive.Content
       data-slot="tabs-content"
-      className={cn('flex-1 text-sm outline-none', className)}
+      // No outline-none (shadcn's default): Radix makes a panel a Tab stop, so it needs the global
+      // focus ring like every other stop (WCAG 2.4.7). Rounded, so the ring follows the cell's shape.
+      className={cn('flex-1 rounded-lg text-sm', className)}
       {...props}
     />
   )

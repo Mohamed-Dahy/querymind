@@ -1,6 +1,5 @@
-import { expect, test } from '@playwright/test'
-
-import { seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
+import { expect, test } from './fixtures.ts'
+import { a11yIssues, THEMES, useTheme } from './helpers.ts'
 
 type Box = { x: number; y: number; width: number; height: number }
 
@@ -39,7 +38,7 @@ test.describe('at 1440 px', () => {
       await expect(graph.getByText('Chinook', { exact: true })).toBeVisible()
       await expect(graph.getByText('Northwind', { exact: true })).toBeVisible()
       await expect(graph.getByRole('link', { name: 'React Flow' })).toBeVisible()
-      expect(await seriousA11yIssues(page)).toEqual([])
+      expect(await a11yIssues(page)).toEqual([])
     })
   }
 
@@ -55,7 +54,7 @@ test.describe('at 1440 px', () => {
       'true',
     )
     await expect(page.getByRole('group', { name: /orders is highlighted/ })).toBeAttached()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await page.goBack()
     await expect(list.getByRole('button', { pressed: true })).toHaveCount(0)
@@ -145,7 +144,7 @@ test('on a phone: the list only, with no sideways scroll, and the graph is never
       'document.documentElement.scrollWidth - document.documentElement.clientWidth',
     ),
   ).toBeLessThanOrEqual(0)
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 })
 
 for (const theme of THEMES) {
@@ -162,7 +161,7 @@ for (const theme of THEMES) {
         .getByRole('region', { name: 'Business terms' })
         .getByRole('link', { name: 'Late shipment in the glossary' }),
     ).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     const open = page.getByRole('link', { name: 'Open customers' }).first()
     await open.scrollIntoViewIfNeeded()
@@ -199,7 +198,7 @@ test('on a phone a table page has no sideways scroll on the page itself', async 
       'document.documentElement.scrollWidth - document.documentElement.clientWidth',
     ),
   ).toBeLessThanOrEqual(0)
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 })
 
 test('the glossary: from the explorer, found by another word, then asked with', async ({
@@ -242,7 +241,7 @@ test('on a phone the glossary has no sideways scroll on the page', async ({ page
       'document.documentElement.scrollWidth - document.documentElement.clientWidth',
     ),
   ).toBeLessThanOrEqual(0)
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 })
 
 for (const theme of THEMES) {
@@ -271,7 +270,7 @@ for (const theme of THEMES) {
     await expect(card('categories')).toContainText('used')
     await expect(card('region')).not.toContainText('used')
     await expect(page.getByText(/One answer's tables/)).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     const list = page.getByRole('region', { name: 'List of tables' })
     await list.getByRole('button', { name: /^products/ }).click()

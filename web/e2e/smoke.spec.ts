@@ -1,6 +1,5 @@
-import { expect, test } from '@playwright/test'
-
-import { apiStatusLoaded, ROUTES, seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
+import { expect, test } from './fixtures.ts'
+import { apiStatusLoaded, ROUTES, a11yIssues, THEMES, useTheme } from './helpers.ts'
 
 test('the page loads and shows the API version from the mock API', async ({ page }) => {
   const health = page.waitForResponse('**/api/health')
@@ -92,7 +91,7 @@ test('the composer grows with the text, explains errors, and sends with Ctrl+Ent
 
   await page.getByRole('button', { name: 'Ask' }).click()
   await expect(page.getByRole('alert')).toHaveText('Type a question first.')
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 
   await box.fill('one line')
   const oneLine = (await box.boundingBox())?.height ?? 0
@@ -113,13 +112,13 @@ for (const theme of THEMES) {
     })
 
     for (const { path, heading } of ROUTES) {
-      test(`${path} has no serious accessibility issues`, async ({ page }) => {
+      test(`${path} has no accessibility issues`, async ({ page }) => {
         await page.goto(path)
         await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
         if (path !== '/styleguide') await apiStatusLoaded(page)
 
-        expect(await seriousA11yIssues(page)).toEqual([])
+        expect(await a11yIssues(page)).toEqual([])
       })
     }
   })

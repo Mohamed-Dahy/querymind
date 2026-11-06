@@ -1,7 +1,8 @@
-import { expect, test, type Locator } from '@playwright/test'
+import type { Locator } from '@playwright/test'
 
 import answer from '../src/mocks/recorded/answer.json' with { type: 'json' }
-import { apiStatusLoaded, seriousA11yIssues, THEMES, useTheme } from './helpers.ts'
+import { expect, test } from './fixtures.ts'
+import { apiStatusLoaded, a11yIssues, THEMES, useTheme } from './helpers.ts'
 
 // The canvas flow in a real browser, against the mock API. U1.7 and U1.8 add errors and follow-ups
 // to this file.
@@ -38,11 +39,11 @@ for (const theme of THEMES) {
       'fill',
       String(signal),
     )
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await cell.getByRole('tab', { name: 'Table' }).click()
     await expect(cell.getByRole('table').getByRole('row')).toHaveCount(answer.rows.length + 1)
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     // The SQL tab loads Shiki on first open and colours the keywords with our tokens.
     const shiki = page.waitForResponse(/highlight/)
@@ -51,7 +52,7 @@ for (const theme of THEMES) {
     const select = cell.locator('code span span').first()
     await expect(select).toHaveText('SELECT')
     await expect(select).toHaveAttribute('style', /--shiki-token-keyword/)
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
   })
 }
 
@@ -104,7 +105,7 @@ test('1,000 rows: only a window is drawn, scrolling reaches the last row, and so
     'ascending',
   )
   await expect(table.locator('tr[aria-rowindex="2"]')).toContainText('Category 1')
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 })
 
 test('sales per month get a line chart; one number gets no chart and opens on the table', async ({
@@ -122,7 +123,7 @@ test('sales per month get a line chart; one number gets no chart and opens on th
   const line = monthly.getByRole('img', { name: /^Line chart of total_sales by month, 12 points/ })
   await expect(line).toBeVisible()
   await expect(line.locator('.recharts-line-dot, .recharts-dot')).toHaveCount(12)
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 
   // A new conversation (a fresh page load; U1.8 adds the button): in the same one it would be a
   // follow-up, which the mock answers with the recorded follow-up.
@@ -155,7 +156,7 @@ for (const theme of THEMES) {
     const option = asked.getByRole('button', { name: 'by total revenue' })
     await expect(option).toBeVisible()
     await expect(page).toHaveURL(/\/c\/[0-9a-f-]{36}$/)
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await option.click()
     const answered = page.getByRole('article', {
@@ -166,7 +167,7 @@ for (const theme of THEMES) {
     await asked.getByRole('button', { name: 'Something else…' }).click()
     const own = asked.getByRole('textbox', { name: 'Your answer' })
     await expect(own).toBeFocused()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
     await own.fill('by returns')
     await own.press('Enter')
     await expect(
@@ -181,7 +182,7 @@ for (const theme of THEMES) {
     await box.press('Control+Enter')
     const refused = page.getByRole('article', { name: 'Delete all orders from 1996' })
     await expect(refused.getByText('Nothing in the database was changed.')).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
   })
 }
 
@@ -229,7 +230,7 @@ for (const theme of THEMES) {
       'aria-disabled',
       'true',
     )
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await page.goto('/')
     await apiStatusLoaded(page)
@@ -239,7 +240,7 @@ for (const theme of THEMES) {
     await unsafe.getByRole('button', { name: 'Rephrase' }).click()
     await expect(box).toHaveValue('error: unsafe_sql')
     await expect(box).toBeFocused()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
   })
 }
 
@@ -270,7 +271,7 @@ for (const theme of THEMES) {
     await first.getByRole('button', { name: 'Follow up' }).click()
     await expect(box).toBeFocused()
     await expect(page.getByText(`Following up on: ${example}`)).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
     const asked = page.waitForRequest((request) => request.url().endsWith('/api/ask/stream'))
     await box.fill('Now only for 1997')
     await box.press('Control+Enter')
@@ -281,7 +282,7 @@ for (const theme of THEMES) {
     const linked = page.getByRole('article', { name: 'Now only for 1997' })
     await expect(linked.getByText(`Following up on: ${example}`)).toBeVisible()
     await expect(linked.getByRole('tab', { name: 'SQL' })).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     // New conversation: empty canvas, and Back still finds the old one.
     await newConversation.click()
@@ -313,13 +314,13 @@ for (const theme of THEMES) {
     await box.fill('error: llm_rate_limited')
     await box.press('Control+Enter')
     await expect(page.getByText(/^Try again in \d+ seconds$/)).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     // A reload: the conversation comes back from what was saved.
     await page.goto(conversationUrl)
     await expect(page.getByRole('article')).toHaveCount(2)
     await expect(page.getByRole('article', { name: example })).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
   })
 }
 
@@ -365,24 +366,24 @@ for (const theme of THEMES) {
     const steps = repaired.getByRole('list', { name: 'Agent steps' })
     // Caught while it runs: the rail is there before the answer, and it moves.
     await expect(steps.locator('[aria-current="step"]')).toHaveCount(1)
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
     await expect(repaired.getByText('The USA has the most customers, with 13.')).toBeVisible()
     await expect(repaired.getByText('2 tries')).toBeVisible()
     await expect(repaired.getByText(/^Try 1 failed: .*GROUP BY/)).toBeVisible()
     await expect(steps.locator('[aria-current="step"]')).toHaveCount(0)
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await page.getByRole('button', { name: 'New conversation' }).click()
     await box.fill('stream: stuck')
     await box.press('Control+Enter')
     const stuck = page.getByRole('article', { name: 'stream: stuck' })
     await expect(stuck.locator('[aria-current="step"]')).toContainText('Write SQL')
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
     await stuck.getByRole('button', { name: 'Stop' }).click()
     await expect(stuck.getByText('You stopped this question.')).toBeVisible()
     await expect(stuck.getByRole('button', { name: 'Retry' })).toBeVisible()
     await expect(box).toBeFocused()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
   })
 }
 
@@ -426,7 +427,7 @@ test('on a phone the rail wraps without a sideways scroll, and Stop is reachable
   await box.press('Control+Enter')
   await page.getByRole('button', { name: 'Stop' }).click()
   await expect(page.getByRole('article').getByText('You stopped this question.')).toBeVisible()
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 })
 
 // U2.5: the drawer, on the recorded repair.
@@ -449,7 +450,7 @@ for (const theme of THEMES) {
     await expect(drawer.locator('del')).toContainText('region')
     await expect(drawer.locator('ins').first()).toContainText('country')
     await expect(drawer.getByText('It needed 1 repair to get this result.')).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await page.keyboard.press('Escape')
     await expect(drawer).toHaveCount(0)
@@ -481,7 +482,7 @@ test('on a phone the drawer fills the screen and scrolls, without a sideways scr
   expect(sideways).toBeLessThanOrEqual(0)
   await drawer.getByText('It needed 1 repair to get this result.').scrollIntoViewIfNeeded()
   await expect(drawer.getByText('It needed 1 repair to get this result.')).toBeInViewport()
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 })
 
 // U3.4: history survives a reload.
@@ -511,12 +512,12 @@ for (const theme of THEMES) {
       'page',
     )
     await expect(cell.getByText(/aren't stored/)).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await cell.getByRole('button', { name: 'Re-run for rows' }).click()
     await expect(cell.getByRole('img', { name: /^Bar chart/ })).toBeVisible()
     await expect(cell.getByText(/^Fresh rows from /)).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     // The drawer still works on a saved answer.
     await cell.getByRole('button', { name: 'Show your work' }).click()
@@ -527,6 +528,9 @@ for (const theme of THEMES) {
 }
 
 test('the history rail: search, rename, pin, delete and Undo', async ({ page }) => {
+  // Five features in one test: 16 s alone, and 25–30 s when the suite runs in parallel, right at
+  // the 30 s limit. slow() gives it three times as long.
+  test.slow()
   await page.goto('/')
   await apiStatusLoaded(page)
   const box = page.getByRole('textbox', { name: 'Your question' })
@@ -548,7 +552,7 @@ test('the history rail: search, rename, pin, delete and Undo', async ({ page }) 
   await sales.hover()
   await history.getByRole('button', { name: 'Pin “Sales per category?”' }).click()
   await expect(history.getByRole('heading', { name: 'Pinned' })).toBeVisible()
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 
   // By keyboard: focus shows the buttons, which are hidden until wanted.
   await page.getByRole('link', { name: 'Top 3 artists' }).focus()
@@ -600,7 +604,7 @@ for (const theme of THEMES) {
     const history = page.getByRole('region', { name: 'History' })
     const again = history.getByRole('button', { name: `Ask “${question}”` })
     await expect(again).toBeVisible()
-    expect(await seriousA11yIssues(page)).toEqual([])
+    expect(await a11yIssues(page)).toEqual([])
 
     await page.reload()
     await expect(again).toBeVisible()
@@ -661,7 +665,7 @@ test('on a phone the history opens in a sheet, and a conversation opens from it'
   await opener.click()
   const sheet = page.getByRole('dialog', { name: 'History' })
   await expect(sheet.getByRole('link', { name: 'Sales per category?' })).toBeVisible()
-  expect(await seriousA11yIssues(page)).toEqual([])
+  expect(await a11yIssues(page)).toEqual([])
 
   await sheet.getByRole('link', { name: 'Sales per category?' }).click()
   await expect(sheet).toHaveCount(0)

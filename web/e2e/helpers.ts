@@ -76,15 +76,21 @@ export const ROUTES: { path: string; heading: string; title: string; code?: stri
   },
 ]
 
-/** Problems axe finds that block people (serious or critical), under WCAG 2.1 A and AA. */
-export async function seriousA11yIssues(page: Page) {
+/**
+ * Every problem axe finds under WCAG 2.1 A and AA, at every impact level (minor and moderate
+ * too, not only serious and critical: U6.4).
+ */
+export async function a11yIssues(page: Page) {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze()
-  // Just the rule and the elements, so a failure says what to fix.
-  return results.violations
-    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
-    .map((v) => ({ rule: v.id, help: v.help, nodes: v.nodes.map((n) => n.target.join(' ')) }))
+  // Just the rule, its impact and the elements, so a failure says what to fix.
+  return results.violations.map((v) => ({
+    rule: v.id,
+    impact: v.impact,
+    help: v.help,
+    nodes: v.nodes.map((n) => n.target.join(' ')),
+  }))
 }
 
 /** The shell's health line has loaded (so checks see the page people see, not the spinner). */
