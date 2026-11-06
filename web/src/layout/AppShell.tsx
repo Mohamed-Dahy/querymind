@@ -68,7 +68,9 @@ function Frame() {
       <div className="flex min-h-dvh flex-col">
         <SkipLink target={main} />
 
-        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b bg-surface px-4 py-2">
+        {/* On a phone: two short rows (logo and the two actions; status and theme), with the
+            buttons' words kept for screen readers only. From 640 px: the words come back. */}
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b bg-surface px-4 py-2 sm:gap-y-2">
           <Link
             to="/"
             className="flex min-h-11 items-center gap-2 rounded-lg font-heading text-lg font-semibold"
@@ -76,35 +78,46 @@ function Frame() {
             <ScanSearch aria-hidden="true" className="size-5 text-signal" />
             QueryMind
           </Link>
-          <span className="flex items-center gap-1.5 text-sm text-fg-muted">
+          {/* Not on a phone: the canvas's own intro names both businesses. */}
+          <span className="hidden items-center gap-1.5 text-sm text-fg-muted sm:flex">
             <Database aria-hidden="true" className="size-4" />
             Northwind + Chinook
           </span>
-          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="ml-auto flex items-center gap-2 sm:gap-4">
             <Button
               type="button"
               variant="outline"
               aria-haspopup="dialog"
               aria-keyshortcuts="Control+K Meta+K"
+              className="pointer-coarse:min-w-11"
               onClick={(event) => palette.show(event.currentTarget)}
             >
               <Search aria-hidden="true" />
-              Search
+              <span className="sr-only sm:not-sr-only">Search</span>
               {/* Not read out: aria-keyshortcuts says it. Hidden on phones, which have no Ctrl key. */}
               <span aria-hidden="true" className="hidden sm:inline">
                 <Kbd>{`${MODIFIER} K`}</Kbd>
               </span>
             </Button>
             <NewConversationButton />
+          </div>
+          <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 sm:w-auto">
             <ApiStatus />
-            <ThemeSwitcher />
+            <ThemeSwitcher compact />
           </div>
         </header>
 
         <div className="flex flex-1 flex-col md:flex-row">
           <NavRail deletes={deletes} />
-          {/* tabIndex -1: focusable by code (route change, skip link) but not a Tab stop itself. */}
-          <main id="main" ref={main} tabIndex={-1} className="canvas-grid flex-1 outline-none">
+          {/* tabIndex -1: focusable by code (route change, skip link) but not a Tab stop itself.
+              min-w-0: a flex item won't shrink below its content's width by default, so one wide
+              table pushed the whole page sideways beside the rail (768 and 1024 px). */}
+          <main
+            id="main"
+            ref={main}
+            tabIndex={-1}
+            className="canvas-grid min-w-0 flex-1 outline-none"
+          >
             <Outlet />
           </main>
         </div>
@@ -127,9 +140,19 @@ function Frame() {
 function NewConversationButton() {
   const newConversation = useNewConversation()
   return (
-    <Button type="button" variant="outline" onClick={newConversation}>
+    <Button
+      type="button"
+      variant="outline"
+      className="pointer-coarse:min-w-11"
+      onClick={newConversation}
+    >
       <SquarePen aria-hidden="true" />
-      New conversation
+      {/* A phone shows "New"; the name stays "New conversation", which starts with what is seen
+          (so voice control's "click New" works). */}
+      <span aria-hidden="true" className="sm:hidden">
+        New
+      </span>
+      <span className="sr-only sm:not-sr-only">New conversation</span>
     </Button>
   )
 }
@@ -182,7 +205,7 @@ function NavRail({ deletes }: { deletes: DeleteWithUndo }) {
       aria-label="Main"
       className="border-b bg-surface md:w-56 md:shrink-0 md:border-r md:border-b-0"
     >
-      <ul className="flex flex-wrap gap-1 p-2 md:flex-col md:flex-nowrap">
+      <ul className="flex flex-wrap gap-0.5 p-2 sm:gap-1 md:flex-col md:flex-nowrap">
         {NAV_ITEMS.map(({ to, label, Icon, matches }) => {
           const current = matches(pathname)
           return (
@@ -192,7 +215,7 @@ function NavRail({ deletes }: { deletes: DeleteWithUndo }) {
                 // Tells screen readers which page this is; the look follows it (not colour alone: weight too).
                 aria-current={current ? 'page' : undefined}
                 className={cn(
-                  'flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm transition-colors',
+                  'flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm sm:px-3 transition-colors',
                   current
                     ? 'bg-muted font-medium text-fg'
                     : 'text-fg-muted hover:bg-muted hover:text-fg',
@@ -213,7 +236,7 @@ function NavRail({ deletes }: { deletes: DeleteWithUndo }) {
               setSheetLoaded(true)
               setSheetOpen(true)
             }}
-            className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+            className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm sm:px-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
           >
             <History aria-hidden="true" className="size-4" />
             History

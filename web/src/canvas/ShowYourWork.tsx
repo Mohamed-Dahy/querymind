@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { diffWords } from '@/lib/diff'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 import { formatDuration } from './trace'
 import { tablesPath, triesOf, type FailedKind, type WorkTry } from './work'
@@ -48,11 +49,15 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
   const tries = triesOf(reply)
   const { schema_selection: selection, search_question: searchedAs, tables_used: used } = reply
   const explorerPath = tablesPath(reply)
+  // A side panel needs width; on a phone it would cover everything, so it rises from the bottom
+  // instead, leaving the answer's top in view (like a phone's own share sheets).
+  const wide = useMediaQuery('(min-width: 640px)')
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        className="w-full overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
+        side={wide ? 'right' : 'bottom'}
+        className="w-full overflow-y-auto data-[side=bottom]:max-h-[85dvh] data-[side=bottom]:rounded-t-cell data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
         onCloseAutoFocus={(event) => {
           event.preventDefault()
           opener.current?.focus()

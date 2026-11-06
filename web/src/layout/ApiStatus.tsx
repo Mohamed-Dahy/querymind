@@ -36,8 +36,12 @@ export function ApiStatus() {
   return (
     <p role="status" className="flex items-center gap-1.5 text-sm text-fg-muted">
       <CircleCheck aria-hidden="true" className="size-4 text-signal" />
-      API {health.data.status} · version{' '}
-      <span className="font-mono tabular-nums">{health.data.version}</span>
+      API {health.data.status}
+      {/* The version is for developers: not worth a phone's row. Screen readers still hear it. */}
+      <span className="sr-only sm:not-sr-only">
+        {' '}
+        · version <span className="font-mono tabular-nums">{health.data.version}</span>
+      </span>
     </p>
   )
 }

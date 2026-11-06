@@ -2,6 +2,7 @@ import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { useTheme, type ThemeChoice } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 
 const OPTIONS: { choice: ThemeChoice; label: string; Icon: LucideIcon }[] = [
   { choice: 'dark', label: 'Dark', Icon: Moon },
@@ -9,8 +10,13 @@ const OPTIONS: { choice: ThemeChoice; label: string; Icon: LucideIcon }[] = [
   { choice: 'system', label: 'System', Icon: Monitor },
 ]
 
+type ThemeSwitcherProps = {
+  /** On a phone, icons only (the words stay for screen readers). The top bar uses this. */
+  compact?: boolean
+}
+
 /** Three toggle buttons; the pressed one is the current choice (aria-pressed, not colour alone). */
-export function ThemeSwitcher() {
+export function ThemeSwitcher({ compact = false }: ThemeSwitcherProps) {
   const { choice, setChoice } = useTheme()
 
   return (
@@ -21,10 +27,11 @@ export function ThemeSwitcher() {
           size="sm"
           variant={choice === option ? 'outline' : 'ghost'}
           aria-pressed={choice === option}
+          className={cn(compact && 'pointer-coarse:min-w-11')}
           onClick={() => setChoice(option)}
         >
           <Icon aria-hidden="true" />
-          {label}
+          <span className={cn(compact && 'sr-only sm:not-sr-only')}>{label}</span>
         </Button>
       ))}
     </div>
