@@ -1,5 +1,5 @@
 // What to tell the user for each error code; the API's own message is shown below it.
-// Ported from ui/app.py ERROR_TITLES (keep the two in sync until Streamlit is retired in U6.6),
+// First written for the Streamlit UI (retired in U6.6), one title per API error code (errors.py),
 // plus the client-side codes from client.ts (bad_response) and the server's catch-all (internal_error).
 export const ERROR_TITLES = {
   unsafe_sql: "I couldn't answer that safely.",

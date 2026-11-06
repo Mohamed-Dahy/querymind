@@ -6,7 +6,7 @@ export const EXAMPLE_GROUPS: readonly ExampleGroup[] = [
   {
     title: 'Northwind shop',
     description: 'Orders, products, customers and staff.',
-    // The same five as EXAMPLE_QUESTIONS in ui/app.py (the Streamlit UI).
+    // The five the first UI (Streamlit, retired in U6.6) offered.
     questions: [
       'How many customers are there?',
       'What are the 5 most expensive products?',

@@ -13,7 +13,6 @@ dependencies = [
     "pydantic-settings>=2.16.0",
     "pyyaml>=6.0.3",
     "sqlglot>=30.23.0",
-    "streamlit>=1.66.0",
     "uvicorn>=0.54.0",
 ]
 
@@ -44,7 +43,7 @@ python_version = "3.12"
 strict = true
 mypy_path = "src"
 # What plain `uv run mypy` checks: app code, tests, data and helper scripts
-files = ["src", "tests", "data", "scripts", "ui", "evals"]
+files = ["src", "tests", "data", "scripts", "evals"]
 # Teaches mypy how pydantic models and settings are built
 plugins = ["pydantic.mypy"]
 

@@ -7,11 +7,9 @@ Phase 2; this fixture makes such a test fail locally too.
 
 import pytest
 
-from querymind.client import ClientSettings
 from querymind.config import Settings
 
 
 @pytest.fixture(autouse=True)
 def no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
-    for settings_class in (Settings, ClientSettings):
-        monkeypatch.setitem(settings_class.model_config, "env_file", None)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)

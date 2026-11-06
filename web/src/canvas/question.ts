@@ -32,7 +32,7 @@ export function checkQuestion(text: string): QuestionCheck {
 
 /**
  * What to ask after a clarifying question: the original question with the choice in brackets, so it
- * stands on its own (Streamlit does the same). If that goes over the limit, just the choice: the
+ * stands on its own. If that goes over the limit, just the choice: the
  * conversation's history on the server still holds the original question.
  */
 export function clarifiedQuestion(question: string, choice: string): string {

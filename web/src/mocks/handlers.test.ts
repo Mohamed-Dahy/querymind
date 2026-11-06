@@ -64,7 +64,7 @@ describe('mock API', () => {
     expect(await ask({ question: 'How many customers are there?' })).toMatchObject({
       rows: single.rows,
     })
-    // A Streamlit example that must still get the per-category answer (a bar chart).
+    // An example question that must still get the per-category answer (a bar chart).
     expect(await ask({ question: 'How many orders did each country place?' })).toMatchObject({
       columns: answer.columns,
     })
@@ -117,7 +117,7 @@ describe('mock API, streaming', () => {
     expect(reply.conversation_id).toBe(answer.conversation_id)
   })
 
-  it('"in each country" gets the repair; a Streamlit example does not', async () => {
+  it('"in each country" gets the repair; an example question does not', async () => {
     const repaired = await stream('How many customers are there in each country?')
     expect(repaired.events).toEqual(repairStream)
     expect(repaired.reply).toMatchObject({ attempts: repair.attempts, sql_attempts: 2 })

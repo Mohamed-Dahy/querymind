@@ -13,7 +13,7 @@ export type AskReply = paths['/ask']['post']['responses'][200]['content']['appli
 export type HealthResponse = Schemas['HealthResponse']
 type ErrorBody = Schemas['ErrorResponse']
 
-// Same as src/querymind/client.py: a question makes two LLM calls plus a query, and rate-limit
+// A question makes two LLM calls plus a query, and rate-limit
 // retries or SQL repairs can take a while.
 export const ASK_TIMEOUT_MS = 120_000
 const HEALTH_TIMEOUT_MS = 10_000
@@ -69,7 +69,7 @@ export function checkedReply(reply: AskReply): AskReply {
 export type Result<T> = { data?: T; error?: unknown; response: Response }
 
 /**
- * Run one request with a timeout, and turn every failure into an ApiError (like client.py):
+ * Run one request with a timeout, and turn every failure into an ApiError:
  * the API's own {error, message}, a timeout, an unreachable API, or a body we can't read.
  * A cancel by the caller (their `signal`) is passed on as the AbortError it is: not a failure.
  */

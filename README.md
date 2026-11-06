@@ -3,14 +3,18 @@
 [![CI](https://github.com/Mohamed-Dahy/querymind/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohamed-Dahy/querymind/actions/workflows/ci.yml)
 
 **An AI data analyst for company databases.** Ask a question in plain English and get back the answer,
-the SQL that produced it, and a result table (charts are on the roadmap).
+a chart and a result table, and the SQL that produced it.
 
 > "Which employee handled the most orders?" → "Margaret Peacock handled the most orders, with 156." + SQL + table
+
+![The QueryMind canvas: the question "What is the total sales amount per category?", the agent's seven steps with their times, the answer in plain words, a high-confidence badge, and a bar chart of sales per category](.github/assets/canvas.png)
 
 QueryMind is built to **assist** data teams, not replace them. It handles routine questions so analysts
 can focus on deeper work, and it always shows its SQL so every answer can be checked.
 
-> 🚧 **Status: working agent.** Ask questions through a chat UI or an HTTP API. When a query fails, the agent
+> 🚧 **Status: working agent.** Ask questions in the web UI or through an HTTP API. The web UI shows each step
+> of the agent live, the answer with its chart, table and SQL, saved conversations, a data explorer (tables,
+> joins, business terms) and an evals lab with every measured score. When a query fails, the agent
 > reads the database's error and fixes its own SQL; when a result looks wrong (no rows, duplicated rows), it
 > checks again and warns you. When a question is ambiguous ("best customers": by revenue or by orders?) it asks
 > back, and it politely refuses requests to change data. Every answer comes with a **confidence level** (High /
@@ -97,10 +101,11 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 | Agent | LangGraph |
 | LLMs | Groq and Gemini through one interface (LangChain wrappers) |
 | SQL safety | sqlglot |
-| API / UI | FastAPI, Streamlit |
+| API | FastAPI (+ server-sent events for the live agent steps) |
+| Web UI | React, Vite, TypeScript, Tailwind CSS, shadcn/ui (Radix), TanStack Query and Table, Recharts, React Flow |
 | Config | pydantic-settings |
 | Evals | BIRD Mini-Dev, own golden sets, Ray (parallel runs) |
-| Quality | ruff, mypy (strict), pytest, pre-commit |
+| Quality | ruff, mypy (strict), pytest, pre-commit; web: oxlint, Prettier, Vitest, Playwright + axe |
 | CI | GitHub Actions |
 | Planned | AWS (Bedrock, ECS), Terraform |
 
@@ -111,6 +116,7 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 ### Requirements
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (it installs Python 3.12 for you)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Node.js 22](https://nodejs.org/) for the web UI
 - An API key from [Groq](https://console.groq.com/keys) or [Google AI Studio](https://aistudio.google.com/apikey)
 
 ### Setup
@@ -127,6 +133,7 @@ docker compose up -d --wait            # start Postgres + pgvector on 127.0.0.1:
 uv run python data/seed_northwind.py   # load the sample data + create the read-only user
 uv run python data/seed_chinook.py     # load the second sample (a music store) next to it
 uv run python scripts/build_index.py   # index the tables for retrieval (needs a Google AI Studio key)
+uv run python data/setup_app_db.py     # storage for saved conversations (APP_DB_* in .env; optional)
 ```
 
 Without a Google key the app still works: it sends the whole schema and logs a warning.
@@ -139,9 +146,18 @@ The data is CC BY-SA 4.0 and is never committed here.
 
 ```bash
 uv run uvicorn querymind.api.main:app     # the API on http://127.0.0.1:8000 (docs at /docs)
-uv run streamlit run ui/app.py            # in a second terminal: the chat UI on http://localhost:8501
 uv run python scripts/ask.py "How many orders were placed in 1997?"   # or straight from the terminal
 ```
+
+Then the web UI, in a second terminal:
+
+```bash
+npm --prefix web install          # once (and after package.json changes)
+npm --prefix web run dev          # http://localhost:5173; /api is forwarded to the API on :8000
+```
+
+To try the web UI with no database, API or LLM key: `npm --prefix web run dev:mock` answers from recorded real
+replies (the screenshot above shows one of them).
 
 ### Measure accuracy
 
@@ -173,4 +189,10 @@ uv run pytest                    # all tests (integration tests need the databas
 uv run pytest -m "not integration"  # unit tests only
 uv run ruff check .              # lint
 uv run mypy                      # type-check
+npm --prefix web run lint        # web: lint (oxlint)
+npm --prefix web run typecheck   # web: type-check (TypeScript)
+npm --prefix web test            # web: unit and component tests (Vitest)
+npm --prefix web run build && npm --prefix web run size   # web: production build + first-load size budget
+npx --prefix web playwright install chromium   # once: the browser for the tests below
+npm --prefix web run e2e         # web: every screen in a real browser, with accessibility checks (axe)
 ```

@@ -244,7 +244,7 @@ for (const theme of THEMES) {
   })
 }
 
-// Milestone U1: everything the Streamlit app does, in one sitting, on the fake API.
+// Milestone U1: all the old Streamlit UI did (retired in U6.6), in one sitting, on the fake API.
 for (const theme of THEMES) {
   test(`${theme} theme: the whole flow, from an example to a new conversation`, async ({
     page,
