@@ -298,7 +298,9 @@ describe('stopping and timeouts', () => {
 
   it('aborting closes the connection', async () => {
     const closed = vi.fn<() => void>()
+    let sent = false
     vi.stubGlobal('fetch', async (request: Request) => {
+      sent = true
       request.signal.addEventListener('abort', closed)
       return openStream(request)
     })
@@ -308,7 +310,8 @@ describe('stopping and timeouts', () => {
       { question: 'q' },
       { signal: controller.signal, onEvent: () => {} },
     ).catch((e: unknown) => e)
-    await vi.waitFor(() => expect(vi.mocked(fetch)).toBeDefined())
+    // Stop once the request is really on its way (authFetch reads the body first, U7.1).
+    await vi.waitFor(() => expect(sent).toBe(true))
     controller.abort()
     await failure
 

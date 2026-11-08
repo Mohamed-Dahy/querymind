@@ -2,9 +2,11 @@
 import '@testing-library/jest-dom/vitest' // adds matchers like toBeInTheDocument()
 import { cleanup, configure } from '@testing-library/react'
 import { toast } from 'sonner'
-import { afterAll, afterEach, beforeAll } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
 
+import { resetAuth, setSession } from '../api/session'
 import { server } from '../mocks/server'
+import { mockSession } from '../mocks/session'
 
 // The fake API (src/mocks/handlers.ts) answers every fetch to /api from the fixtures. 'error': a
 // request no handler matches fails the test, instead of quietly trying the real network.
@@ -19,6 +21,11 @@ afterEach(() => {
   for (const { id } of toast.getToasts()) toast.dismiss(id)
 })
 afterAll(() => server.close())
+
+// Logged in from the first render (U7.1), as after the page-load refresh: tests about something else
+// stay as they were. Logged-out tests call resetAuth() and make the refresh fail (src/api/session.test.ts).
+beforeEach(() => setSession(mockSession))
+afterEach(() => resetAuth())
 
 // jsdom has no matchMedia (the theme code uses it). This stand-in says "no preference" for every query;
 // a test can stub its own (theme.test.ts). Assigned once, so `unstubGlobals` doesn't remove it.

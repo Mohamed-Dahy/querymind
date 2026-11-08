@@ -12,6 +12,7 @@ import {
   isErrorBody,
 } from './client'
 import type { AskReply, AskRequest } from './client'
+import { authFetch } from './session'
 import type { components } from './schema'
 
 // Listed by hand, because openapi-typescript can't read FastAPI's stream description. The members
@@ -75,7 +76,8 @@ async function readStream(
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
 
   try {
-    const response = await globalThis.fetch(
+    // authFetch: with the access token, refreshed once on a 401 (U7.1).
+    const response = await authFetch(
       new Request(`${ASK_URL}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

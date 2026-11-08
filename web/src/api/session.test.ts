@@ -1,0 +1,171 @@
+import { http, HttpResponse } from 'msw'
+import { beforeEach, describe, expect, it } from 'vitest'
+
+import { getHealth } from './client'
+import {
+  authFetch,
+  getSession,
+  refreshSession,
+  resetAuth,
+  safeNext,
+  setSession,
+  takeSessionEnded,
+  type TokenResponse,
+} from './session'
+
+import { AUTH_URL } from '@/mocks/handlers'
+import { server } from '@/mocks/server'
+import { mockSession, mockUser } from '@/mocks/session'
+
+const ORIGIN = window.location.origin
+
+function tokens(token: string): TokenResponse {
+  return { access_token: token, token_type: 'bearer', expires_in: 900, user: mockUser }
+}
+
+/** Every Authorization header the fake API saw on `path`. */
+function recordAuth(path: string, reply: () => Response = () => HttpResponse.json({})) {
+  const seen: (string | null)[] = []
+  server.use(
+    http.all(path, ({ request }) => {
+      seen.push(request.headers.get('Authorization'))
+      return reply()
+    }),
+  )
+  return seen
+}
+
+describe('authFetch', () => {
+  it('sends the access token with every request', async () => {
+    const seen = recordAuth('/api/health', () => HttpResponse.json({ status: 'ok', version: '1' }))
+
+    await getHealth()
+
+    expect(seen).toEqual(['Bearer mock-access-token'])
+  })
+
+  it('on a 401, refreshes once and sends the same request again, body and all', async () => {
+    const bodies: string[] = []
+    const headers: (string | null)[] = []
+    server.use(
+      http.post(AUTH_URL.refresh, () => HttpResponse.json(tokens('renewed-token'))),
+      http.post('/api/ask', async ({ request }) => {
+        bodies.push(await request.text())
+        headers.push(request.headers.get('Authorization'))
+        return headers.length === 1
+          ? HttpResponse.json(
+              { error: 'not_authenticated', message: 'Please log in.' },
+              { status: 401 },
+            )
+          : HttpResponse.json({ ok: true })
+      }),
+    )
+
+    const response = await authFetch(
+      new Request(`${ORIGIN}/api/ask`, { method: 'POST', body: '{"question":"q"}' }),
+    )
+
+    expect(response.status).toBe(200)
+    // The POST body is sent twice: the retry is a copy made before the first send.
+    expect(bodies).toEqual(['{"question":"q"}', '{"question":"q"}'])
+    expect(headers).toEqual(['Bearer mock-access-token', 'Bearer renewed-token'])
+    expect(getSession()?.accessToken).toBe('renewed-token')
+  })
+
+  it('when the refresh is refused too, gives back the 401 and logs out', async () => {
+    server.use(
+      http.post(AUTH_URL.refresh, () =>
+        HttpResponse.json(
+          { error: 'not_authenticated', message: 'Please log in.' },
+          { status: 401 },
+        ),
+      ),
+      http.get('/api/conversations', () =>
+        HttpResponse.json(
+          { error: 'not_authenticated', message: 'Please log in.' },
+          { status: 401 },
+        ),
+      ),
+    )
+
+    const response = await authFetch(new Request(`${ORIGIN}/api/conversations`))
+
+    expect(response.status).toBe(401)
+    expect(getSession()).toBeNull()
+    expect(takeSessionEnded()).toBe(true) // the login page says the session ended
+    expect(takeSessionEnded()).toBe(false) // once
+  })
+
+  it('never refreshes for a 401 from the login routes themselves', async () => {
+    let refreshes = 0
+    server.use(
+      http.post(AUTH_URL.refresh, () => {
+        refreshes += 1
+        return HttpResponse.json(tokens('x'))
+      }),
+    )
+
+    const response = await authFetch(
+      new Request(`${ORIGIN}/api/auth/login`, {
+        method: 'POST',
+        body: JSON.stringify({ email: 'a@b.co', password: 'wrong password' }),
+      }),
+    )
+
+    expect(response.status).toBe(401) // invalid_login: a wrong password, not an old token
+    expect(refreshes).toBe(0)
+  })
+})
+
+describe('refreshSession', () => {
+  beforeEach(() => resetAuth())
+
+  it('shares one refresh among everyone asking at once', async () => {
+    let refreshes = 0
+    server.use(
+      http.post(AUTH_URL.refresh, () => {
+        refreshes += 1
+        return HttpResponse.json(tokens('shared'))
+      }),
+    )
+
+    const sessions = await Promise.all([refreshSession(), refreshSession(), refreshSession()])
+
+    // Each refresh replaces the cookie: a second one with the old cookie would look stolen.
+    expect(refreshes).toBe(1)
+    expect(sessions.map((s) => s?.accessToken)).toEqual(['shared', 'shared', 'shared'])
+  })
+
+  it('with the API unreachable on page load, settles on logged out', async () => {
+    server.use(http.post(AUTH_URL.refresh, () => HttpResponse.error()))
+
+    expect(await refreshSession()).toBeNull()
+    expect(getSession()).toBeNull()
+    expect(takeSessionEnded()).toBe(false) // nothing ended: nobody was logged in
+  })
+
+  it('keeps a session when the API is only unreachable for a moment', async () => {
+    setSession(mockSession)
+    server.use(http.post(AUTH_URL.refresh, () => HttpResponse.error()))
+
+    expect(await refreshSession()).toBeNull()
+    expect(getSession()).toEqual(mockSession)
+  })
+})
+
+describe('safeNext', () => {
+  it.each([
+    ['/c/123?x=1', '/c/123?x=1'],
+    ['/evals/models', '/evals/models'],
+    [null, '/'],
+    ['', '/'],
+    ['https://evil.example', '/'],
+    ['//evil.example', '/'],
+    ['/\\evil.example', '/'],
+    ['javascript:alert(1)', '/'],
+    ['/login?next=/x', '/'],
+    ['/signup', '/'],
+  ])('%s → %s', (next, expected) => {
+    expect(safeNext(next)).toBe(expected)
+  })
+})

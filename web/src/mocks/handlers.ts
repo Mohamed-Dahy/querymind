@@ -13,7 +13,9 @@ import {
   updateStored,
 } from './conversations'
 
+import type { LoginRequest, SignupRequest } from '@/api/auth'
 import type { AskReply, AskRequest } from '@/api/client'
+import type { TokenResponse } from '@/api/session'
 import type { ConversationUpdate } from '@/api/conversations'
 import type { StreamEvent, TraceEvent } from '@/api/stream'
 import {
@@ -40,6 +42,7 @@ import {
   type MockError,
   type MockErrorCode,
 } from './fixtures'
+import { mockLoggedOut, mockUser, setMockLoggedOut } from './session'
 
 // The paths the browser calls. MSW answers before Vite's proxy, so the /api prefix is still there.
 export const HEALTH_URL = '/api/health'
@@ -47,6 +50,27 @@ export const ASK_URL = '/api/ask'
 export const STREAM_URL = '/api/ask/stream'
 const CONVERSATION_URL = '/api/conversations/:id'
 export const SAVED_QUESTIONS_URL = '/api/saved-questions'
+
+export const AUTH_URL = {
+  refresh: '/api/auth/refresh',
+  login: '/api/auth/login',
+  signup: '/api/auth/signup',
+  logout: '/api/auth/logout',
+  me: '/api/auth/me',
+}
+/** Log in with this password to see "Wrong email or password." */
+export const WRONG_PASSWORD = 'wrong password'
+/** Sign up with this email to see "That email already has an account." */
+export const TAKEN_EMAIL = 'taken@example.com'
+
+function tokens(email: string): TokenResponse {
+  return {
+    access_token: 'mock-access-token',
+    token_type: 'bearer',
+    expires_in: 900,
+    user: { ...mockUser, email: email.toLowerCase() },
+  }
+}
 
 // In the browser's mock mode the steps come one by one, so they can be seen. Tests don't wait.
 const EVENT_DELAY_MS = import.meta.env.MODE === 'mock' ? 60 : 0
@@ -171,6 +195,27 @@ export const handlers = [
     if (ms > 0) await delay(ms)
   }),
   http.get(HEALTH_URL, () => HttpResponse.json(health)),
+  // Logins (U7.1). Any email and password work, except the few below that show each error.
+  http.post(AUTH_URL.refresh, () =>
+    mockLoggedOut() ? apiError('not_authenticated') : HttpResponse.json(tokens(mockUser.email)),
+  ),
+  http.post(AUTH_URL.login, async ({ request }) => {
+    const body = (await request.json()) as LoginRequest
+    if (body.password === WRONG_PASSWORD) return apiError('invalid_login')
+    setMockLoggedOut(false)
+    return HttpResponse.json(tokens(body.email))
+  }),
+  http.post(AUTH_URL.signup, async ({ request }) => {
+    const body = (await request.json()) as SignupRequest
+    if (body.email === TAKEN_EMAIL) return apiError('email_taken')
+    setMockLoggedOut(false)
+    return HttpResponse.json(tokens(body.email), { status: 201 })
+  }),
+  http.post(AUTH_URL.logout, () => {
+    setMockLoggedOut(true)
+    return new HttpResponse(null, { status: 204 })
+  }),
+  http.get(AUTH_URL.me, () => HttpResponse.json(mockUser)),
   http.post(STREAM_URL, async ({ request }) => {
     const body = (await request.json()) as AskRequest
     if (BROKEN_STREAM.test(body.question)) return HttpResponse.error()

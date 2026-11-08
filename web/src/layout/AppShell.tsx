@@ -12,6 +12,8 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 
+import { useAuthStatus } from '@/api/session'
+import { UserMenu } from '@/auth/UserMenu'
 import { CanvasProvider } from '@/canvas/CanvasProvider'
 import { useNewConversation } from '@/canvas/useConversation'
 import { Kbd } from '@/components/Kbd'
@@ -61,7 +63,10 @@ function Frame() {
   // Here, because this stays mounted: a delete waiting out its Undo must survive the phone's sheet
   // closing, and the palette must not list a conversation that is about to go.
   const deletes = useDeleteWithUndo()
-  const palette = usePalette()
+  // Logged out, only the public pages (the evals lab) are reachable: no history, search or new
+  // conversation, which all need a login. While the page-load check runs, show them (no flicker).
+  const loggedIn = useAuthStatus() !== 'out'
+  const palette = usePalette(loggedIn)
 
   return (
     <>
@@ -83,23 +88,26 @@ function Frame() {
             <Database aria-hidden="true" className="size-4" />
             Northwind + Chinook
           </span>
-          <div className="ml-auto flex items-center gap-2 sm:gap-4">
-            <Button
-              type="button"
-              variant="outline"
-              aria-haspopup="dialog"
-              aria-keyshortcuts="Control+K Meta+K"
-              className="pointer-coarse:min-w-11"
-              onClick={(event) => palette.show(event.currentTarget)}
-            >
-              <Search aria-hidden="true" />
-              <span className="sr-only sm:not-sr-only">Search</span>
-              {/* Not read out: aria-keyshortcuts says it. Hidden on phones, which have no Ctrl key. */}
-              <span aria-hidden="true" className="hidden sm:inline">
-                <Kbd>{`${MODIFIER} K`}</Kbd>
-              </span>
-            </Button>
-            <NewConversationButton />
+          <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-4">
+            {loggedIn && (
+              <Button
+                type="button"
+                variant="outline"
+                aria-haspopup="dialog"
+                aria-keyshortcuts="Control+K Meta+K"
+                className="pointer-coarse:min-w-11"
+                onClick={(event) => palette.show(event.currentTarget)}
+              >
+                <Search aria-hidden="true" />
+                <span className="sr-only sm:not-sr-only">Search</span>
+                {/* Not read out: aria-keyshortcuts says it. Hidden on phones, which have no Ctrl key. */}
+                <span aria-hidden="true" className="hidden sm:inline">
+                  <Kbd>{`${MODIFIER} K`}</Kbd>
+                </span>
+              </Button>
+            )}
+            {loggedIn && <NewConversationButton />}
+            <UserMenu />
           </div>
           <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 sm:w-auto">
             <ApiStatus />
@@ -108,7 +116,7 @@ function Frame() {
         </header>
 
         <div className="flex flex-1 flex-col md:flex-row">
-          <NavRail deletes={deletes} />
+          <NavRail deletes={deletes} loggedIn={loggedIn} />
           {/* tabIndex -1: focusable by code (route change, skip link) but not a Tab stop itself.
               min-w-0: a flex item won't shrink below its content's width by default, so one wide
               table pushed the whole page sideways beside the rail (768 and 1024 px). */}
@@ -157,8 +165,9 @@ function NewConversationButton() {
   )
 }
 
-/** Ctrl+K / ⌘K anywhere opens the palette (and closes it again); `show` is for the button. */
-function usePalette() {
+/** Ctrl+K / ⌘K anywhere opens the palette (and closes it again); `show` is for the button.
+ * Off (no shortcut) when logged out: the palette lists conversations. */
+function usePalette(enabled: boolean) {
   const [open, setOpenState] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const opener = useRef<HTMLElement | null>(null)
@@ -179,6 +188,7 @@ function usePalette() {
   )
 
   useEffect(() => {
+    if (!enabled) return
     function onKeyDown(event: KeyboardEvent) {
       if (!isPaletteShortcut(event)) return
       // Not the browser's own Ctrl+K (its search box): this page has a use for it.
@@ -188,13 +198,13 @@ function usePalette() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [setOpen, show])
+  }, [enabled, setOpen, show])
 
   return { open, loaded, opener, setOpen, show }
 }
 
-/** The left rail (a row on phones): the three areas, then the history. */
-function NavRail({ deletes }: { deletes: DeleteWithUndo }) {
+/** The left rail (a row on phones): the three areas, then the history (logged in only). */
+function NavRail({ deletes, loggedIn }: { deletes: DeleteWithUndo; loggedIn: boolean }) {
   const { pathname } = useLocation()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [sheetLoaded, setSheetLoaded] = useState(false)
@@ -227,29 +237,33 @@ function NavRail({ deletes }: { deletes: DeleteWithUndo }) {
             </li>
           )
         })}
-        <li className="ml-auto md:hidden">
-          <button
-            ref={historyButton}
-            type="button"
-            aria-haspopup="dialog"
-            onClick={() => {
-              setSheetLoaded(true)
-              setSheetOpen(true)
-            }}
-            className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm sm:px-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
-          >
-            <History aria-hidden="true" className="size-4" />
-            History
-          </button>
-        </li>
+        {loggedIn && (
+          <li className="ml-auto md:hidden">
+            <button
+              ref={historyButton}
+              type="button"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setSheetLoaded(true)
+                setSheetOpen(true)
+              }}
+              className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm sm:px-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+            >
+              <History aria-hidden="true" className="size-4" />
+              History
+            </button>
+          </li>
+        )}
       </ul>
 
-      <section aria-labelledby="history-heading" className="hidden px-3 py-3 md:block">
-        <h2 id="history-heading" className="px-2 text-xs tracking-wide text-fg-muted uppercase">
-          History
-        </h2>
-        <HistoryRail deletes={deletes} />
-      </section>
+      {loggedIn && (
+        <section aria-labelledby="history-heading" className="hidden px-3 py-3 md:block">
+          <h2 id="history-heading" className="px-2 text-xs tracking-wide text-fg-muted uppercase">
+            History
+          </h2>
+          <HistoryRail deletes={deletes} />
+        </section>
+      )}
 
       {sheetLoaded && (
         <Suspense fallback={<OverlayLoading />}>

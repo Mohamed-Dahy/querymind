@@ -12,6 +12,9 @@ test('the page loads and shows the API version from the mock API', async ({ page
 })
 
 test('every route works as a deep link', async ({ page }) => {
+  // Ten full page loads, each now starting with the login refresh (U7.1): about 21 s alone, more when
+  // the whole suite runs in parallel. test.slow() = three times the time limit.
+  test.slow()
   for (const { path, heading, title } of ROUTES) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
@@ -45,7 +48,7 @@ test('keyboard only: skip link first, then every control, and Enter navigates', 
 
   // Walk the page with Tab and write down what gets focus, in order.
   const stops: string[] = []
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 11; i++) {
     await page.keyboard.press('Tab')
     // One line per stop: the Search button also shows its shortcut on a second line.
     stops.push((await page.locator(':focus').innerText()).trim().split('\n')[0] ?? '')
@@ -55,6 +58,7 @@ test('keyboard only: skip link first, then every control, and Enter navigates', 
     'QueryMind',
     'Search',
     'New conversation',
+    'Log out', // U7.1: the user menu, after the two actions (the email and role aren't focusable)
     'Dark',
     'Light',
     'System',

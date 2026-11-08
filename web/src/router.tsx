@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, type RouteObject } from 'react-router'
 
+import { AuthPage } from '@/auth/AuthPage'
+import { RequireLogin } from '@/auth/RequireLogin'
 import { PageSkeleton } from '@/components/PageSkeleton'
 import { AppShell } from '@/layout/AppShell'
 import { CanvasPage } from '@/pages/CanvasPage'
@@ -36,31 +38,61 @@ const styleguideRoutes: RouteObject[] = Styleguide
     ]
   : []
 
-/** Every screen has a URL, so it can be bookmarked, shared, and reached with the back button. */
+/**
+ * Every screen has a URL, so it can be bookmarked, shared, and reached with the back button.
+ * Logins (U7.1): the canvas and the explorer need one (RequireLogin); the evals lab is public on
+ * purpose (our own eval data, the portfolio page); /login and /signup are outside the shell.
+ */
 export const routes: RouteObject[] = [
+  { path: '/login', element: <AuthPage mode="login" /> },
+  { path: '/signup', element: <AuthPage mode="signup" /> },
   {
     path: '/',
     element: <AppShell />,
     children: [
-      { index: true, element: <CanvasPage />, handle: { title: 'Canvas' } satisfies RouteHandle },
+      {
+        index: true,
+        element: (
+          <RequireLogin>
+            <CanvasPage />
+          </RequireLogin>
+        ),
+        handle: { title: 'Canvas' } satisfies RouteHandle,
+      },
       {
         path: 'c/:conversationId',
-        element: <CanvasPage />,
+        element: (
+          <RequireLogin>
+            <CanvasPage />
+          </RequireLogin>
+        ),
         handle: { title: 'Canvas' } satisfies RouteHandle,
       },
       {
         path: 'explore',
-        element: <LazyExplorePage />,
+        element: (
+          <RequireLogin>
+            <LazyExplorePage />
+          </RequireLogin>
+        ),
         handle: { title: 'Data explorer' } satisfies RouteHandle,
       },
       {
         path: 'explore/glossary',
-        element: <LazyGlossaryPage />,
+        element: (
+          <RequireLogin>
+            <LazyGlossaryPage />
+          </RequireLogin>
+        ),
         handle: { title: 'Business glossary' } satisfies RouteHandle,
       },
       {
         path: 'explore/tables/:table',
-        element: <LazyTablePage />,
+        element: (
+          <RequireLogin>
+            <LazyTablePage />
+          </RequireLogin>
+        ),
         handle: { title: 'Data explorer' } satisfies RouteHandle,
       },
       {

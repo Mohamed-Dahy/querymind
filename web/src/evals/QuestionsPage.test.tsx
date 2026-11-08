@@ -114,7 +114,12 @@ describe('QuestionsPage', () => {
     for (const href of firstClicks) {
       const view = renderApp(href)
       await screen.findByRole('navigation', { name: 'Evals lab views' })
-      await waitFor(() => expect(document.querySelector('[data-slot="skeleton"]')).toBeNull())
+      // The page's own content, not the history rail beside it; under the full suite's load the lazy
+      // pages compile slowly, so this wait gets more than the default 5 s (the test has 30 s).
+      await waitFor(
+        () => expect(screen.getByRole('main').querySelector('[data-slot="skeleton"]')).toBeNull(),
+        { timeout: 15_000 },
+      )
       for (const link of evalsLinks()) reached.add(link)
       view.unmount()
     }

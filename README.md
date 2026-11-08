@@ -227,12 +227,13 @@ npm --prefix web install          # once (and after package.json changes)
 npm --prefix web run dev          # http://localhost:5173; /api is forwarded to the API on :8000
 ```
 
-Every route except `/health`, `/evals` and the login routes needs a login: sign up with `POST /auth/signup`
-(try it at `/docs`), then send the `access_token` as `Authorization: Bearer …`. The token lasts 15 minutes;
-`POST /auth/refresh` renews it from an httpOnly cookie.
+The web UI asks you to sign up or log in; the evals lab stays open without an account. The API itself: every
+route except `/health`, `/evals` and the login routes needs a login. Sign up with `POST /auth/signup` (try it at
+`/docs`), then send the `access_token` as `Authorization: Bearer …`. The token lasts 15 minutes; `POST /auth/refresh`
+renews it from an httpOnly cookie.
 
 To try the web UI with no database, API or LLM key: `npm --prefix web run dev:mock` answers from recorded real
-replies (the screenshot above shows one of them).
+replies (the screenshot above shows one of them), already logged in; any email and password work after "Log out".
 
 ### Measure accuracy
 

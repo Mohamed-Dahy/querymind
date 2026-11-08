@@ -1,5 +1,6 @@
 import createClient from 'openapi-fetch'
 
+import { authFetch } from './session'
 import type { components, paths } from './schema'
 
 // Every type here comes from the backend: schema.d.ts is generated from FastAPI's OpenAPI schema
@@ -43,8 +44,9 @@ export const ASK_URL = `${API_BASE}/ask`
 
 export const api = createClient<paths>({
   baseUrl: API_BASE,
-  // Look up fetch on every call (not once at start-up), so test stubs and MSW (U0.5) are used.
-  fetch: (request) => globalThis.fetch(request),
+  // Through authFetch: it adds the access token, and refreshes it once on a 401 (U7.1). It looks up
+  // fetch on every call (not once at start-up), so test stubs and MSW (U0.5) are used.
+  fetch: (request) => authFetch(request),
 })
 
 /** GET /health: is the API up, and which version. */
