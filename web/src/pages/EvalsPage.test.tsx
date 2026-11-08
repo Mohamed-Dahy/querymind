@@ -15,8 +15,8 @@ describe('EvalsPage', () => {
     renderApp('/evals')
 
     const golden = await tile('Golden 58')
-    expect(within(golden).getByText('53/53')).toBeInTheDocument()
-    expect(golden).toHaveTextContent("5 of 58 questions weren't scored")
+    expect(within(golden).getByText('58/58')).toBeInTheDocument()
+    expect(golden).not.toHaveTextContent("weren't scored")
 
     const bird = await tile('BIRD-100')
     expect(within(bird).getByText('57/100')).toBeInTheDocument()
@@ -24,7 +24,7 @@ describe('EvalsPage', () => {
 
     const gate = await tile('CI gate baseline')
     expect(within(gate).getByText('12/12')).toBeInTheDocument()
-    expect(gate).toHaveTextContent("hasn't been seen failing")
+    expect(gate).not.toHaveTextContent("hasn't been seen failing") // proven red in 4.7
 
     const cheapest = await tile('Cheapest per correct answer')
     expect(within(cheapest).getByText('$0.00041')).toBeInTheDocument()
@@ -72,7 +72,7 @@ describe('EvalsPage', () => {
   it('says how old the results are', async () => {
     renderApp('/evals')
 
-    expect(await screen.findByText(/the newest from 2026-10-25/)).toBeInTheDocument()
+    expect(await screen.findByText(/the newest from 2026-11-08/)).toBeInTheDocument()
   })
 
   it('shows every phase as its own labelled point, with no line joining them', async () => {
@@ -91,14 +91,14 @@ describe('EvalsPage', () => {
     expect(section.querySelector('svg')).toBeNull()
   })
 
-  it("says Phase 4's golden point had questions left out", async () => {
+  it("says Phase 2's point had questions left out", async () => {
     renderApp('/evals')
 
     const section = await screen.findByRole('region', { name: 'Phase by phase' })
     const point = within(section)
       .getAllByRole('listitem')
-      .find((item) => item.textContent?.includes('53/53'))
-    expect(point).toHaveTextContent('5 more not scored')
+      .find((item) => item.textContent?.includes('28/28'))
+    expect(point).toHaveTextContent('2 more not scored')
   })
 
   it('names the separate run behind answer quality, and warns about the judge', async () => {

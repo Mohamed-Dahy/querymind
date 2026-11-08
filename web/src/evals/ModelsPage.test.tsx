@@ -45,6 +45,10 @@ describe('ModelsPage', () => {
       'groq / openai/gpt-oss-20b',
       ['41/43', '1.7', '2.5', '3,564 + 405', '$0.00039', '$0.39', '$0.00041'],
     ],
+    [
+      'groq / openai/gpt-oss-120b',
+      ['40/43', '2.2', '3.9', '3,685 + 422', '$0.00081', '$0.81', '$0.00087'],
+    ],
   ])("the table has the report's numbers for %s", async (llm, numbers) => {
     renderApp('/evals/models')
 
@@ -62,12 +66,12 @@ describe('ModelsPage', () => {
   it('labels the chart with every model, and says what the gaps are worth', async () => {
     renderApp('/evals/models')
 
-    const chart = await screen.findByRole('img', { name: /^Scatter chart of 3 models/ })
-    for (const name of ['gemini-3.5-flash-lite', 'qwen3.8-27b', 'gpt-oss-20b']) {
+    const chart = await screen.findByRole('img', { name: /^Scatter chart of 4 models/ })
+    for (const name of ['gemini-3.5-flash-lite', 'qwen3.8-27b', 'gpt-oss-20b', 'gpt-oss-120b']) {
       expect(chart).toHaveAccessibleName(expect.stringContaining(`${name}: `))
     }
     expect(
-      screen.getByText(/The accuracy gap is 2 of 43 questions, inside the noise/),
+      screen.getByText(/The accuracy gap is 3 of 43 questions, more than the noise/),
     ).toBeVisible()
     expect(screen.getByText(/The cost gap is about 10 times/)).toBeVisible()
   })
@@ -81,6 +85,14 @@ describe('ModelsPage', () => {
   })
 
   it('names the models that have not run', async () => {
+    const notRun = [{ llm: 'groq / openai/gpt-oss-120b', missing: ['golden', 'business'] }]
+    const models = {
+      ...evals.models,
+      studies: evals.models.studies.map((s) =>
+        s.name === 'golden' ? { ...s, not_run: notRun } : s,
+      ),
+    }
+    server.use(http.get('/api/evals', () => HttpResponse.json({ ...evals, models })))
     renderApp('/evals/models')
 
     expect(

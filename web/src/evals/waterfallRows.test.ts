@@ -42,19 +42,26 @@ describe('the golden 58 waterfall', () => {
     expect(rows.map(({ withinNoise }) => withinNoise)).toEqual([false, false, false, true])
   })
 
-  it('warns that the arms were scored on different questions', () => {
-    expect(differentQuestions(rows)).toBe(true)
+  it('has no warning when every arm scored every question', () => {
+    expect(differentQuestions(rows)).toBe(false)
+  })
+
+  it('warns when the arms were scored on different questions', () => {
+    const [a, b, c, d] = armsOf(golden)
+    const short = { ...d!, match: { passed: 53, total: 53 }, not_scored: 5 }
+
+    expect(differentQuestions(waterfallRows([a!, b!, c!, short], golden))).toBe(true)
   })
 
   it('reads as one sentence', () => {
     expect(describeWaterfall(rows)).toBe(
-      'Arm A 45/58 (77.6%); Arm B 45/58 (77.6%), no change; Arm C 57/58 (98.3%), +20.7 pts; Arm D 53/53 (100.0%), +1.7 pts, within noise',
+      'Arm A 45/58 (77.6%); Arm B 45/58 (77.6%), no change; Arm C 57/58 (98.3%), +20.7 pts; Arm D 58/58 (100.0%), +1.7 pts, within noise',
     )
   })
 
   it('says what the last arm saves', () => {
     expect(tokenChange(rows)).toBe(
-      'Arm D reads 49% fewer input tokens per question than arm C (3,418 against 6,724).',
+      'Arm D reads 49% fewer input tokens per question than arm C (3,454 against 6,724).',
     )
   })
 
@@ -77,14 +84,24 @@ describe('other views', () => {
     expect(differentQuestions(rows)).toBe(false)
   })
 
-  it('BIRD uses EX, and arms that never ran have no bar and no zero', () => {
+  it('BIRD uses EX: the hints are the big step, self-correction adds nothing', () => {
     const rows = waterfallRows(armsOf(bird), bird)
 
     expect(headlineName(bird)).toBe('BIRD EX')
+    expect(rows.map(({ arm }) => arm.key)).toEqual(['A', 'B', 'C'])
+    expect(rows.map(({ score }) => score.passed)).toEqual([40, 57, 57])
+    expect(rows.map(changeText)).toEqual(['', '+17.0 pts', 'no change'])
+    expect(tokenChange(rows)).toBeNull()
+  })
+
+  it('arms that never ran have no bar and no zero', () => {
+    const [a, b, c] = armsOf(bird)
+    const notRun = (arm: typeof a) => ({ ...arm!, match: null, ex: null, missing: ['bird'] })
+    const rows = waterfallRows([notRun(a), notRun(b), c!], bird)
+
     expect(rows.map(({ arm }) => arm.key)).toEqual(['C'])
     expect(rows[0]?.score).toEqual({ passed: 57, total: 100 })
     expect(changeText(rows[0]!)).toBe('')
-    expect(tokenChange(rows)).toBeNull()
   })
 })
 

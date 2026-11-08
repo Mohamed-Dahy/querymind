@@ -42,9 +42,9 @@ def test_it_serves_the_committed_results_with_no_database() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body["runs"]) == 18
+    assert len(body["runs"]) == 22
     assert {study["name"] for study in body["ablations"]} == {"golden", "bird"}
-    assert body["gate"]["failure_proven"] is False
+    assert body["gate"]["failure_proven"] is True  # the red test, 2026-11-08 (PLAN.md 4.7)
 
 
 def test_without_the_download_bird_has_no_text_and_says_so() -> None:

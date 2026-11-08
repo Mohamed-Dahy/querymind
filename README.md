@@ -23,8 +23,9 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > **30/30** right (29/30 before self-correction). A **semantic layer** teaches it the company's own terms ("key
 > accounts", "active customers", "turnover"): on 13 such questions it goes from 5/13 to 13/13. On a database with
 > two businesses (25 tables), it sends the LLM only the tables a question needs, about 40% of the schema, and
-> finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Now:
-> evaluation at scale on the public **BIRD** text-to-SQL benchmark (11 databases it has never seen).
+> finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Every
+> number is measured, including on the public **BIRD** benchmark: see [How accurate is it?](#how-accurate-is-it).
+> Next: security and multi-user (PII masking, roles, per-user permissions).
 
 ---
 
@@ -91,6 +92,68 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 - **Secrets stay out of code.** All passwords and API keys come from environment variables.
 - *Coming later:* PII masking and per-user permissions.
 
+## How accurate is it?
+
+Every number below comes from a real run of the full agent against a real database, scored automatically.
+Runs were one question at a time. The web UI's **evals lab** shows these scores and every question behind them.
+
+**What each part adds.** We switched the agent's parts on one at a time, all on the same model (Gemini 3.5
+flash-lite), on 58 questions with known answers (30 Northwind, 13 business-term, 15 Chinook):
+
+| Arm | What's on | Correct | Tokens / question |
+|---|---|---|---|
+| A | plain LLM, one try, the whole schema | 45/58 (78%) | 4,923 |
+| B | + self-correction | 45/58 (78%) | 5,102 |
+| C | + semantic layer (business definitions) | 57/58 (98%) | 6,724 |
+| D | + schema retrieval and verified examples (the full agent) | **58/58 (100%)** | **3,454** |
+
+The semantic layer is the biggest step: it teaches the company's own terms. Retrieval then sends only the tables a
+question needs, which cuts tokens per question by about half, and the verified examples fix the last miss. On this model, first
+tries almost never fail on these questions, so self-correction had nothing to repair.
+
+**On a public benchmark.** On [BIRD Mini-Dev](https://bird-bench.github.io), a fixed sample of 100 questions over 11
+databases the agent had never seen (same model, BIRD's official execution-accuracy rule):
+
+| Arm | What's on | BIRD EX |
+|---|---|---|
+| A | plain LLM, no hints | 40/100 |
+| B | + BIRD's evidence hints | 57/100 |
+| C | + self-correction (the full agent) | 57/100 |
+
+BIRD's hints play the same role as our semantic layer: +17 points. Self-correction adds nothing here either. It
+repairs queries that fail or return suspicious results, and BIRD's misses are queries that run but answer a
+slightly different question. Two runs of the same setup differ by about 3 questions.
+
+**Which model.** The same full agent with only the LLM swapped, on 43 of those questions (30 Northwind, 13
+business-term).
+Cost is the list price for the tokens used:
+
+| Model | Correct | Median time | Cost per correct answer |
+|---|---|---|---|
+| Gemini 3.5 flash-lite | 43/43 | 1.9 s | $0.00141 |
+| Qwen 3.8 27B (Groq) | 42/43 | 4.1 s | $0.00415 |
+| gpt-oss-20b (Groq) | 41/43 | 1.7 s | **$0.00041** |
+| gpt-oss-120b (Groq) | 40/43 | 2.2 s | $0.00087 |
+
+Two runs of the same setup differ by about 2 questions, so the accuracy gaps are mostly noise. Two of gpt-oss-120b's
+three misses came from questions that fit both sample databases (each has its own customers and employees): once it
+asked which one was meant, once it counted the other database's employees. The cost gap is real: gpt-oss-20b gives a correct answer for about a third of
+flash-lite's price.
+
+**Are the answers faithful?** A second LLM judged 29 answers with [DeepEval](https://github.com/confident-ai/deepeval):
+29/29 relevant to the question and 27/29 faithful to the query result (both misses were the judge misreading names
+with umlauts). Every number in an answer is also checked against the result rows in code. [RAGAS](https://docs.ragas.io)
+confirms that retrieval finds every needed table for all 58 questions.
+
+**A gate in CI.** Every change to the agent, the semantic layer or the evals runs 12 fixed questions through the real
+agent and fails if more than one question that used to pass now fails. To prove the gate can fail, we broke the
+agent on purpose on a test branch:
+- **Schema removed from the prompt:** still 11/12, because the examples and self-correction recovered the table names.
+- **"Always add LIMIT 1":** 8 questions failed, and the gate went red as it should.
+
+The evals also run in parallel with [Ray](https://www.ray.io/) under one shared rate limiter: 100 BIRD questions in
+508 s instead of 798 s with 4 workers, staying within the free tier's limits.
+
 ## Tech stack
 
 | Area | Tools |
@@ -104,7 +167,7 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 | API | FastAPI (+ server-sent events for the live agent steps) |
 | Web UI | React, Vite, TypeScript, Tailwind CSS, shadcn/ui (Radix), TanStack Query and Table, Recharts, React Flow |
 | Config | pydantic-settings |
-| Evals | BIRD Mini-Dev, own golden sets, Ray (parallel runs) |
+| Evals | BIRD Mini-Dev, own golden sets, DeepEval, RAGAS, Ray (parallel runs), an accuracy gate in GitHub Actions |
 | Quality | ruff, mypy (strict), pytest, pre-commit; web: oxlint, Prettier, Vitest, Playwright + axe |
 | CI | GitHub Actions |
 | Planned | AWS (Bedrock, ECS), Terraform |

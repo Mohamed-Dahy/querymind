@@ -19,8 +19,8 @@ const bodyRows = async () =>
 
 describe('QuestionsPage', () => {
   it.each([
-    ['golden', '/evals/questions', 58, 7],
-    ['bird', '/evals/questions?study=bird', 100, 3],
+    ['golden', '/evals/questions', 58, 8],
+    ['bird', '/evals/questions?study=bird', 100, 5],
   ] as const)('%s: one row per question and one column per run', async (_, path, rows, headers) => {
     renderApp(path)
 
@@ -38,13 +38,31 @@ describe('QuestionsPage', () => {
       'Arm A45/58',
       'Arm B45/58',
       'Arm C57/58',
-      'Arm D53/53',
+      'Arm D58/58',
+      'gpt-oss-120b40/43',
       'gpt-oss-20b41/43',
       'qwen3.8-27b42/43',
     ])
   })
 
   it('gives all four states their own shape and their own words, with no colour needed', async () => {
+    // Every question of today's runs was scored, so one is lost to a rate limit here.
+    const lostOne: EvalsReply = {
+      ...data,
+      runs: data.runs.map((run) =>
+        run.key === 'phase4-ablation-golden-D-chinook'
+          ? {
+              ...run,
+              outcomes: run.outcomes.map((outcome) =>
+                outcome.question_id === 'c01_track_count'
+                  ? { ...outcome, scored: false, passed: false, ex: false, reason: 'rate limit' }
+                  : outcome,
+              ),
+            }
+          : run,
+      ),
+    }
+    server.use(http.get('/api/evals', () => HttpResponse.json(lostOne)))
     renderApp('/evals/questions')
 
     const box = await table()
@@ -129,7 +147,7 @@ describe('QuestionsPage', () => {
     const box = await table()
     const links = [...box.querySelectorAll('a')]
     expect(links.filter((link) => link.tabIndex === 0)).toHaveLength(58)
-    expect(links.filter((link) => link.tabIndex === -1)).toHaveLength(58 * 6)
+    expect(links.filter((link) => link.tabIndex === -1)).toHaveLength(58 * 7)
   })
 
   it('opens the question at the run whose cell was clicked', async () => {

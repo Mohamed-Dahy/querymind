@@ -40,15 +40,36 @@ describe('numbers as text', () => {
 // These strings are copied from docs/eval-reports/phase4-ablations.md and phase4-models.md.
 // tests/unit/test_eval_snapshot.py checks the file against those reports.
 describe('the headline tiles match the reports', () => {
-  it('golden says 53/53 and that 5 of 58 were not scored', () => {
+  it('golden says 58/58, with every question scored', () => {
     const golden = tile(evals, /^Golden/)
 
     expect(golden.title).toBe('Golden 58')
-    expect(golden.value).toBe('53/53')
-    expect(golden.details.join(' ')).toContain("5 of 58 questions weren't scored")
+    expect(golden.value).toBe('58/58')
+    expect(golden.details.join(' ')).not.toContain("weren't scored")
     expect(golden.model).toBe('gemini / gemini-3.5-flash-lite')
     expect(golden.sources).toContain('phase4-ablation-golden-D-chinook')
-    expect(golden.date).toBe('2026-10-24')
+    expect(golden.date).toBe('2026-11-08')
+  })
+
+  it('says how many questions were not scored, when some were', () => {
+    const short = {
+      ...evals,
+      ablations: evals.ablations.map((study) => ({
+        ...study,
+        views: study.views.map((view) => ({
+          ...view,
+          arms: view.arms.map((arm) =>
+            study.name === 'golden' && view.scope === 'all' && arm.key === 'D'
+              ? { ...arm, match: { passed: 53, total: 53 }, not_scored: 5 }
+              : arm,
+          ),
+        })),
+      })),
+    }
+    const golden = tile(short, /^Golden/)
+
+    expect(golden.value).toBe('53/53')
+    expect(golden.details.join(' ')).toContain("5 of 58 questions weren't scored")
   })
 
   it('BIRD says EX 57/100, the subset size, and the second run', () => {
@@ -63,20 +84,21 @@ describe('the headline tiles match the reports', () => {
     expect(bird.link?.label).toContain('CC BY-SA 4.0')
   })
 
-  it('the gate shows its baseline and says it has not been seen failing', () => {
+  it('the gate shows its baseline, with no warning: it has been seen failing (4.7)', () => {
     const gate = tile(evals, /^CI gate/)
 
     expect(gate.value).toBe('12/12')
     expect(gate.caption).toContain('more than 1')
     expect(gate.model).toBe('groq / openai/gpt-oss-20b')
-    expect(gate.details.join(' ')).toContain("hasn't been seen failing")
+    expect(gate.details).toEqual([])
     expect(gate.link?.href).toContain('/actions/workflows/evals.yml')
   })
 
-  it('the gate stops warning once a failure has been seen', () => {
-    const proven = { ...evals, gate: { ...evals.gate, failure_proven: true } }
+  it('the gate warns while no failure has been seen', () => {
+    const note = "A deliberately broken prompt hasn't been tried yet."
+    const unproven = { ...evals, gate: { ...evals.gate, failure_proven: false, note } }
 
-    expect(tile(proven, /^CI gate/).details).toEqual([])
+    expect(tile(unproven, /^CI gate/).details).toEqual([note])
   })
 
   it('the cheapest model is gpt-oss-20b at $0.00041, on 43 questions', () => {
@@ -126,6 +148,6 @@ describe('when something has not run', () => {
   })
 
   it('knows how old the results are', () => {
-    expect(newestRun(evals)).toBe('2026-10-25')
+    expect(newestRun(evals)).toBe('2026-11-08')
   })
 })

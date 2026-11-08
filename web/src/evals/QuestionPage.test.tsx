@@ -67,16 +67,32 @@ describe('QuestionPage', () => {
 
   it('says what a not-run and a not-scored run are', async () => {
     const chinook = data.questions.find(({ suite }) => suite === 'chinook')
-    const armD = runColumns(data, 'golden').find(({ label }) => label === 'Arm D')
-    const lost = [...(armD?.outcomes.values() ?? [])].find(({ outcome }) => !outcome.scored)
 
     const first = renderApp(questionHref(chinook?.id ?? '', 'gpt-oss-20b'))
     expect(await screen.findByText("This run didn't include this question.")).toBeVisible()
     first.unmount()
 
-    renderApp(questionHref(lost?.outcome.question_id ?? '', 'Arm D'))
+    // Every question of today's runs was scored, so one is lost to a rate limit here.
+    const reason = 'rate limit: daily quota used up'
+    const lostOne: EvalsReply = {
+      ...data,
+      runs: data.runs.map((run) =>
+        run.key === 'phase4-ablation-golden-D-chinook'
+          ? {
+              ...run,
+              outcomes: run.outcomes.map((outcome) =>
+                outcome.question_id === 'c01_track_count'
+                  ? { ...outcome, scored: false, passed: false, ex: false, reason }
+                  : outcome,
+              ),
+            }
+          : run,
+      ),
+    }
+    server.use(http.get('/api/evals', () => HttpResponse.json(lostOne)))
+    renderApp(questionHref('c01_track_count', 'Arm D'))
     const section = await screen.findByRole('region', { name: /not scored/ })
-    expect(section).toHaveTextContent(lost?.outcome.reason ?? 'missing')
+    expect(section).toHaveTextContent(reason)
   })
 
   it('labels quality scores with their own run, and the judge-noise note', async () => {

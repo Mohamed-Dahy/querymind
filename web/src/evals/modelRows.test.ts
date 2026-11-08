@@ -43,6 +43,7 @@ describe('scatterPoints', () => {
       'gemini-3.5-flash-lite',
       'qwen3.8-27b',
       'gpt-oss-20b',
+      'gpt-oss-120b',
     ])
     expect(points[2]?.cost).toBe(0.00040774)
     expect(points[2]?.accuracy).toBeCloseTo(95.35, 1)
@@ -54,7 +55,7 @@ describe('scatterPoints', () => {
     )
     const study = { ...golden, rows }
 
-    expect(scatterPoints(study)).toHaveLength(2)
+    expect(scatterPoints(study)).toHaveLength(3)
     expect(unpricedModels(study)).toEqual(['gemini-3.5-flash-lite'])
   })
 })
@@ -92,11 +93,17 @@ describe('accuracyTicks', () => {
 })
 
 describe('gapNote', () => {
-  it('says the accuracy gap is inside the noise and the cost gap is not', () => {
+  it('on the real runs: a 3-question gap is just over the noise, the cost gap far over it', () => {
     const note = gapNote(scatterPoints(golden), 2)
 
-    expect(note).toContain('The accuracy gap is 2 of 43 questions, inside the noise')
+    expect(note).toContain('The accuracy gap is 3 of 43 questions, more than the noise')
     expect(note).toContain('The cost gap is about 10 times')
+  })
+
+  it('says so when the accuracy gap is inside the noise', () => {
+    const note = gapNote([point('a', 41, 0.0004), point('b', 43, 0.004)], 2)
+
+    expect(note).toContain('The accuracy gap is 2 of 43 questions, inside the noise')
   })
 
   it('says so when the accuracy gap is more than the noise', () => {
@@ -113,7 +120,7 @@ describe('gapNote', () => {
 it('describes the chart with every point, for a screen reader', () => {
   const text = describeScatter(scatterPoints(golden))
 
-  expect(text).toContain('Scatter chart of 3 models')
+  expect(text).toContain('Scatter chart of 4 models')
   expect(text).toContain('gpt-oss-20b: 41/43 correct (95.3%), $0.00041 per correct answer')
 })
 

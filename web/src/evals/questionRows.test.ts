@@ -49,16 +49,19 @@ describe('verdictOf', () => {
 })
 
 describe('runColumns', () => {
-  it('joins each run across its suites: 6 for golden, 2 for BIRD', () => {
+  it('joins each run across its suites: 7 for golden, 4 for BIRD', () => {
     expect(runColumns(data, 'golden').map(({ label }) => label)).toEqual([
       'Arm A',
       'Arm B',
       'Arm C',
       'Arm D',
+      'gpt-oss-120b',
       'gpt-oss-20b',
       'qwen3.8-27b',
     ])
     expect(runColumns(data, 'bird').map(({ label }) => label)).toEqual([
+      'Arm A',
+      'Arm B',
       'Arm C',
       'Arm C, 4 workers',
     ])
@@ -69,9 +72,12 @@ describe('columnScore', () => {
   it.each([
     ['golden', 'Arm A', 45, 58],
     ['golden', 'Arm C', 57, 58],
-    ['golden', 'Arm D', 53, 53],
+    ['golden', 'Arm D', 58, 58],
+    ['golden', 'gpt-oss-120b', 40, 43],
     ['golden', 'gpt-oss-20b', 41, 43],
     ['golden', 'qwen3.8-27b', 42, 43],
+    ['bird', 'Arm A', 40, 100],
+    ['bird', 'Arm B', 57, 100],
     ['bird', 'Arm C', 57, 100],
     ['bird', 'Arm C, 4 workers', 60, 100],
   ] as const)('%s %s: %i of %i, as the reports say', (study, label, passed, total) => {

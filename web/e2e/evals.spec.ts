@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test'
+
 import { expect, test } from './fixtures.ts'
 import { a11yIssues, THEMES, useTheme } from './helpers.ts'
 
@@ -113,8 +115,8 @@ test.describe('the model comparison', () => {
     await page.goto('/evals/models')
 
     const chart = page.getByRole('img', { name: /^Scatter chart/ })
-    await expect(chart.locator('.recharts-scatter-symbol')).toHaveCount(3)
-    for (const name of ['gemini-3.5-flash-lite', 'qwen3.8-27b', 'gpt-oss-20b']) {
+    await expect(chart.locator('.recharts-scatter-symbol')).toHaveCount(4)
+    for (const name of ['gemini-3.5-flash-lite', 'qwen3.8-27b', 'gpt-oss-20b', 'gpt-oss-120b']) {
       await expect(chart.locator('text', { hasText: name })).toBeVisible()
     }
   })
@@ -123,7 +125,7 @@ test.describe('the model comparison', () => {
     await page.setViewportSize({ width: 375, height: 800 })
     await page.goto('/evals/models')
 
-    await expect(page.locator('.recharts-scatter-symbol')).toHaveCount(3)
+    await expect(page.locator('.recharts-scatter-symbol')).toHaveCount(4)
     await expect(page.getByRole('listitem', { name: 'Speed of qwen3.8-27b' })).toContainText(
       'p95 29.4 s',
     )
@@ -147,11 +149,15 @@ test.describe('the model comparison', () => {
 })
 
 test.describe('what each part adds', () => {
+  // Both studies draw bars named "Arm A"…, so look inside one of them.
+  const golden = (page: Page) =>
+    page.getByRole('region', { name: 'Golden 58: Northwind 30 + business terms 13 + Chinook 15' })
+
   for (const theme of THEMES) {
     test(`${theme} theme: no accessibility problem`, async ({ page }) => {
       await useTheme(page, theme)
       await page.goto('/evals/ablations')
-      await expect(page.getByRole('listitem', { name: 'Arm C' })).toBeVisible()
+      await expect(golden(page).getByRole('listitem', { name: 'Arm C' })).toBeVisible()
 
       expect(await a11yIssues(page)).toEqual([])
     })
@@ -161,7 +167,7 @@ test.describe('what each part adds', () => {
     await page.setViewportSize({ width: 375, height: 800 })
     await page.goto('/evals/ablations')
 
-    await expect(page.getByRole('listitem', { name: 'Arm C' })).toContainText('+20.7 pts')
+    await expect(golden(page).getByRole('listitem', { name: 'Arm C' })).toContainText('+20.7 pts')
     const overflow = (await page.evaluate(
       'document.documentElement.scrollWidth - document.documentElement.clientWidth',
     )) as number
@@ -175,7 +181,7 @@ test.describe('what each part adds', () => {
     await page.keyboard.press('Enter')
 
     await expect(page).toHaveURL(/scope=business/)
-    await expect(page.getByRole('listitem', { name: 'Arm A' })).toContainText('6/13')
+    await expect(golden(page).getByRole('listitem', { name: 'Arm A' })).toContainText('6/13')
     const table = page.getByRole('region', { name: /^Golden 58.*every number/ })
     await table.focus()
     await expect(table).toBeFocused()
