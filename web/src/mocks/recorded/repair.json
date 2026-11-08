@@ -127,6 +127,12 @@
   "tables_used": [
     "customers"
   ],
+  "sources": [
+    {
+      "database": "northwind",
+      "description": "Our food trading business (customers, orders, products, suppliers, shippers)."
+    }
+  ],
   "search_question": null,
   "example_questions": [
     "How many open orders are going to each country? Return the destination country and the count.",

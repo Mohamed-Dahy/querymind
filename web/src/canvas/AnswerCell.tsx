@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Info, ListChecks, RotateCw, TriangleAlert } from 'lucide-react'
+import { Database, Download, Info, ListChecks, RotateCw, TriangleAlert } from 'lucide-react'
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 
 import { ApiError, type AskResponse } from '@/api/client'
@@ -29,6 +29,29 @@ const ShowYourWork = lazy(() =>
   import('./ShowYourWork').then(({ ShowYourWork }) => ({ default: ShowYourWork })),
 )
 
+/**
+ * Which database the answer came from, worked out from the tables its SQL read (not by the LLM).
+ * One database can hold several businesses, e.g. Northwind's `employees` and Chinook's `employee`.
+ */
+function SourceLine({ sources }: { sources: AskResponse['sources'] }) {
+  if (sources.length === 0) return null
+  return (
+    <p className="flex items-start gap-1.5 text-sm text-fg-muted">
+      <Database aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span>
+        From{' '}
+        {sources.map((source, index) => (
+          <span key={source.database}>
+            {index > 0 && ' and '}
+            <span className="font-medium text-fg">{source.database}</span>
+          </span>
+        ))}
+        : {sources.map((source) => source.description).join(' ')}
+      </span>
+    </p>
+  )
+}
+
 /** An answer: the text, how sure it is, any warnings, then the rows and the SQL as evidence. */
 export function AnswerCell({
   reply,
@@ -51,6 +74,7 @@ export function AnswerCell({
   return (
     <div className="space-y-3">
       <p className="text-base">{reply.answer}</p>
+      <SourceLine sources={reply.sources} />
 
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <CertaintyMeter level={reply.confidence} reasons={reply.confidence_reasons} />

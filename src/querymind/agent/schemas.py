@@ -140,6 +140,20 @@ class ShownSchema(BaseModel):
     search: str = ""  # the search that ran: vector, keyword, hybrid, hybrid_rerank
 
 
+class AnswerSource(BaseModel):
+    """Which database an answer came from: a semantic layer whose tables the SQL read.
+
+    One Postgres database can hold several (Northwind and Chinook share one), so it's said in
+    code, from the SQL's tables, never left to the LLM. Seen 2026-11-03: "How many employees?"
+    read Chinook's `employee`, not Northwind's `employees`, and nothing said so.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    database: str  # the layer's name, e.g. "chinook"
+    description: str  # what it is about, e.g. "Our online music store (tracks, albums, ...)."
+
+
 class AskResult(BaseModel):
     """Everything one question produced: what ran, what came back, and the answer."""
 
@@ -158,6 +172,7 @@ class AskResult(BaseModel):
     # How it got here (U2.1), for the "Show your work" drawer.
     schema_selection: ShownSchema | None = None
     tables_used: tuple[str, ...] = ()  # what the SQL that ran read; fewer than it was shown, often
+    sources: tuple[AnswerSource, ...] = ()  # the databases those tables belong to
     search_question: str | None = (
         None  # the follow-up as a standalone question, if it was rewritten
     )

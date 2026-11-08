@@ -16,7 +16,7 @@ from querymind.semantic.loader import (
     load_semantic_layer,
     load_semantic_layers,
 )
-from querymind.semantic.models import SemanticLayer
+from querymind.semantic.models import SemanticLayer, answer_sources
 from querymind.semantic.render import HEADER, describe_semantics, schema_prompt_text
 
 LAYERS_DIR = Path(__file__).parents[2] / "semantic_layer"
@@ -106,6 +106,32 @@ def test_northwind_and_chinook_load_together() -> None:
     assert ("customer", "email") in chinook.pii_columns
     # One database, two businesses: the singular/plural tables don't collide.
     assert "customer" in chinook.tables and "customers" in northwind.tables
+
+
+@pytest.mark.parametrize(
+    ("tables_used", "databases"),
+    [
+        (["employee"], ["chinook"]),  # "How many employees?" on the music store (seen 2026-11-03)
+        (["employees"], ["northwind"]),
+        (["orders", "order_details", "region"], ["northwind"]),  # region: in scope, not described
+        (["customers", "customer"], ["northwind", "chinook"]),  # one query reading both
+        (["pg_tables"], []),  # a table no layer covers
+        ([], []),
+    ],
+)
+def test_an_answer_names_the_databases_its_sql_read(
+    tables_used: list[str], databases: list[str]
+) -> None:
+    layers = load_semantic_layers([NORTHWIND, CHINOOK])
+
+    sources = answer_sources(layers, tables_used)
+
+    assert [source.database for source in sources] == databases
+    assert all(source.description for source in sources)  # said in words, not only the name
+
+
+def test_no_layers_means_no_sources() -> None:
+    assert answer_sources([], ["employees"]) == ()
 
 
 def test_scope_lists_every_table_a_layer_covers() -> None:

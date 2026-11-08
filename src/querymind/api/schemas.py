@@ -18,6 +18,7 @@ from querymind.agent.events import (
 )
 from querymind.agent.schemas import (
     AgentReply,
+    AnswerSource,
     AskResult,
     ClarificationRequest,
     ConfidenceLevel,
@@ -91,6 +92,10 @@ class AskResponse(BaseModel):
     tables_used: list[str] = Field(
         default=[], description="The tables the SQL that ran really read"
     )
+    sources: list[AnswerSource] = Field(
+        default=[],
+        description="The databases the answer came from: those whose tables the SQL read",
+    )
     search_question: str | None = Field(
         default=None, description="A follow-up as the standalone question that was searched"
     )
@@ -123,6 +128,7 @@ class AskResponse(BaseModel):
             ],
             schema_selection=result.schema_selection,
             tables_used=list(result.tables_used),
+            sources=list(result.sources),
             search_question=result.search_question,
             example_questions=list(result.example_questions),
             sql_attempts=result.sql_attempts,

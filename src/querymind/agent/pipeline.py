@@ -66,7 +66,7 @@ from querymind.semantic.documents import index_documents
 from querymind.semantic.examples import load_all_examples
 from querymind.semantic.index import INDEX_TABLE, SchemaIndexError, index_status
 from querymind.semantic.loader import check_against, load_semantic_layers
-from querymind.semantic.models import SemanticLayer
+from querymind.semantic.models import SemanticLayer, answer_sources
 from querymind.semantic.retrieval import SchemaCatalog, SchemaRetriever
 
 logger = logging.getLogger(__name__)
@@ -349,6 +349,7 @@ class Pipeline:
                 else None
             ),
             tables_used=tuple(state.get("tables_used", [])),
+            sources=answer_sources(self._semantic_layers, state.get("tables_used", [])),
             search_question=state.get("search_question"),
             example_questions=tuple(e.question for e in state.get("examples", [])),
             duration_ms=round((time.perf_counter() - started) * 1000),

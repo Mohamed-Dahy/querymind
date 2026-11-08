@@ -18,6 +18,7 @@ const ANSWER: AskResponse = {
   answer: 'There are 91 customers.',
   attempts: [],
   tables_used: [],
+  sources: [],
   example_questions: [],
   answer_from_llm: true,
   sql: 'SELECT count(*) FROM customers LIMIT 1000',

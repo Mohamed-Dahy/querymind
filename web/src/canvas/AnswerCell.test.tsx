@@ -36,6 +36,32 @@ async function openTable(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('AnswerCell', () => {
+  it('says which database the answer came from, in words', () => {
+    renderAnswer()
+
+    const line = screen.getByText(/^From/)
+    expect(line).toHaveTextContent('From northwind: Our food trading business')
+  })
+
+  it('names both databases when one query read both', () => {
+    renderAnswer({
+      sources: [
+        { database: 'northwind', description: 'Our food trading business.' },
+        { database: 'chinook', description: 'Our online music store.' },
+      ],
+    })
+
+    expect(screen.getByText(/^From/)).toHaveTextContent(
+      'From northwind and chinook: Our food trading business. Our online music store.',
+    )
+  })
+
+  it('says nothing about a database when no known table was read', () => {
+    renderAnswer({ sources: [] })
+
+    expect(screen.queryByText(/^From/)).not.toBeInTheDocument()
+  })
+
   it('shows the answer, high confidence, the row count and the table', async () => {
     await openTable(renderAnswer())
 

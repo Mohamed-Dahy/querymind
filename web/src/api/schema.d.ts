@@ -327,6 +327,20 @@ export interface components {
             /** Scope */
             scope: string;
         };
+        /**
+         * AnswerSource
+         * @description Which database an answer came from: a semantic layer whose tables the SQL read.
+         *
+         *     One Postgres database can hold several (Northwind and Chinook share one), so it's said in
+         *     code, from the SQL's tables, never left to the LLM. Seen 2026-11-03: "How many employees?"
+         *     read Chinook's `employee`, not Northwind's `employees`, and nothing said so.
+         */
+        AnswerSource: {
+            /** Database */
+            database: string;
+            /** Description */
+            description: string;
+        };
         /** AskRequest */
         AskRequest: {
             /**
@@ -418,6 +432,12 @@ export interface components {
              * @description A follow-up as the standalone question that was searched
              */
             search_question?: string | null;
+            /**
+             * Sources
+             * @description The databases the answer came from: those whose tables the SQL read
+             * @default []
+             */
+            sources: components["schemas"]["AnswerSource"][];
             /**
              * Sql
              * @description The validated SQL that actually ran

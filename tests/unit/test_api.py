@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from querymind import __version__
 from querymind.agent.schemas import (
     AgentReply,
+    AnswerSource,
     AnswerSummary,
     AskResult,
     Clarification,
@@ -18,7 +19,7 @@ from querymind.agent.schemas import (
     SanityWarning,
 )
 from querymind.api.main import create_app
-from querymind.api.schemas import AskResponse
+from querymind.api.schemas import AskResponse, SavedTurnResponse
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
@@ -88,6 +89,7 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         "attempts": [],
         "schema_selection": None,
         "tables_used": [],
+        "sources": [],  # which database it came from (2026-11-08)
         "search_question": None,
         "example_questions": [],
         "sql_attempts": 1,
@@ -108,6 +110,28 @@ def test_warnings_are_sent_without_the_llm_hint() -> None:
     assert [w.model_dump() for w in response.warnings] == [
         {"code": "duplicate_rows", "message": "Some rows appear more than once."}
     ]
+
+
+def test_the_reply_says_which_database_answered() -> None:
+    source = AnswerSource(database="chinook", description="Our online music store.")
+    response = AskResponse.from_result(
+        RESULT.model_copy(update={"sources": (source,)}), conversation_id=uuid4()
+    )
+    assert [s.model_dump() for s in response.sources] == [
+        {"database": "chinook", "description": "Our online music store."}
+    ]
+
+
+def test_a_turn_saved_before_sources_existed_comes_back_with_none() -> None:
+    # Saved replies are JSON written by older versions: the browser must still get a list.
+    reply = AskResponse.from_result(RESULT, conversation_id=uuid4()).model_dump(mode="json")
+    del reply["sources"]
+
+    turn = SavedTurnResponse.model_validate(
+        {"n": 1, "created_at": "2026-11-01T10:00:00Z", "reply": reply, "trace": []}
+    )
+
+    assert turn.model_dump(mode="json")["reply"]["sources"] == []
 
 
 def test_health() -> None:

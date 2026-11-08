@@ -12,10 +12,12 @@ Everything is plain data, validated by Pydantic. `extra="forbid"` everywhere: a 
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from querymind.agent.schemas import AnswerSource
 
 # Lowercase SQL names, like Postgres folds unquoted names: customers, order_details, ...
 NAME = r"^[a-z_][a-z0-9_]*$"
@@ -107,6 +109,22 @@ class SemanticLayer(_Model):
             for column, column_info in info.columns.items()
             if column_info.pii
         )
+
+
+def answer_sources(
+    layers: Sequence[SemanticLayer], tables_used: Iterable[str]
+) -> tuple[AnswerSource, ...]:
+    """The databases an answer came from: the layers whose tables the SQL read, in layer order.
+
+    Empty when the SQL read no table a layer covers (or there are no layers). Two entries when one
+    query read both, e.g. a join across Northwind and Chinook.
+    """
+    used = set(tables_used)
+    return tuple(
+        AnswerSource(database=layer.database, description=layer.description)
+        for layer in layers
+        if used & set(layer.table_scope)
+    )
 
 
 def _check_names(names: Mapping[str, object], what: str) -> None:

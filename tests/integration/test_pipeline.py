@@ -64,6 +64,24 @@ def test_question_to_answer(settings: Settings) -> None:
     assert summary_call.schema is None and "91" in summary_call.prompt
 
 
+@pytest.mark.parametrize(
+    ("sql", "databases"),
+    [
+        # "How many employees?" fits both businesses (seen 2026-11-03): now the answer says which.
+        ("SELECT count(*) AS employee_count FROM employee", ["chinook"]),
+        ("SELECT count(*) AS employee_count FROM employees", ["northwind"]),
+    ],
+)
+def test_the_answer_says_which_database_it_came_from(
+    settings: Settings, sql: str, databases: list[str]
+) -> None:
+    pipeline, _ = make_pipeline(settings, draft(sql), "There are some employees.")
+    result = ask(pipeline, "How many employees are there?", summarize_answer=False)
+
+    assert result.tables_used
+    assert [source.database for source in result.sources] == databases
+
+
 def test_invented_number_in_the_answer_is_replaced(settings: Settings) -> None:
     pipeline, _ = make_pipeline(
         settings,

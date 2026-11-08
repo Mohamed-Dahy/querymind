@@ -37,6 +37,12 @@
   "tables_used": [
     "customers"
   ],
+  "sources": [
+    {
+      "database": "northwind",
+      "description": "Our food trading business (customers, orders, products, suppliers, shippers)."
+    }
+  ],
   "search_question": null,
   "example_questions": [
     "Which customers placed more than 20 orders? Return the company name and the number of orders.",
