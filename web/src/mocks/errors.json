@@ -1,10 +1,16 @@
 {
-  "unsafe_sql": { "status": 422, "message": "Only SELECT queries are allowed." },
+  "unsafe_sql": {
+    "status": 422,
+    "message": "Only SELECT queries are allowed."
+  },
   "invalid_request": {
     "status": 422,
     "message": "question: String should have at least 1 character"
   },
-  "query_timeout": { "status": 504, "message": "The query took longer than 10 s and was stopped." },
+  "query_timeout": {
+    "status": 504,
+    "message": "The query took longer than 10 s and was stopped."
+  },
   "query_failed": {
     "status": 502,
     "message": "The database could not run the query: column \"unit_cost\" does not exist"
@@ -26,8 +32,14 @@
     "status": 502,
     "message": "The AI model declined or answered in the wrong format. Try rewording it."
   },
-  "conversation_not_found": { "status": 404, "message": "This conversation doesn't exist." },
-  "turn_not_found": { "status": 404, "message": "This turn doesn't exist." },
+  "conversation_not_found": {
+    "status": 404,
+    "message": "This conversation doesn't exist."
+  },
+  "turn_not_found": {
+    "status": 404,
+    "message": "This turn doesn't exist."
+  },
   "history_unavailable": {
     "status": 503,
     "message": "Saved conversations aren't available right now."
@@ -36,5 +48,24 @@
     "status": 503,
     "message": "The eval results aren't available on this server."
   },
-  "internal_error": { "status": 500, "message": "Something went wrong. Please try again." }
+  "accounts_unavailable": {
+    "status": 503,
+    "message": "Accounts aren't available right now."
+  },
+  "not_authenticated": {
+    "status": 401,
+    "message": "Please log in."
+  },
+  "invalid_login": {
+    "status": 401,
+    "message": "Wrong email or password."
+  },
+  "email_taken": {
+    "status": 409,
+    "message": "An account with this email already exists."
+  },
+  "internal_error": {
+    "status": 500,
+    "message": "Something went wrong. Please try again."
+  }
 }

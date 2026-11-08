@@ -17,8 +17,9 @@ from querymind.agent.schemas import Clarification, SqlDraft
 from querymind.api.main import create_app
 from querymind.config import Settings
 from querymind.llm.fake import FakeLLMProvider, FakeResponse
-from querymind.store.conversations import ConversationStore, load_history
+from querymind.store.conversations import ConversationStore, Owner, load_history
 from querymind.store.errors import ConversationNotFoundError
+from tests.auth_helpers import signed_in, user_for
 
 pytestmark = pytest.mark.integration
 
@@ -38,15 +39,15 @@ def store(settings: Settings) -> ConversationStore:
 
 
 @pytest.fixture
-def conversation(store: ConversationStore) -> Iterator[UUID]:
+def conversation(store: ConversationStore, owner: Owner) -> Iterator[UUID]:
     conversation_id = uuid4()
     yield conversation_id
     with suppress(ConversationNotFoundError):
-        store.delete(conversation_id)
+        store.delete(conversation_id, owner=owner)
 
 
 def started_api(
-    settings: Settings, store: ConversationStore, *responses: FakeResponse
+    settings: Settings, store: ConversationStore, owner: Owner, *responses: FakeResponse
 ) -> tuple[TestClient, FakeLLMProvider]:
     """The API as it starts up in production, with a brand new, empty pipeline."""
     llm = FakeLLMProvider(responses)
@@ -55,13 +56,16 @@ def started_api(
         settings=settings.model_copy(update={"schema_retrieval": "off"}),
         history_loader=partial(load_history, store),
     )
-    return TestClient(create_app(pipeline=pipeline, store=store)), llm
+    app = signed_in(create_app(pipeline=pipeline, store=store), user_for(owner))
+    return TestClient(app), llm
 
 
 def test_a_follow_up_works_after_a_restart(
-    settings: Settings, store: ConversationStore, conversation: UUID
+    settings: Settings, store: ConversationStore, owner: Owner, conversation: UUID
 ) -> None:
-    first_api, _ = started_api(settings, store, draft(COUNT_PER_COUNTRY), "Customers per country.")
+    first_api, _ = started_api(
+        settings, store, owner, draft(COUNT_PER_COUNTRY), "Customers per country."
+    )
     with first_api as api:
         first = api.post(
             "/ask/stream",
@@ -70,7 +74,9 @@ def test_a_follow_up_works_after_a_restart(
     assert first.status_code == 200
 
     # "Restart": a new pipeline, whose memory knows nothing.
-    second_api, llm = started_api(settings, store, draft(ONLY_GERMANY), "Germany has 11 customers.")
+    second_api, llm = started_api(
+        settings, store, owner, draft(ONLY_GERMANY), "Germany has 11 customers."
+    )
     with second_api as api:
         second = api.post(
             "/ask",
@@ -87,19 +93,23 @@ def test_a_follow_up_works_after_a_restart(
 
 
 def test_both_turns_are_saved_in_order_with_no_rows(
-    settings: Settings, store: ConversationStore, conversation: UUID
+    settings: Settings, store: ConversationStore, owner: Owner, conversation: UUID
 ) -> None:
-    api_one, _ = started_api(settings, store, draft(COUNT_PER_COUNTRY), "Customers per country.")
+    api_one, _ = started_api(
+        settings, store, owner, draft(COUNT_PER_COUNTRY), "Customers per country."
+    )
     with api_one as api:
         api.post(
             "/ask/stream",
             json={"question": "Customers per country?", "conversation_id": str(conversation)},
         )
-    api_two, _ = started_api(settings, store, draft(ONLY_GERMANY), "Germany has 11 customers.")
+    api_two, _ = started_api(
+        settings, store, owner, draft(ONLY_GERMANY), "Germany has 11 customers."
+    )
     with api_two as api:
         api.post("/ask", json={"question": "Only Germany", "conversation_id": str(conversation)})
 
-    saved = store.get(conversation)
+    saved = store.get(conversation, owner=owner)
 
     assert saved.title == "Customers per country?"
     assert [turn.question for turn in saved.saved_turns] == [
@@ -117,7 +127,7 @@ def test_both_turns_are_saved_in_order_with_no_rows(
 
 
 def test_a_clarification_is_remembered_after_a_restart(
-    settings: Settings, store: ConversationStore, conversation: UUID
+    settings: Settings, store: ConversationStore, owner: Owner, conversation: UUID
 ) -> None:
     asked = SqlDraft(
         clarification=Clarification(question="By what?", options=["by orders", "by revenue"]),
@@ -125,14 +135,14 @@ def test_a_clarification_is_remembered_after_a_restart(
         explanation="",
         tables_used=[],
     )
-    api_one, _ = started_api(settings, store, asked)
+    api_one, _ = started_api(settings, store, owner, asked)
     with api_one as api:
         api.post(
             "/ask/stream",
             json={"question": "Who is best?", "conversation_id": str(conversation)},
         )
 
-    api_two, llm = started_api(settings, store, draft(COUNT_PER_COUNTRY), "Customers.")
+    api_two, llm = started_api(settings, store, owner, draft(COUNT_PER_COUNTRY), "Customers.")
     with api_two as api:
         api.post("/ask", json={"question": "by orders", "conversation_id": str(conversation)})
 

@@ -26,18 +26,37 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from uuid import UUID
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import SqlDraft
+from querymind.api.deps import get_current_user
 from querymind.api.explorer import create_explorer
 from querymind.api.main import create_app
+from querymind.auth.tokens import AuthUser
 from querymind.config import ConfigError, Settings, get_settings
 from querymind.llm import create_embedding_provider, create_llm_provider
 from querymind.llm.fake import FakeLLMProvider, FakeResponse
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "web" / "src" / "mocks" / "recorded"
+
+# Who the recordings are made as (5.1: the routes need a login). No store runs here, so nothing is
+# saved for this user; it only gets the requests past the login check.
+RECORDER = AuthUser(
+    user_id=UUID("00000000-0000-4000-8000-000000000001"),
+    workspace_id=UUID("00000000-0000-4000-8000-000000000002"),
+    role="admin",
+    email="recorder@querymind.local",
+)
+
+
+def logged_in_as_recorder(app: FastAPI) -> FastAPI:
+    """The app with RECORDER logged in on every request (FastAPI's dependency override)."""
+    app.dependency_overrides[get_current_user] = lambda: RECORDER
+    return app
 
 
 @dataclass(frozen=True)
@@ -174,7 +193,8 @@ def write_fixtures(recorded: dict[str, Recorded], output_dir: Path) -> list[Path
 
 def record_explorer(settings: Settings, output_dir: Path) -> list[Path]:
     """catalog.json and semantic.json, from the real endpoints. Metadata only, and no LLM."""
-    app = create_app(pipeline=object(), explorer=create_explorer(settings))  # type: ignore[arg-type]
+    explorer = create_explorer(settings)
+    app = logged_in_as_recorder(create_app(pipeline=object(), explorer=explorer))  # type: ignore[arg-type]
     paths = []
     with TestClient(app) as client:
         for name in EXPLORER_FIXTURES:
@@ -194,7 +214,8 @@ def record_with(
         embeddings=create_embedding_provider(settings),
     )
     # raise_server_exceptions=False: a bug comes back as the API's 500 body, like over HTTP.
-    with TestClient(create_app(pipeline=pipeline), raise_server_exceptions=False) as client:
+    app = logged_in_as_recorder(create_app(pipeline=pipeline))
+    with TestClient(app, raise_server_exceptions=False) as client:
         return record(client, recordings)
 
 

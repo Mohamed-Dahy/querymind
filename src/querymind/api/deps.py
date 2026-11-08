@@ -5,14 +5,19 @@ so the app creates the pipeline once at startup and tests can hand in a fake.
 """
 
 from collections.abc import Generator
-from typing import Protocol
+from typing import Annotated, Protocol
 
-from fastapi import Request
+from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from querymind.agent.events import AgentEvent, Finished
 from querymind.agent.schemas import AgentReply
+from querymind.auth.errors import NotAuthenticatedError
+from querymind.auth.tokens import AuthUser, TokenService
 from querymind.db.executor import QueryResult
-from querymind.store.conversations import ConversationStore
+from querymind.store.accounts import AccountStore
+from querymind.store.conversations import ConversationStore, Owner
+from querymind.store.errors import AccountsUnavailableError
 
 
 class AnswersQuestions(Protocol):
@@ -62,3 +67,51 @@ def get_store(request: Request) -> ConversationStore | None:
     """The conversation store created at startup, or None when history is off."""
     store: ConversationStore | None = request.app.state.store
     return store
+
+
+# Reads "Authorization: Bearer <token>". auto_error=False: a missing header reaches
+# get_current_user, which answers with our own error shape (401 not_authenticated).
+_bearer = HTTPBearer(auto_error=False, description="The access token from /auth/login")
+
+
+def get_tokens(request: Request) -> TokenService | None:
+    """The token service created at startup, or None (tests that don't need logins)."""
+    tokens: TokenService | None = request.app.state.tokens
+    return tokens
+
+
+def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    tokens: Annotated[TokenService | None, Depends(get_tokens)],
+) -> AuthUser:
+    """Who is asking, from their access token. Every route except the public ones needs it.
+
+    No database read: the token's signature and expiry are enough for its 15 minutes. A disabled
+    user stops at the next refresh.
+
+    Raises:
+        NotAuthenticatedError: no token, or a bad or expired one (HTTP 401).
+    """
+    if credentials is None or tokens is None:
+        raise NotAuthenticatedError("Please log in.")
+    return tokens.read_access(credentials.credentials)
+
+
+CurrentUser = Annotated[AuthUser, Depends(get_current_user)]
+
+
+def owner_of(user: AuthUser) -> Owner:
+    """What the conversation store scopes by: this user, in their current workspace."""
+    return Owner(user_id=user.user_id, workspace_id=user.workspace_id)
+
+
+def get_accounts(request: Request) -> AccountStore:
+    """The account store created at startup.
+
+    Raises:
+        AccountsUnavailableError: the app was started without one (HTTP 503).
+    """
+    accounts: AccountStore | None = request.app.state.accounts
+    if accounts is None:
+        raise AccountsUnavailableError("Accounts aren't available on this server.")
+    return accounts

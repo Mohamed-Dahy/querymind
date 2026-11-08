@@ -24,6 +24,7 @@ from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, Q
 from querymind.db.schema import describe_schema
 from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
 from querymind.safety.errors import UnsafeSqlError
+from tests.auth_helpers import signed_in
 from tests.unit.test_api import RESULT
 from tests.unit.test_conversation import IN_1997, SCHEMA, TOP, StubExecutor, pipeline_with
 
@@ -59,7 +60,9 @@ class FakeStreamingPipeline:
 
 def post(pipeline: Any, body: dict[str, Any] | None = None) -> Any:
     """The streamed response, once it has ended. Failures come back as a real server's would."""
-    with TestClient(create_app(pipeline=pipeline), raise_server_exceptions=False) as client:
+    with TestClient(
+        signed_in(create_app(pipeline=pipeline)), raise_server_exceptions=False
+    ) as client:
         return client.post("/ask/stream", json=body or {"question": "How many customers?"})
 
 
@@ -85,7 +88,9 @@ def test_the_final_event_is_exactly_what_post_ask_replies() -> None:
     conversation_id = str(uuid4())
     body = {"question": "How many customers?", "conversation_id": conversation_id}
 
-    with TestClient(create_app(pipeline=pipeline), raise_server_exceptions=False) as client:
+    with TestClient(
+        signed_in(create_app(pipeline=pipeline)), raise_server_exceptions=False
+    ) as client:
         plain = client.post("/ask", json=body).json()
         events = events_of(client.post("/ask/stream", json=body))
 
@@ -212,7 +217,7 @@ class EndlessPipeline:
 @contextmanager
 def real_server(pipeline: Any) -> Iterator[str]:
     """A real uvicorn on a free port: TestClient can't go away in the middle of a response."""
-    config = uvicorn.Config(create_app(pipeline=pipeline), port=0, log_level="warning")
+    config = uvicorn.Config(signed_in(create_app(pipeline=pipeline)), port=0, log_level="warning")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run)
     thread.start()

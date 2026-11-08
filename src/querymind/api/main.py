@@ -25,6 +25,8 @@ from fastapi.responses import JSONResponse
 
 from querymind import __version__
 from querymind.agent.pipeline import Pipeline
+from querymind.api.auth import CookieSettings
+from querymind.api.auth import router as auth_router
 from querymind.api.conversations import router as conversations_router
 from querymind.api.deps import AnswersQuestions, ManagesConversations, StreamsAnswers
 from querymind.api.errors import ERROR_MAP, INTERNAL_ERROR, error_response
@@ -35,9 +37,11 @@ from querymind.api.explorer import router as explorer_router
 from querymind.api.routes import router
 from querymind.api.saved_questions import router as saved_questions_router
 from querymind.api.schemas import ErrorResponse
+from querymind.auth.tokens import TokenService
 from querymind.config import get_settings
 from querymind.llm import create_embedding_provider, create_llm_provider
 from querymind.logging_setup import configure_logging
+from querymind.store.accounts import AccountStore
 from querymind.store.conversations import ConversationStore, create_store, load_history
 
 logger = logging.getLogger(__name__)
@@ -48,9 +52,12 @@ def create_app(
     store: ConversationStore | None = None,
     explorer: ExplorerData | None = None,
     evals: EvalsData | None = None,
+    accounts: AccountStore | None = None,
+    tokens: TokenService | None = None,
+    auth_cookie: CookieSettings | None = None,
 ) -> FastAPI:
-    """Build the app. Pass `pipeline` (and `store`) in tests; leave `pipeline` out to build the real
-    ones at startup. Without a store, history is off."""
+    """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
+    real ones at startup, which then need logins set up (APP_DB_USER and JWT_SECRET, 5.1)."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -60,10 +67,17 @@ def create_app(
             app.state.store = store
             app.state.explorer = explorer
             app.state.evals = evals
+            app.state.accounts = accounts
+            app.state.tokens = tokens
+            app.state.auth_cookie = auth_cookie
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
-            app.state.store = create_store(settings)  # None when APP_DB_USER isn't set
+            secret = settings.require_logins()  # no logins = no API (ConfigError)
+            app.state.accounts = AccountStore(settings)
+            app.state.tokens = TokenService(secret, access_minutes=settings.access_token_minutes)
+            app.state.auth_cookie = CookieSettings.from_settings(settings)
+            app.state.store = create_store(settings)
             app.state.explorer = create_explorer(settings)
             app.state.evals = create_evals(settings)
             app.state.pipeline = Pipeline(
@@ -91,6 +105,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.include_router(router)
+    app.include_router(auth_router)
     app.include_router(conversations_router)
     app.include_router(saved_questions_router)
     app.include_router(explorer_router)
@@ -103,11 +118,14 @@ def create_app(
 
 
 def _error(status: int, body: ErrorResponse) -> JSONResponse:
-    """The body as JSON, with only the fields it has. A wait also goes in the standard header."""
+    """The body as JSON, with only the fields it has. A wait also goes in the standard header, and
+    a 401 says how to log in (RFC 6750: the Bearer scheme)."""
     wait = body.retry_after_seconds
-    headers = {"Retry-After": str(wait)} if wait is not None else None
+    headers = {"Retry-After": str(wait)} if wait is not None else {}
+    if status == 401:
+        headers["WWW-Authenticate"] = "Bearer"
     return JSONResponse(
-        status_code=status, content=body.model_dump(exclude_none=True), headers=headers
+        status_code=status, content=body.model_dump(exclude_none=True), headers=headers or None
     )
 
 

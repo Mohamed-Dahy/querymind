@@ -7,8 +7,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from querymind.api.main import create_app
-from querymind.store.conversations import SavedQuestion
+from querymind.store.conversations import Owner, SavedQuestion
 from querymind.store.errors import StoreUnavailableError
+from tests.auth_helpers import TEST_OWNER, signed_in
 
 NOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
 
@@ -19,17 +20,19 @@ class FakeStore:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.saved: list[SavedQuestion] = []
+        self.owners: list[Owner] = []  # who each call was for
 
-    def _check(self) -> None:
+    def _check(self, owner: Owner) -> None:
+        self.owners.append(owner)
         if self.error is not None:
             raise self.error
 
-    def list_saved_questions(self) -> list[SavedQuestion]:
-        self._check()
+    def list_saved_questions(self, *, owner: Owner) -> list[SavedQuestion]:
+        self._check(owner)
         return list(self.saved)
 
-    def add_saved_question(self, question: str) -> SavedQuestion:
-        self._check()
+    def add_saved_question(self, question: str, *, owner: Owner) -> SavedQuestion:
+        self._check(owner)
         for one in self.saved:
             if one.question == question:
                 return one
@@ -37,13 +40,13 @@ class FakeStore:
         self.saved.insert(0, added)
         return added
 
-    def remove_saved_question(self, saved_id: UUID) -> None:
-        self._check()
+    def remove_saved_question(self, saved_id: UUID, *, owner: Owner) -> None:
+        self._check(owner)
         self.saved = [one for one in self.saved if one.id != saved_id]
 
 
 def client(store: FakeStore | None) -> TestClient:
-    app = create_app(pipeline=object(), store=store)  # type: ignore[arg-type]
+    app = signed_in(create_app(pipeline=object(), store=store))  # type: ignore[arg-type]
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -119,3 +122,13 @@ def test_without_the_store_each_route_says_so(store: FakeStore | None) -> None:
 
     assert [response.status_code for response in responses] == [503, 503, 503]
     assert {response.json()["error"] for response in responses} == {"history_unavailable"}
+
+
+def test_saved_questions_are_the_logged_in_users() -> None:
+    store = FakeStore()
+    with client(store) as api:
+        saved = api.post("/saved-questions", json={"question": "Sales this week?"}).json()
+        api.get("/saved-questions")
+        api.delete(f"/saved-questions/{saved['id']}")
+
+    assert store.owners == [TEST_OWNER] * 3

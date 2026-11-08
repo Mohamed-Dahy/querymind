@@ -10,10 +10,12 @@ import math
 
 from querymind.api.evals import EvalsUnavailableError
 from querymind.api.schemas import ErrorResponse
+from querymind.auth.errors import EmailTakenError, InvalidLoginError, NotAuthenticatedError
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.llm import LLMError, LLMOutputError, LLMProviderError, LLMRateLimitError
 from querymind.safety.errors import UnsafeSqlError
 from querymind.store.errors import (
+    AccountsUnavailableError,
     ConversationNotFoundError,
     StoreUnavailableError,
     TurnNotFoundError,
@@ -34,8 +36,12 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     LLMOutputError: (502, "llm_bad_output"),
     ConversationNotFoundError: (404, "conversation_not_found"),
     TurnNotFoundError: (404, "turn_not_found"),
+    AccountsUnavailableError: (503, "accounts_unavailable"),  # before its parent, below
     StoreUnavailableError: (503, "history_unavailable"),
     EvalsUnavailableError: (503, "evals_unavailable"),
+    NotAuthenticatedError: (401, "not_authenticated"),
+    InvalidLoginError: (401, "invalid_login"),
+    EmailTakenError: (409, "email_taken"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

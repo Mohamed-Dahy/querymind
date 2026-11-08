@@ -10,6 +10,11 @@ fresh rows instead. The answer text and the SQL are kept, and can still quote va
 masking arrives (5.4).
 
 Every query has its parameters passed separately, so nothing a user typed can become SQL.
+
+Since 5.1 every conversation and saved question has an owner (a user, in a workspace), and every
+method takes the `Owner` asking: someone else's conversation reads as "doesn't exist", the same
+404 as a wrong id, so ids can't be probed. Rows saved before logins have no owner and are seen by
+nobody until `data/setup_app_db.py --owner` gives them to someone.
 """
 
 import logging
@@ -46,6 +51,15 @@ _SUMMARY_COLUMNS = """
     id, title, pinned, created_at, updated_at,
     (SELECT count(*) FROM querymind_app.turns AS t WHERE t.conversation_id = c.id) AS turns
 """
+
+
+class Owner(BaseModel):
+    """Who a conversation belongs to: the logged-in user, in their current workspace."""
+
+    model_config = ConfigDict(frozen=True)
+
+    user_id: UUID
+    workspace_id: UUID
 
 
 class ConversationSummary(BaseModel):
@@ -143,6 +157,7 @@ class ConversationStore:
         self,
         conversation_id: UUID,
         *,
+        owner: Owner,
         question: str,
         kind: Literal["answer", "clarification", "refusal"],
         sql: str | None,
@@ -154,16 +169,30 @@ class ConversationStore:
         The upsert locks the conversation's row until this transaction ends. So when two saves of
         one conversation run at once the second waits, and then `MAX(n) + 1` sees the first one's
         turn: the numbers can't collide.
+
+        Raises:
+            ConversationNotFoundError: the id is someone else's conversation (nothing is saved).
         """
         without_rows = {key: value for key, value in reply.items() if key != "rows"}
         with self._transaction() as conn:
-            conn.execute(
+            # The WHERE makes the update (and so RETURNING) skip someone else's conversation.
+            mine = conn.execute(
                 """
-                INSERT INTO querymind_app.conversations (id, title) VALUES (%s, %s)
+                INSERT INTO querymind_app.conversations (id, title, user_id, workspace_id)
+                VALUES (%(id)s, %(title)s, %(user)s, %(workspace)s)
                 ON CONFLICT (id) DO UPDATE SET updated_at = now()
+                WHERE conversations.user_id = %(user)s
+                RETURNING id
                 """,
-                (conversation_id, title_from(question)),
-            )
+                {
+                    "id": conversation_id,
+                    "title": title_from(question),
+                    "user": owner.user_id,
+                    "workspace": owner.workspace_id,
+                },
+            ).fetchone()
+            if mine is None:
+                raise ConversationNotFoundError(_NOT_FOUND)
             row = conn.execute(
                 """
                 INSERT INTO querymind_app.turns
@@ -188,7 +217,7 @@ class ConversationStore:
         return number
 
     def list_conversations(
-        self, *, search: str | None = None, limit: int = 50, offset: int = 0
+        self, *, owner: Owner, search: str | None = None, limit: int = 50, offset: int = 0
     ) -> tuple[list[ConversationSummary], bool]:
         """Conversations, pinned first, then the most recent, and whether there are more.
 
@@ -197,12 +226,14 @@ class ConversationStore:
         query = f"""
             SELECT {_SUMMARY_COLUMNS}
             FROM querymind_app.conversations AS c
-            WHERE %(search)s::text IS NULL
-               OR c.title ILIKE %(like)s ESCAPE '\\'
-               OR EXISTS (
+            WHERE c.user_id = %(user)s AND (
+                %(search)s::text IS NULL
+                OR c.title ILIKE %(like)s ESCAPE '\\'
+                OR EXISTS (
                     SELECT 1 FROM querymind_app.turns AS t
                     WHERE t.conversation_id = c.id AND t.question ILIKE %(like)s ESCAPE '\\'
-               )
+                )
+            )
             ORDER BY c.pinned DESC, c.updated_at DESC, c.id
             LIMIT %(limit)s OFFSET %(offset)s
         """
@@ -212,6 +243,7 @@ class ConversationStore:
                 .execute(
                     query.encode(),
                     {
+                        "user": owner.user_id,
                         "search": search,
                         "like": _like_pattern(search or ""),
                         "limit": limit + 1,  # one extra says whether another page exists
@@ -222,26 +254,26 @@ class ConversationStore:
             )
         return found[:limit], len(found) > limit
 
-    def get(self, conversation_id: UUID) -> Conversation:
+    def get(self, conversation_id: UUID, *, owner: Owner) -> Conversation:
         """One conversation with all its turns.
 
         Raises:
-            ConversationNotFoundError: no conversation has this id.
+            ConversationNotFoundError: no conversation of this owner has this id.
         """
         with self._transaction() as conn:
-            summary = self._summary(conn, conversation_id)
+            summary = self._summary(conn, conversation_id, owner)
             turns = self._turns(conn, conversation_id)
         return Conversation(**summary.model_dump(), saved_turns=turns)
 
-    def get_turn(self, conversation_id: UUID, n: int) -> SavedTurn:
+    def get_turn(self, conversation_id: UUID, n: int, *, owner: Owner) -> SavedTurn:
         """One turn of a conversation.
 
         Raises:
-            ConversationNotFoundError: no conversation has this id.
+            ConversationNotFoundError: no conversation of this owner has this id.
             TurnNotFoundError: the conversation has no turn with this number.
         """
         with self._transaction() as conn:
-            self._summary(conn, conversation_id)
+            self._summary(conn, conversation_id, owner)
             found = (
                 conn.cursor(row_factory=class_row(SavedTurn))
                 .execute(
@@ -257,23 +289,47 @@ class ConversationStore:
             raise TurnNotFoundError("This turn doesn't exist.")
         return found
 
+    def check_owner(self, conversation_id: UUID, *, owner: Owner) -> None:
+        """Fine if the id is this owner's conversation or no conversation yet (a new one).
+
+        The routes call it before a follow-up runs, so the agent never loads someone else's turns.
+
+        Raises:
+            ConversationNotFoundError: the id is someone else's conversation, or an unowned one.
+        """
+        with self._transaction() as conn:
+            found = conn.execute(
+                "SELECT user_id FROM querymind_app.conversations WHERE id = %s", (conversation_id,)
+            ).fetchone()
+        if found is not None and found[0] != owner.user_id:
+            raise ConversationNotFoundError(_NOT_FOUND)
+
     def recent_turns(self, conversation_id: UUID, *, limit: int) -> list[SavedTurn]:
-        """The last `limit` turns, oldest first; none if the conversation doesn't exist."""
+        """The last `limit` turns, oldest first; none if the conversation doesn't exist.
+
+        Not scoped to an owner: the agent's memory (`load_history`) calls it, after the route has
+        checked the owner with `check_owner`.
+        """
         with self._transaction() as conn:
             return self._turns(conn, conversation_id)[-limit:]
 
     def update(
-        self, conversation_id: UUID, *, title: str | None = None, pinned: bool | None = None
+        self,
+        conversation_id: UUID,
+        *,
+        owner: Owner,
+        title: str | None = None,
+        pinned: bool | None = None,
     ) -> ConversationSummary:
         """Rename or pin a conversation. `updated_at` stays: this isn't new activity in it.
 
         Raises:
-            ConversationNotFoundError: no conversation has this id.
+            ConversationNotFoundError: no conversation of this owner has this id.
         """
         query = f"""
             UPDATE querymind_app.conversations AS c
             SET title = COALESCE(%(title)s, title), pinned = COALESCE(%(pinned)s, pinned)
-            WHERE id = %(id)s
+            WHERE id = %(id)s AND user_id = %(user)s
             RETURNING {_SUMMARY_COLUMNS}
         """
         with self._transaction() as conn:
@@ -281,7 +337,12 @@ class ConversationStore:
                 conn.cursor(row_factory=class_row(ConversationSummary))
                 .execute(
                     query.encode(),
-                    {"id": conversation_id, "title": title, "pinned": pinned},
+                    {
+                        "id": conversation_id,
+                        "user": owner.user_id,
+                        "title": title,
+                        "pinned": pinned,
+                    },
                 )
                 .fetchone()
             )
@@ -289,21 +350,26 @@ class ConversationStore:
             raise ConversationNotFoundError(_NOT_FOUND)
         return found
 
-    def delete(self, conversation_id: UUID) -> None:
+    def delete(self, conversation_id: UUID, *, owner: Owner) -> None:
         """Delete a conversation and its turns for good.
 
         Raises:
-            ConversationNotFoundError: no conversation has this id.
+            ConversationNotFoundError: no conversation of this owner has this id.
         """
         with self._transaction() as conn:
             deleted = conn.execute(
-                "DELETE FROM querymind_app.conversations WHERE id = %s RETURNING id",
-                (conversation_id,),
+                """
+                DELETE FROM querymind_app.conversations WHERE id = %s AND user_id = %s
+                RETURNING id
+                """,
+                (conversation_id, owner.user_id),
             ).fetchone()
         if deleted is None:
             raise ConversationNotFoundError(_NOT_FOUND)
 
-    def recent_questions_using(self, table: str, *, limit: int) -> list[TableQuestion]:
+    def recent_questions_using(
+        self, table: str, *, owner: Owner, limit: int
+    ) -> list[TableQuestion]:
         """The newest saved questions whose SQL read `table`. Older turns have no `tables_used`.
 
         `?` asks whether a JSON array has that string. The table name is a parameter like any other.
@@ -313,32 +379,36 @@ class ConversationStore:
                 conn.cursor(row_factory=class_row(TableQuestion))
                 .execute(
                     """
-                    SELECT conversation_id, n, question, created_at FROM querymind_app.turns
-                    WHERE reply->'tables_used' ? %s
-                    ORDER BY created_at DESC, conversation_id, n LIMIT %s
+                    SELECT t.conversation_id, t.n, t.question, t.created_at
+                    FROM querymind_app.turns AS t
+                    JOIN querymind_app.conversations AS c ON c.id = t.conversation_id
+                    WHERE c.user_id = %s AND t.reply->'tables_used' ? %s
+                    ORDER BY t.created_at DESC, t.conversation_id, t.n LIMIT %s
                     """,
-                    (table, limit),
+                    (owner.user_id, table, limit),
                 )
                 .fetchall()
             )
 
-    def list_saved_questions(self) -> list[SavedQuestion]:
-        """The saved questions, newest first."""
+    def list_saved_questions(self, *, owner: Owner) -> list[SavedQuestion]:
+        """This owner's saved questions, newest first."""
         with self._transaction() as conn:
             return (
                 conn.cursor(row_factory=class_row(SavedQuestion))
                 .execute(
                     """
                     SELECT id, question, created_at FROM querymind_app.saved_questions
+                    WHERE user_id = %s
                     ORDER BY created_at DESC, id LIMIT %s
                     """,
-                    (MAX_SAVED_QUESTIONS,),
+                    (owner.user_id, MAX_SAVED_QUESTIONS),
                 )
                 .fetchall()
             )
 
-    def add_saved_question(self, question: str) -> SavedQuestion:
-        """Save a question. The same words saved twice stay one row, with its first date.
+    def add_saved_question(self, question: str, *, owner: Owner) -> SavedQuestion:
+        """Save a question. The same words saved twice by one owner stay one row, with its first
+        date.
 
         `DO UPDATE` changes nothing here, but unlike `DO NOTHING` it returns the row that exists.
         """
@@ -347,11 +417,12 @@ class ConversationStore:
                 conn.cursor(row_factory=class_row(SavedQuestion))
                 .execute(
                     """
-                    INSERT INTO querymind_app.saved_questions (question) VALUES (%s)
-                    ON CONFLICT (md5(question)) DO UPDATE SET question = EXCLUDED.question
+                    INSERT INTO querymind_app.saved_questions (question, user_id, workspace_id)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id, md5(question)) DO UPDATE SET question = EXCLUDED.question
                     RETURNING id, question, created_at
                     """,
-                    (question,),
+                    (question, owner.user_id, owner.workspace_id),
                 )
                 .fetchone()
             )
@@ -359,18 +430,24 @@ class ConversationStore:
             raise StoreUnavailableError("The question wasn't saved.")
         return found
 
-    def remove_saved_question(self, saved_id: UUID) -> None:
-        """Remove a saved question. Already gone is fine: the result is what was asked for."""
+    def remove_saved_question(self, saved_id: UUID, *, owner: Owner) -> None:
+        """Remove a saved question. Already gone (or someone else's) is fine: nothing to remove."""
         with self._transaction() as conn:
-            conn.execute("DELETE FROM querymind_app.saved_questions WHERE id = %s", (saved_id,))
+            conn.execute(
+                "DELETE FROM querymind_app.saved_questions WHERE id = %s AND user_id = %s",
+                (saved_id, owner.user_id),
+            )
 
-    def _summary(self, conn: psycopg.Connection, conversation_id: UUID) -> ConversationSummary:
+    def _summary(
+        self, conn: psycopg.Connection, conversation_id: UUID, owner: Owner
+    ) -> ConversationSummary:
         query = f"""
-            SELECT {_SUMMARY_COLUMNS} FROM querymind_app.conversations AS c WHERE id = %s
+            SELECT {_SUMMARY_COLUMNS} FROM querymind_app.conversations AS c
+            WHERE id = %s AND user_id = %s
         """
         found = (
             conn.cursor(row_factory=class_row(ConversationSummary))
-            .execute(query.encode(), (conversation_id,))
+            .execute(query.encode(), (conversation_id, owner.user_id))
             .fetchone()
         )
         if found is None:

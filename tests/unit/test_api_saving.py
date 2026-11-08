@@ -14,7 +14,9 @@ from querymind.api.main import create_app
 from querymind.api.routes import ask_stream
 from querymind.api.schemas import AskRequest, FinalEvent
 from querymind.llm import LLMProviderError
-from querymind.store.errors import StoreUnavailableError
+from querymind.store.conversations import Owner
+from querymind.store.errors import ConversationNotFoundError, StoreUnavailableError
+from tests.auth_helpers import TEST_OWNER, TEST_USER, signed_in
 from tests.unit.test_api import RESULT
 
 STEP = StepEvent(node="generate_sql", status="started")
@@ -47,6 +49,11 @@ class FakeStore:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.saved: list[dict[str, Any]] = []
+        self.foreign: set[UUID] = set()  # conversations that belong to someone else
+
+    def check_owner(self, conversation_id: UUID, *, owner: Owner) -> None:
+        if conversation_id in self.foreign:
+            raise ConversationNotFoundError("This conversation doesn't exist.")
 
     def save_turn(self, conversation_id: UUID, **turn: Any) -> int:
         if self.error is not None:
@@ -56,7 +63,7 @@ class FakeStore:
 
 
 def client(pipeline: FakePipeline, store: FakeStore | None) -> TestClient:
-    app = create_app(pipeline=pipeline, store=store)  # type: ignore[arg-type]
+    app = signed_in(create_app(pipeline=pipeline, store=store))  # type: ignore[arg-type]
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -98,7 +105,7 @@ def test_the_stream_saves_the_turn_with_its_steps() -> None:
 def test_the_stream_has_saved_before_it_sends_the_answer() -> None:
     # So a reload right after the answer finds it.
     store = FakeStore()
-    events = ask_stream(AskRequest(question="q"), FakePipeline(), [], store)  # type: ignore[arg-type]
+    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store)  # type: ignore[arg-type]
 
     for event in events:
         if isinstance(event, FinalEvent):
@@ -154,7 +161,7 @@ def test_a_failed_question_isnt_saved(path: str) -> None:
 
 def test_a_stopped_run_isnt_saved() -> None:
     store = FakeStore()
-    events = ask_stream(AskRequest(question="q"), FakePipeline(), [], store)  # type: ignore[arg-type]
+    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store)  # type: ignore[arg-type]
 
     next(events)
     events.close()
@@ -187,3 +194,37 @@ def test_with_history_off_nothing_changes(path: str) -> None:
         response = api.post(path, json={"question": "q"})
 
     assert response.status_code == 200
+
+
+# --- Whose conversation (5.1c) ---
+
+
+def test_a_turn_is_saved_for_the_logged_in_user() -> None:
+    store = FakeStore()
+
+    with client(FakePipeline(), store) as api:
+        api.post("/ask", json={"question": "q"})
+
+    assert store.saved[0]["owner"] == TEST_OWNER
+
+
+@pytest.mark.parametrize("path", ["/ask", "/ask/stream"])
+def test_someone_elses_conversation_cant_be_continued(path: str) -> None:
+    # The agent would load its turns as memory: refused before the pipeline runs.
+    theirs = uuid4()
+    store = FakeStore()
+    store.foreign.add(theirs)
+    pipeline = FakePipeline(error=AssertionError("the pipeline must not run"))
+
+    with client(pipeline, store) as api:
+        response = api.post(path, json={"question": "And by year?", "conversation_id": str(theirs)})
+
+    if path == "/ask":
+        assert response.status_code == 404
+        body = response.json()
+    else:
+        [event] = stream_events(response)  # nothing ran: no step events, only the error
+        assert event["type"] == "error"
+        body = event["error"]
+    assert body["error"] == "conversation_not_found"
+    assert store.saved == []

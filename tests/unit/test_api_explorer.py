@@ -12,8 +12,9 @@ from querymind.api.explorer import ExplorerData
 from querymind.api.main import create_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.schema import Column, SchemaInfo, Table
-from querymind.store.conversations import TableQuestion
+from querymind.store.conversations import Owner, TableQuestion
 from querymind.store.errors import StoreUnavailableError
+from tests.auth_helpers import signed_in
 
 LAYERS = [Path("semantic_layer/northwind.yaml"), Path("semantic_layer/chinook.yaml")]
 SECRET = "Maria Anders"
@@ -44,7 +45,7 @@ class FakeDatabase:
 
 def client(database: FakeDatabase) -> TestClient:
     explorer = ExplorerData(LAYERS, database)
-    app = create_app(pipeline=object(), explorer=explorer)  # type: ignore[arg-type]
+    app = signed_in(create_app(pipeline=object(), explorer=explorer))  # type: ignore[arg-type]
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -125,11 +126,15 @@ class FakeStore:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.asked: list[tuple[str, int]] = []
+        self.owners: list[Owner] = []
 
-    def recent_questions_using(self, table: str, *, limit: int) -> list[TableQuestion]:
+    def recent_questions_using(
+        self, table: str, *, owner: Owner, limit: int
+    ) -> list[TableQuestion]:
         if self.error is not None:
             raise self.error
         self.asked.append((table, limit))
+        self.owners.append(owner)
         return [
             TableQuestion(
                 conversation_id=uuid4(),
@@ -142,7 +147,7 @@ class FakeStore:
 
 def client_with(store: FakeStore | None) -> TestClient:
     explorer = ExplorerData(LAYERS, FakeDatabase())
-    app = create_app(pipeline=object(), store=store, explorer=explorer)  # type: ignore[arg-type]
+    app = signed_in(create_app(pipeline=object(), store=store, explorer=explorer))  # type: ignore[arg-type]
     return TestClient(app, raise_server_exceptions=False)
 
 

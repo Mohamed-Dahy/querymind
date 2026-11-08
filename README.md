@@ -90,7 +90,11 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 - **Query timeout and row limit.** Queries are stopped after 10 seconds and return at most 1,000 rows.
 - **Audit trail.** Every question, its SQL and its outcome is logged.
 - **Secrets stay out of code.** All passwords and API keys come from environment variables.
-- *Coming later:* PII masking and per-user permissions.
+- **Logins.** Every route except health, the evals page and login itself needs a signed access token (JWT,
+  15 minutes). Passwords are stored only as Argon2id hashes. The refresh token sits in an httpOnly cookie, is
+  replaced on every use, and a copied one that comes back logs that whole session out. Each user sees only their
+  own conversations: someone else's reads as "doesn't exist". A test calls every route without a login.
+- *Coming later:* PII masking, per-role table permissions and row-level security.
 
 ## How accurate is it?
 
@@ -164,6 +168,7 @@ The evals also run in parallel with [Ray](https://www.ray.io/) under one shared 
 | Agent | LangGraph |
 | LLMs | Groq and Gemini through one interface (LangChain wrappers) |
 | SQL safety | sqlglot |
+| Auth | JWT access tokens (PyJWT), rotating refresh tokens, Argon2id password hashes |
 | API | FastAPI (+ server-sent events for the live agent steps) |
 | Web UI | React, Vite, TypeScript, Tailwind CSS, shadcn/ui (Radix), TanStack Query and Table, Recharts, React Flow |
 | Config | pydantic-settings |
@@ -189,15 +194,18 @@ git clone https://github.com/Mohamed-Dahy/querymind.git
 cd querymind
 
 uv sync                                # install dependencies
-cp .env.example .env                   # then edit .env: passwords + your API key
+cp .env.example .env                   # then edit .env: passwords, your API key and JWT_SECRET
                                        # (Windows PowerShell: Copy-Item .env.example .env)
 
 docker compose up -d --wait            # start Postgres + pgvector on 127.0.0.1:5433
 uv run python data/seed_northwind.py   # load the sample data + create the read-only user
 uv run python data/seed_chinook.py     # load the second sample (a music store) next to it
 uv run python scripts/build_index.py   # index the tables for retrieval (needs a Google AI Studio key)
-uv run python data/setup_app_db.py     # storage for saved conversations (APP_DB_* in .env; optional)
+uv run python data/setup_app_db.py     # the app's own storage: accounts and saved conversations
 ```
+
+The API needs `APP_DB_USER`, `APP_DB_PASSWORD` and `JWT_SECRET` in `.env` (it signs the login tokens; make one
+with `uv run python -c "import secrets; print(secrets.token_urlsafe(48))"`). Scripts and evals don't need them.
 
 Without a Google key the app still works: it sends the whole schema and logs a warning.
 
@@ -218,6 +226,10 @@ Then the web UI, in a second terminal:
 npm --prefix web install          # once (and after package.json changes)
 npm --prefix web run dev          # http://localhost:5173; /api is forwarded to the API on :8000
 ```
+
+Every route except `/health`, `/evals` and the login routes needs a login: sign up with `POST /auth/signup`
+(try it at `/docs`), then send the `access_token` as `Authorization: Bearer …`. The token lasts 15 minutes;
+`POST /auth/refresh` renews it from an httpOnly cookie.
 
 To try the web UI with no database, API or LLM key: `npm --prefix web run dev:mock` answers from recorded real
 replies (the screenshot above shows one of them).

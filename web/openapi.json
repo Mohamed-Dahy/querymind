@@ -1575,6 +1575,62 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "Me": {
+        "description": "Who is logged in.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "description": "Your role in this workspace: admin, analyst or viewer",
+            "enum": [
+              "admin",
+              "analyst",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/WorkspaceInfo"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "workspace"
+        ],
+        "title": "Me",
+        "type": "object"
+      },
       "MetricMeaning": {
         "properties": {
           "description": {
@@ -2476,6 +2532,27 @@
         "title": "ShownSchema",
         "type": "object"
       },
+      "SignupRequest": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignupRequest",
+        "type": "object"
+      },
       "SpeedUp": {
         "properties": {
           "after": {
@@ -2693,6 +2770,36 @@
         "title": "TableQuestionList",
         "type": "object"
       },
+      "TokenResponse": {
+        "description": "A new access token. The refresh token comes as an httpOnly cookie, never in the body.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Seconds until the access token expires",
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/Me"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in",
+          "user"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
       "ValidatedEvent": {
         "description": "Try number `attempt` passed the SQL validator and is about to run.",
         "properties": {
@@ -2752,6 +2859,32 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WorkspaceInfo": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "WorkspaceInfo",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "The access token from /auth/login",
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -2806,6 +2939,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The conversation isn't yours, or doesn't exist"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2857,6 +3010,11 @@
             "description": "The query took too long"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Ask",
         "tags": [
           "questions"
@@ -2957,6 +3115,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
           "422": {
             "content": {
               "text/event-stream": {
@@ -2968,9 +3136,268 @@
             "description": "Invalid question"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Ask Stream",
         "tags": [
           "questions"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "description": "Log in with email and password.",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Wrong email or password"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Accounts aren't available"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "Log out: this login's refresh tokens are revoked and the cookie is cleared. An access token\nalready issued still works until it expires (at most 15 minutes).",
+        "operationId": "logout_auth_logout_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "qm_refresh",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Qm Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "description": "Who is logged in, with the workspace's current name and your current role.",
+        "operationId": "me_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "description": "A new access token from the refresh cookie (which is replaced too). The web app calls it on\npage load and when an access token expires.",
+        "operationId": "refresh_auth_refresh_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "qm_refresh",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Qm Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid refresh cookie"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/signup": {
+      "post": {
+        "description": "Create an account and your own workspace (you are its admin), and log in.",
+        "operationId": "signup_auth_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The email has an account"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signup",
+        "tags": [
+          "auth"
         ]
       }
     },
@@ -3000,6 +3427,11 @@
             "description": "The database isn't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Catalog",
         "tags": [
           "explorer"
@@ -3008,7 +3440,7 @@
     },
     "/catalog/tables/{table}/questions": {
       "get": {
-        "description": "Recent saved questions whose SQL read this table. No such table: an empty list.",
+        "description": "Your recent saved questions whose SQL read this table. No such table: an empty list.",
         "operationId": "get_table_questions_catalog_tables__table__questions_get",
         "parameters": [
           {
@@ -3066,6 +3498,11 @@
             "description": "History isn't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Table Questions",
         "tags": [
           "explorer"
@@ -3074,7 +3511,7 @@
     },
     "/conversations": {
       "get": {
-        "description": "Saved conversations: pinned first, then the most recent.",
+        "description": "Your saved conversations: pinned first, then the most recent.",
         "operationId": "list_conversations_conversations_get",
         "parameters": [
           {
@@ -3132,6 +3569,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -3140,7 +3587,7 @@
                 }
               }
             },
-            "description": "No such conversation or turn"
+            "description": "No such conversation or turn (of yours)"
           },
           "422": {
             "content": {
@@ -3163,6 +3610,11 @@
             "description": "Saved conversations aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Conversations",
         "tags": [
           "conversations"
@@ -3189,6 +3641,16 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -3197,7 +3659,7 @@
                 }
               }
             },
-            "description": "No such conversation or turn"
+            "description": "No such conversation or turn (of yours)"
           },
           "422": {
             "content": {
@@ -3220,6 +3682,11 @@
             "description": "Saved conversations aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Delete Conversation",
         "tags": [
           "conversations"
@@ -3251,6 +3718,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -3259,7 +3736,7 @@
                 }
               }
             },
-            "description": "No such conversation or turn"
+            "description": "No such conversation or turn (of yours)"
           },
           "422": {
             "content": {
@@ -3282,6 +3759,11 @@
             "description": "Saved conversations aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Conversation",
         "tags": [
           "conversations"
@@ -3323,6 +3805,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -3331,7 +3823,7 @@
                 }
               }
             },
-            "description": "No such conversation or turn"
+            "description": "No such conversation or turn (of yours)"
           },
           "422": {
             "content": {
@@ -3354,6 +3846,11 @@
             "description": "Saved conversations aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Update Conversation",
         "tags": [
           "conversations"
@@ -3397,6 +3894,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -3405,7 +3912,7 @@
                 }
               }
             },
-            "description": "No such conversation or turn"
+            "description": "No such conversation or turn (of yours)"
           },
           "422": {
             "content": {
@@ -3428,6 +3935,11 @@
             "description": "Saved conversations aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Rerun Turn",
         "tags": [
           "conversations"
@@ -3524,6 +4036,11 @@
             "description": "Saved questions aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Saved Questions",
         "tags": [
           "saved questions"
@@ -3574,6 +4091,11 @@
             "description": "Saved questions aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Save Question",
         "tags": [
           "saved questions"
@@ -3621,6 +4143,11 @@
             "description": "Saved questions aren't available"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Remove Saved Question",
         "tags": [
           "saved questions"
@@ -3643,6 +4170,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Semantic",
         "tags": [
           "explorer"

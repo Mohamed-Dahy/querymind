@@ -196,3 +196,38 @@ def test_the_app_role_cant_be_the_agents_or_the_admins(
 
     with pytest.raises(ConfigError, match="role of its own"):
         load_settings(env_file=None)
+
+
+# --- Logins (5.1) ---
+
+
+def test_an_empty_jwt_secret_means_not_set_and_the_api_refuses(
+    valid_env: pytest.MonkeyPatch,
+) -> None:
+    # As in .env.example: scripts and evals still load; only the API needs the secret.
+    valid_env.setenv("JWT_SECRET", "")
+    valid_env.setenv("APP_DB_USER", "qm_app")
+    valid_env.setenv("APP_DB_PASSWORD", "app-password")
+    settings = load_settings(env_file=None)
+
+    assert settings.jwt_secret is None
+    with pytest.raises(ConfigError, match="JWT_SECRET"):
+        settings.require_logins()
+
+
+def test_a_short_jwt_secret_is_refused(valid_env: pytest.MonkeyPatch) -> None:
+    valid_env.setenv("JWT_SECRET", "too-short")
+
+    with pytest.raises(ConfigError, match="JWT_SECRET: Value should have at least 32"):
+        load_settings(env_file=None)
+
+
+def test_logins_need_the_app_role_too(valid_env: pytest.MonkeyPatch) -> None:
+    valid_env.setenv("JWT_SECRET", "x" * 40)
+    settings = load_settings(env_file=None)
+
+    with pytest.raises(ConfigError, match="APP_DB_USER"):
+        settings.require_logins()
+    valid_env.setenv("APP_DB_USER", "qm_app")
+    valid_env.setenv("APP_DB_PASSWORD", "app-password")
+    assert load_settings(env_file=None).require_logins().get_secret_value() == "x" * 40

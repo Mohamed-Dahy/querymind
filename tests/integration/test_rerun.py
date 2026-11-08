@@ -20,8 +20,9 @@ from querymind.api.main import create_app
 from querymind.config import Settings
 from querymind.db.connection import connect_app
 from querymind.llm.fake import FakeLLMProvider
-from querymind.store.conversations import ConversationStore, load_history
+from querymind.store.conversations import ConversationStore, Owner, load_history
 from querymind.store.errors import ConversationNotFoundError
+from tests.auth_helpers import signed_in, user_for
 
 pytestmark = pytest.mark.integration
 
@@ -37,11 +38,11 @@ def store(settings: Settings) -> ConversationStore:
 
 
 @pytest.fixture
-def conversation(store: ConversationStore) -> Iterator[UUID]:
+def conversation(store: ConversationStore, owner: Owner) -> Iterator[UUID]:
     conversation_id = uuid4()
     yield conversation_id
     with suppress(ConversationNotFoundError):
-        store.delete(conversation_id)
+        store.delete(conversation_id, owner=owner)
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def scratch_shipper(settings: Settings) -> Iterator[None]:
 
 
 @pytest.fixture
-def api(settings: Settings, store: ConversationStore) -> Iterator[TestClient]:
+def api(settings: Settings, store: ConversationStore, owner: Owner) -> Iterator[TestClient]:
     llm = FakeLLMProvider(
         [
             SqlDraft(sql=COUNT_SHIPPERS, explanation="Counts.", tables_used=["shippers"]),
@@ -64,7 +65,8 @@ def api(settings: Settings, store: ConversationStore) -> Iterator[TestClient]:
         settings=settings.model_copy(update={"schema_retrieval": "off"}),
         history_loader=partial(load_history, store),
     )
-    with TestClient(create_app(pipeline=pipeline, store=store)) as client:
+    app = signed_in(create_app(pipeline=pipeline, store=store), user_for(owner))
+    with TestClient(app) as client:
         yield client
 
 

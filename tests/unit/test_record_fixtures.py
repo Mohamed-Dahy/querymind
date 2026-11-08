@@ -27,6 +27,7 @@ from scripts.record_fixtures import (
     select,
     write_fixtures,
 )
+from tests.auth_helpers import signed_in
 
 ANSWER = AskResult(
     question="What is the total sales amount per category?",
@@ -62,7 +63,7 @@ class ScriptedPipeline:
 
 
 def client_for(pipeline: ScriptedPipeline) -> TestClient:
-    return TestClient(create_app(pipeline=pipeline), raise_server_exceptions=False)
+    return TestClient(signed_in(create_app(pipeline=pipeline)), raise_server_exceptions=False)
 
 
 def scripted(**overrides: AgentReply | Exception) -> ScriptedPipeline:

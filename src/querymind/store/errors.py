@@ -15,3 +15,7 @@ class ConversationNotFoundError(StoreError):
 
 class TurnNotFoundError(StoreError):
     """The conversation has no such turn, or it has no SQL to run. The message is safe to show."""
+
+
+class AccountsUnavailableError(StoreUnavailableError):
+    """The accounts tables could not be reached. The message is safe to show."""

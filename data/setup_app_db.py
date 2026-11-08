@@ -4,13 +4,17 @@ Run (after `docker compose up -d --wait` and data/seed_northwind.py, with APP_DB
 APP_DB_PASSWORD in .env):
     uv run python data/setup_app_db.py
 
-Safe to re-run: nothing is dropped, and the role's password and privileges are reset every time.
+Safe to re-run: no table or row is dropped, and the role's password and privileges are reset every
+time. Since 5.1 it also holds the accounts (users, workspaces, memberships, refresh tokens), and
+conversations belong to a user. Rows saved before that have no owner; give them to your account with
+    uv run python data/setup_app_db.py --owner you@example.com
 
 The agent and the app never share a role. `analyst_ro` reads business tables and can't see this
 schema; the app's role reads and writes this schema and can't see business tables. The admin owns
 the tables, so the app's role can change rows but can't drop or alter anything.
 """
 
+import argparse
 import logging
 import sys
 
@@ -56,18 +60,74 @@ TABLES = (
         created_at timestamptz NOT NULL DEFAULT now()
     )
     """,
-    # One row per wording. On a hash, because a plain index refuses a value over 2,704 bytes, and
-    # 1,000 characters (the longest question) can be 4,000. The DROP is for a database set up before
-    # this index existed.
+    # One row per wording (per user, below). On a hash, because a plain index refuses a value over
+    # 2,704 bytes, and 1,000 characters (the longest question) can be 4,000. The DROP is for a
+    # database set up before that index existed.
     f"ALTER TABLE {SCHEMA}.saved_questions DROP CONSTRAINT IF EXISTS saved_questions_question_key",
+    # --- Accounts (5.1) ---
+    # Emails are stored lowercased, so "Ana@X.com" and "ana@x.com" are one account.
     f"""
-    CREATE UNIQUE INDEX IF NOT EXISTS saved_questions_wording
-    ON {SCHEMA}.saved_questions (md5(question))
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.users (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        email text NOT NULL UNIQUE CHECK (email = lower(email) AND char_length(email) <= 254),
+        password_hash text NOT NULL,
+        disabled boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now()
+    )
     """,
-    # What the history list sorts by.
     f"""
-    CREATE INDEX IF NOT EXISTS conversations_list
-        ON {SCHEMA}.conversations (pinned DESC, updated_at DESC)
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.workspaces (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 100),
+        created_at timestamptz NOT NULL DEFAULT now()
+    )
+    """,
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.memberships (
+        workspace_id uuid NOT NULL REFERENCES {SCHEMA}.workspaces (id) ON DELETE CASCADE,
+        user_id uuid NOT NULL REFERENCES {SCHEMA}.users (id) ON DELETE CASCADE,
+        role text NOT NULL CHECK (role IN ('admin', 'analyst', 'viewer')),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (workspace_id, user_id)
+    )
+    """,
+    # Only hashes of refresh tokens. One family per login (see src/querymind/store/accounts.py).
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.refresh_tokens (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES {SCHEMA}.users (id) ON DELETE CASCADE,
+        workspace_id uuid NOT NULL REFERENCES {SCHEMA}.workspaces (id) ON DELETE CASCADE,
+        family_id uuid NOT NULL,
+        token_hash text NOT NULL UNIQUE,
+        expires_at timestamptz NOT NULL,
+        used_at timestamptz,
+        revoked_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now()
+    )
+    """,
+    f"CREATE INDEX IF NOT EXISTS refresh_tokens_family ON {SCHEMA}.refresh_tokens (family_id)",
+    # Every saved conversation and question belongs to a user, in a workspace. Rows saved before
+    # 5.1 have none: nobody sees them until `--owner` gives them to someone.
+    *(
+        f"""
+        ALTER TABLE {SCHEMA}.{table}
+            ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES {SCHEMA}.users (id) ON DELETE CASCADE,
+            ADD COLUMN IF NOT EXISTS workspace_id uuid
+                REFERENCES {SCHEMA}.workspaces (id) ON DELETE CASCADE
+        """
+        for table in ("conversations", "saved_questions")
+    ),
+    # The same words saved once per user, not once for everyone.
+    f"DROP INDEX IF EXISTS {SCHEMA}.saved_questions_wording",
+    f"""
+    CREATE UNIQUE INDEX IF NOT EXISTS saved_questions_wording_per_user
+    ON {SCHEMA}.saved_questions (user_id, md5(question))
+    """,
+    # What the history list sorts by: one user's conversations.
+    f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",
+    f"""
+    CREATE INDEX IF NOT EXISTS conversations_per_user
+        ON {SCHEMA}.conversations (user_id, pinned DESC, updated_at DESC)
     """,
 )
 
@@ -108,9 +168,47 @@ def set_up(conn: psycopg.Connection, *, db_name: str, user: str, password: str) 
         conn.execute(statement)
 
 
+def give_unowned_rows_to(conn: psycopg.Connection, email: str) -> int:
+    """Give conversations and saved questions saved before 5.1 (no owner) to the account with
+    `email`, in its first workspace. Returns how many rows changed.
+
+    Never automatic: with open sign-up, "the first user" could be anyone.
+
+    Raises:
+        ConfigError: no account has that email (sign up first).
+    """
+    owner = conn.execute(
+        f"""
+        SELECT u.id, m.workspace_id FROM {SCHEMA}.users AS u
+        JOIN {SCHEMA}.memberships AS m ON m.user_id = u.id
+        WHERE u.email = %s ORDER BY m.created_at, m.workspace_id LIMIT 1
+        """.encode(),
+        (email.lower(),),
+    ).fetchone()
+    if owner is None:
+        raise ConfigError(f"No account for {email!r}: sign up in the app first, then run it again")
+    changed = 0
+    for table in ("conversations", "saved_questions"):
+        cursor = conn.execute(
+            sql.SQL("UPDATE {} SET user_id = %s, workspace_id = %s WHERE user_id IS NULL").format(
+                sql.Identifier(SCHEMA, table)
+            ),
+            owner,
+        )
+        changed += cursor.rowcount
+    return changed
+
+
 def main() -> int:
     """Set up the app's storage. Returns a process exit code (0 = success)."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="Create or update the app's own storage.")
+    parser.add_argument(
+        "--owner",
+        metavar="EMAIL",
+        help="give conversations saved before logins existed to this account (sign up first)",
+    )
+    args = parser.parse_args()
     try:
         settings = get_settings()
         if settings.app_db_user is None or settings.app_db_password is None:
@@ -123,6 +221,9 @@ def main() -> int:
                 user=settings.app_db_user,
                 password=settings.app_db_password.get_secret_value(),
             )
+            if args.owner:
+                changed = give_unowned_rows_to(conn, args.owner)
+                logger.info("Gave %d unowned rows to %s.", changed, args.owner)
     except (ConfigError, psycopg.Error) as exc:
         logger.error("Setting up the app's storage failed: %s", exc)
         return 1

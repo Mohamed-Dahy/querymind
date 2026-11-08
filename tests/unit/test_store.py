@@ -9,6 +9,7 @@ import pytest
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.store.conversations import ConversationStore, _like_pattern, title_from
 from querymind.store.errors import StoreUnavailableError
+from tests.auth_helpers import TEST_OWNER
 
 
 @pytest.mark.parametrize(
@@ -52,7 +53,7 @@ def test_a_failing_database_is_one_clean_error(failure: Exception) -> None:
     store = ConversationStore(MagicMock(), connect=MagicMock(side_effect=failure))
 
     with pytest.raises(StoreUnavailableError) as info:
-        store.get(uuid4())
+        store.get(uuid4(), owner=TEST_OWNER)
 
     assert "host" not in str(info.value)
     assert info.value.__cause__ is failure

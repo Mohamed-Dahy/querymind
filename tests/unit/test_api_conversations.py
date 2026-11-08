@@ -11,12 +11,13 @@ from querymind.agent.events import StepEvent
 from querymind.api.main import create_app
 from querymind.db.executor import QueryResult
 from querymind.safety.errors import UnsafeSqlError
-from querymind.store.conversations import Conversation, ConversationSummary, SavedTurn
+from querymind.store.conversations import Conversation, ConversationSummary, Owner, SavedTurn
 from querymind.store.errors import (
     ConversationNotFoundError,
     StoreUnavailableError,
     TurnNotFoundError,
 )
+from tests.auth_helpers import TEST_OWNER, signed_in
 
 NOW = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
 ID = uuid4()
@@ -76,40 +77,47 @@ class FakeStore:
         self.searches: list[tuple[str | None, int, int]] = []
         self.updates: list[dict[str, Any]] = []
         self.deleted: list[UUID] = []
+        self.owners: list[Owner] = []  # who each call was for
 
-    def _check(self, conversation_id: UUID | None = None) -> None:
+    def _check(self, owner: Owner, conversation_id: UUID | None = None) -> None:
+        self.owners.append(owner)
         if self.error is not None:
             raise self.error
         if conversation_id is not None and conversation_id != ID:
             raise ConversationNotFoundError("This conversation doesn't exist.")
 
     def list_conversations(
-        self, *, search: str | None = None, limit: int = 50, offset: int = 0
+        self, *, owner: Owner, search: str | None = None, limit: int = 50, offset: int = 0
     ) -> tuple[list[ConversationSummary], bool]:
-        self._check()
+        self._check(owner)
         self.searches.append((search, limit, offset))
         return [SUMMARY], True
 
-    def get(self, conversation_id: UUID) -> Conversation:
-        self._check(conversation_id)
+    def get(self, conversation_id: UUID, *, owner: Owner) -> Conversation:
+        self._check(owner, conversation_id)
         return Conversation(**SUMMARY.model_dump(), saved_turns=[ANSWER, ASK_BACK])
 
-    def get_turn(self, conversation_id: UUID, n: int) -> SavedTurn:
-        self._check(conversation_id)
+    def get_turn(self, conversation_id: UUID, n: int, *, owner: Owner) -> SavedTurn:
+        self._check(owner, conversation_id)
         for turn in (ANSWER, ASK_BACK):
             if turn.n == n:
                 return turn
         raise TurnNotFoundError("This turn doesn't exist.")
 
     def update(
-        self, conversation_id: UUID, *, title: str | None = None, pinned: bool | None = None
+        self,
+        conversation_id: UUID,
+        *,
+        owner: Owner,
+        title: str | None = None,
+        pinned: bool | None = None,
     ) -> ConversationSummary:
-        self._check(conversation_id)
+        self._check(owner, conversation_id)
         self.updates.append({"title": title, "pinned": pinned})
         return SUMMARY.model_copy(update={"title": title or SUMMARY.title})
 
-    def delete(self, conversation_id: UUID) -> None:
-        self._check(conversation_id)
+    def delete(self, conversation_id: UUID, *, owner: Owner) -> None:
+        self._check(owner, conversation_id)
         self.deleted.append(conversation_id)
 
 
@@ -130,7 +138,7 @@ class FakePipeline:
 
 
 def client(store: FakeStore | None, pipeline: FakePipeline | None = None) -> TestClient:
-    app = create_app(pipeline=pipeline or FakePipeline(), store=store)  # type: ignore[arg-type]
+    app = signed_in(create_app(pipeline=pipeline or FakePipeline(), store=store))  # type: ignore[arg-type]
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -390,3 +398,17 @@ def test_no_route_takes_sql_from_the_client() -> None:
             reference = body["content"]["application/json"]["schema"]["$ref"]
             fields = schemas[reference.rsplit("/", 1)[-1]]["properties"]
             assert "sql" not in fields, path
+
+
+def test_every_route_asks_the_store_for_the_logged_in_users_rows() -> None:
+    # 5.1c: the owner comes from the token, never from the request.
+    store = FakeStore()
+    with client(store) as api:
+        api.get("/conversations")
+        api.get(f"/conversations/{ID}")
+        api.patch(f"/conversations/{ID}", json={"pinned": True})
+        api.post(f"/conversations/{ID}/turns/1/rerun")
+        api.delete(f"/conversations/{ID}")
+
+    assert len(store.owners) == 5
+    assert set(store.owners) == {TEST_OWNER}

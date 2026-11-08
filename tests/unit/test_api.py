@@ -25,6 +25,7 @@ from querymind.db.executor import QueryResult
 from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
 from querymind.logging_setup import JsonFormatter
 from querymind.safety.errors import UnsafeSqlError
+from tests.auth_helpers import signed_in
 
 HIGH = Confidence(level="high", reasons=(), points=0)
 
@@ -60,7 +61,7 @@ class FakePipeline:
 def client_for(pipeline: FakePipeline) -> TestClient:
     # raise_server_exceptions=False: behave like a real server, which answers 500 instead of
     # crashing the test when a route raises an unexpected error.
-    return TestClient(create_app(pipeline=pipeline), raise_server_exceptions=False)
+    return TestClient(signed_in(create_app(pipeline=pipeline)), raise_server_exceptions=False)
 
 
 def test_ask_returns_answer_sql_and_rows() -> None:

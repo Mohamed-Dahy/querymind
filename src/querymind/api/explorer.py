@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi import Path as PathParam
 
 from querymind.api.conversations import Store
+from querymind.api.deps import CurrentUser, get_current_user, owner_of
 from querymind.api.schemas import ErrorResponse, TableQuestionList
 from querymind.config import Settings
 from querymind.db.connection import connect_readonly
@@ -24,7 +25,9 @@ from querymind.semantic.dictionary import load_dictionaries
 from querymind.semantic.examples import load_all_examples
 from querymind.semantic.loader import load_semantic_layers
 
-router = APIRouter(tags=["explorer"])
+# Every route here shows the schema or saved questions: logged-in users only (5.1). Which tables
+# a role may see narrows this in 5.2.
+router = APIRouter(tags=["explorer"], dependencies=[Depends(get_current_user)])
 
 _DATABASE_ERRORS: dict[int | str, dict[str, Any]] = {
     503: {"model": ErrorResponse, "description": "The database isn't available"},
@@ -102,11 +105,13 @@ def get_catalog(explorer: Explorer) -> Catalog:
 )
 def get_table_questions(
     table: Annotated[str, PathParam(max_length=63)],  # Postgres's longest name
+    user: CurrentUser,
     store: Store,
     limit: Annotated[int, Query(ge=1, le=20)] = 5,
 ) -> TableQuestionList:
-    """Recent saved questions whose SQL read this table. No such table: an empty list."""
-    return TableQuestionList(questions=store.recent_questions_using(table, limit=limit))
+    """Your recent saved questions whose SQL read this table. No such table: an empty list."""
+    found = store.recent_questions_using(table, owner=owner_of(user), limit=limit)
+    return TableQuestionList(questions=found)
 
 
 @router.get("/semantic", response_model=SemanticOverview)

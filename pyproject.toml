@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "AI data analyst agent: plain-language questions to safe SQL, answers, and charts."
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "argon2-cffi>=25.1.0",
+    "email-validator>=2.3.0",
     "fastapi>=0.156.0",
     "httpx>=0.28.1",
     "langchain-google-genai>=4.4.2",
@@ -11,6 +13,7 @@ dependencies = [
     "langgraph>=1.2.16",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.16.0",
+    "pyjwt>=2.15.1",
     "pyyaml>=6.0.3",
     "sqlglot>=30.23.0",
     "uvicorn>=0.54.0",

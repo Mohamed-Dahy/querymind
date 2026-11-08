@@ -51,6 +51,16 @@ class Settings(BaseSettings):
     app_db_user: str | None = None
     app_db_password: SecretStr | None = None
 
+    # --- Logins (5.1). The API needs both the app's role and JWT_SECRET; scripts and evals don't.
+    # Signs the access tokens: anyone who has it can make a token for any user. 32+ characters.
+    jwt_secret: SecretStr | None = Field(default=None, min_length=32)
+    access_token_minutes: int = Field(default=15, ge=1, le=60)
+    refresh_token_days: int = Field(default=14, ge=1, le=90)
+    # The refresh cookie. Its path is what the *browser* sees: the Vite proxy (and later the
+    # production server) puts the API under /api. Secure: sent over HTTPS only (and localhost).
+    auth_cookie_path: str = "/api/auth"
+    auth_cookie_secure: bool = True
+
     # --- LLM (Bedrock is added in Phase 6) ---
     llm_provider: Literal["groq", "gemini"]
     # 0 = most predictable output, which is what we want for SQL. (Gemini 3.x ignores it.)
@@ -103,6 +113,12 @@ class Settings(BaseSettings):
     query_rewriting: bool = False
     # Embeddings always use Google (GOOGLE_API_KEY), whatever LLM_PROVIDER is.
     embedding_model: str = "gemini-embedding-001"
+
+    @field_validator("jwt_secret", mode="before")
+    @classmethod
+    def _empty_secret_is_unset(cls, value: object) -> object:
+        """`JWT_SECRET=` (as in .env.example) means not set: scripts still run, the API won't."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("semantic_layer_paths", mode="before")
     @classmethod
@@ -163,6 +179,21 @@ class Settings(BaseSettings):
     def admin_conninfo(self) -> str:
         """Connection string for the admin role. Setup scripts only."""
         return self._conninfo(self.postgres_admin_user, self.postgres_admin_password)
+
+    def require_logins(self) -> SecretStr:
+        """What the API needs for logins (5.1): the app's role and JWT_SECRET. Returns the secret.
+
+        Raises:
+            ConfigError: one of them isn't set; the API refuses to start.
+        """
+        missing = [
+            name
+            for name, value in (("APP_DB_USER", self.app_db_user), ("JWT_SECRET", self.jwt_secret))
+            if value is None
+        ]
+        if missing or self.jwt_secret is None:
+            raise ConfigError(f"The API needs {' and '.join(missing)} for logins (.env.example)")
+        return self.jwt_secret
 
     @property
     def history_enabled(self) -> bool:

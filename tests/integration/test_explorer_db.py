@@ -11,13 +11,14 @@ from querymind.api.main import create_app
 from querymind.config import Settings
 from querymind.db.schema import quote_name, read_row_counts
 from querymind.semantic.loader import load_semantic_layers
+from tests.auth_helpers import signed_in
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
 def api(settings: Settings) -> Iterator[TestClient]:
-    app = create_app(pipeline=object(), explorer=create_explorer(settings))  # type: ignore[arg-type]
+    app = signed_in(create_app(pipeline=object(), explorer=create_explorer(settings)))  # type: ignore[arg-type]
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 

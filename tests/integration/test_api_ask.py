@@ -8,13 +8,14 @@ from querymind.agent.schemas import SqlDraft
 from querymind.api.main import create_app
 from querymind.config import Settings
 from querymind.llm.fake import FakeLLMProvider, FakeResponse
+from tests.auth_helpers import signed_in
 
 pytestmark = pytest.mark.integration
 
 
 def client_with(settings: Settings, *responses: FakeResponse) -> TestClient:
     pipeline = Pipeline(llm=FakeLLMProvider(responses), settings=settings)
-    return TestClient(create_app(pipeline=pipeline))
+    return TestClient(signed_in(create_app(pipeline=pipeline)))
 
 
 def draft(sql: str) -> SqlDraft:
@@ -104,7 +105,7 @@ def test_a_four_turn_conversation(settings: Settings) -> None:
 
     conversation = None
     sent_sql = []
-    with TestClient(create_app(pipeline=pipeline)) as client:
+    with TestClient(signed_in(create_app(pipeline=pipeline))) as client:
         for question, _ in FOUR_TURNS:
             body = {"question": question, "conversation_id": conversation}
             response = client.post("/ask", json=body)

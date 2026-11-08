@@ -12,10 +12,12 @@ from querymind import __version__
 from querymind.agent.events import AgentEvent, Finished
 from querymind.api.deps import (
     AnswersQuestions,
+    CurrentUser,
     StreamsAnswers,
     get_pipeline,
     get_store,
     get_streaming_pipeline,
+    owner_of,
 )
 from querymind.api.errors import error_response
 from querymind.api.schemas import (
@@ -31,7 +33,7 @@ from querymind.api.schemas import (
     StreamEvent,
     reply_from,
 )
-from querymind.store.conversations import ConversationStore
+from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import StoreError
 
 logger = logging.getLogger(__name__)
@@ -55,9 +57,19 @@ def close_runs_when_the_response_ends() -> Generator[OpenRuns]:
         run.close()
 
 
+def _check_owner(
+    store: ConversationStore | None, conversation_id: UUID | None, owner: Owner
+) -> None:
+    """A follow-up only continues your own conversation: someone else's id is a 404, before the
+    agent loads any of its turns. (A new id, or no store, is fine.)"""
+    if store is not None and conversation_id is not None:
+        store.check_owner(conversation_id, owner=owner)
+
+
 def _save(
     store: ConversationStore | None,
     conversation_id: UUID,
+    owner: Owner,
     reply: AskResponse | ClarificationResponse | RefusalResponse,
     trace: Sequence[AgentEvent] = (),
 ) -> None:
@@ -68,6 +80,7 @@ def _save(
     try:
         store.save_turn(
             conversation_id,
+            owner=owner,
             question=reply.question,
             kind=reply.kind,
             sql=reply.sql if isinstance(reply, AskResponse) else None,
@@ -80,6 +93,8 @@ def _save(
 
 # Documented in OpenAPI so API users know every error shape in advance (handlers in main.py).
 _ERRORS: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorResponse, "description": "Not logged in"},
+    404: {"model": ErrorResponse, "description": "The conversation isn't yours, or doesn't exist"},
     422: {"model": ErrorResponse, "description": "Invalid question, or unsafe generated SQL"},
     429: {"model": ErrorResponse, "description": "The LLM provider's usage limit was reached"},
     502: {"model": ErrorResponse, "description": "The LLM or the database failed"},
@@ -91,6 +106,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
 @router.post("/ask", response_model=AskReply, responses=_ERRORS, tags=["questions"])
 def ask(
     request: AskRequest,
+    user: CurrentUser,
     pipeline: Annotated[AnswersQuestions, Depends(get_pipeline)],
     store: Annotated[ConversationStore | None, Depends(get_store)],
 ) -> AskResponse | ClarificationResponse | RefusalResponse:
@@ -104,21 +120,27 @@ def ask(
     """
     # A plain `def` (not `async def`): the pipeline blocks on the database and the LLM, so
     # FastAPI runs it in a worker thread and the server stays free for other requests.
+    owner = owner_of(user)
+    _check_owner(store, request.conversation_id, owner)
     conversation_id = request.conversation_id or uuid4()
     reply = pipeline.ask(request.question, conversation_id=str(conversation_id))
     response = reply_from(reply, conversation_id=conversation_id)
-    _save(store, conversation_id, response)
+    _save(store, conversation_id, owner, response)
     return response
 
 
 @router.post(
     "/ask/stream",
     response_class=EventSourceResponse,
-    responses={422: {"model": ErrorResponse, "description": "Invalid question"}},
+    responses={
+        401: {"model": ErrorResponse, "description": "Not logged in"},
+        422: {"model": ErrorResponse, "description": "Invalid question"},
+    },
     tags=["questions"],
 )
 def ask_stream(
     request: AskRequest,
+    user: CurrentUser,
     pipeline: Annotated[StreamsAnswers, Depends(get_streaming_pipeline)],
     runs: Annotated[OpenRuns, Depends(close_runs_when_the_response_ends)],
     store: Annotated[ConversationStore | None, Depends(get_store)],
@@ -131,8 +153,10 @@ def ask_stream(
     Closing the connection stops the run after the step working now, and nothing is saved.
     """
     # A plain `def`, as in `ask` above: FastAPI runs each step of this generator in a worker thread.
+    owner = owner_of(user)
     conversation_id = request.conversation_id or uuid4()
     try:
+        _check_owner(store, request.conversation_id, owner)  # a 404 arrives as the error event
         run = pipeline.stream(request.question, conversation_id=str(conversation_id))
         runs.append(run)
         trace: list[AgentEvent] = []
@@ -140,7 +164,7 @@ def ask_stream(
             if isinstance(event, Finished):
                 response = reply_from(event.reply, conversation_id=conversation_id)
                 # Saved before the answer goes out, so a reload right after it finds the turn.
-                _save(store, conversation_id, response, trace)
+                _save(store, conversation_id, owner, response, trace)
                 yield FinalEvent(reply=response)
             else:
                 trace.append(event)
