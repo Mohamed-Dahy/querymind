@@ -489,14 +489,14 @@
               "name": "ship_name",
               "description": "",
               "synonyms": [],
-              "pii": false,
+              "pii": true,
               "dictionary_note": "Name of the shipping recipient."
             },
             {
               "name": "ship_address",
               "description": "",
               "synonyms": [],
-              "pii": false,
+              "pii": true,
               "dictionary_note": "Street address for delivery."
             },
             {
@@ -517,7 +517,7 @@
               "name": "ship_postal_code",
               "description": "",
               "synonyms": [],
-              "pii": false,
+              "pii": true,
               "dictionary_note": "Postal code for delivery, or NULL if none."
             },
             {

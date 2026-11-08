@@ -93,6 +93,10 @@ def test_the_northwind_layer_loads() -> None:
     assert layer.database == "northwind"
     assert {"revenue", "key_account", "active_customer", "late_shipment"} <= set(layer.metrics)
     assert ("customers", "phone") in layer.pii_columns  # personal data is declared (5.4 masks it)
+    # A delivery address is personal data too (decided 2026-11-08); employee names are work data.
+    shipping = {("orders", "ship_name"), ("orders", "ship_address"), ("orders", "ship_postal_code")}
+    assert shipping <= layer.pii_columns
+    assert ("employees", "last_name") not in layer.pii_columns
 
 
 def test_northwind_and_chinook_load_together() -> None:

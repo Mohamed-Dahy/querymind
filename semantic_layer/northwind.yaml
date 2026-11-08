@@ -72,6 +72,9 @@ tables:
       shipped_date: {description: "NULL while the order hasn't shipped yet."}
       ship_via: {description: "The shipper that delivered the order.", synonyms: [carrier]}
       freight: {description: "Shipping cost charged for the order.", synonyms: [shipping cost]}
+      ship_name: {pii: true}
+      ship_address: {pii: true}
+      ship_postal_code: {pii: true}
   order_details:
     description: One line per product in an order; the source of all sales amounts.
     synonyms: [order lines, line items]
