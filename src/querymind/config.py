@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
+from cryptography.fernet import Fernet
 from psycopg.conninfo import make_conninfo
 from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -60,6 +61,11 @@ class Settings(BaseSettings):
     # production server) puts the API under /api. Secure: sent over HTTPS only (and localhost).
     auth_cookie_path: str = "/api/auth"
     auth_cookie_secure: bool = True
+
+    # --- Secrets store (5.7): encrypts saved LLM keys and database passwords. Comma-separated
+    # Fernet keys: the first encrypts, every one decrypts (so a key can be rotated). Not set = the
+    # secrets store can't be used; scripts and evals don't need it.
+    secrets_key: Annotated[list[SecretStr], NoDecode] | None = None
 
     # --- Rate limits (5.6), per process. Questions cost LLM calls on our key until BYOK (5.8). ---
     rate_questions_per_minute: int = Field(default=10, ge=1)  # per user
@@ -128,6 +134,28 @@ class Settings(BaseSettings):
     def _empty_secret_is_unset(cls, value: object) -> object:
         """`JWT_SECRET=` (as in .env.example) means not set: scripts still run, the API won't."""
         return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("secrets_key", mode="before")
+    @classmethod
+    def _secret_keys_list(cls, value: object) -> object:
+        """`SECRETS_KEY=new,old` → two keys; empty (as in .env.example) = not set."""
+        if isinstance(value, str):
+            keys = [part.strip() for part in value.split(",") if part.strip()]
+            return keys or None
+        return value
+
+    @field_validator("secrets_key", mode="after")
+    @classmethod
+    def _secret_keys_are_fernet_keys(cls, keys: list[SecretStr] | None) -> list[SecretStr] | None:
+        """Fail at start, not at the first save. The message never repeats the key itself."""
+        for number, key in enumerate(keys or [], start=1):
+            try:
+                Fernet(key.get_secret_value())
+            except ValueError:
+                raise ValueError(
+                    f"key {number} isn't a valid Fernet key (.env.example says how to make one)"
+                ) from None
+        return keys
 
     @field_validator("semantic_layer_paths", mode="before")
     @classmethod
@@ -203,6 +231,16 @@ class Settings(BaseSettings):
         if missing or self.jwt_secret is None:
             raise ConfigError(f"The API needs {' and '.join(missing)} for logins (.env.example)")
         return self.jwt_secret
+
+    def require_secrets_keys(self) -> list[SecretStr]:
+        """The keys the secrets store encrypts with (5.7), newest first.
+
+        Raises:
+            ConfigError: SECRETS_KEY isn't set.
+        """
+        if not self.secrets_key:
+            raise ConfigError("SECRETS_KEY is not set: the secrets store needs it (.env.example)")
+        return self.secrets_key
 
     @property
     def history_enabled(self) -> bool:

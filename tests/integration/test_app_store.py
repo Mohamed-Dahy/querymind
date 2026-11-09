@@ -40,6 +40,7 @@ APP_TABLES = (
     "memberships",
     "refresh_tokens",
     "audit_log",  # 5.5
+    "secrets",  # 5.7: encrypted, but the agent must not even see the tokens
 )
 REPLY = {
     "kind": "answer",

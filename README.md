@@ -99,6 +99,9 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 - **Rate limits.** Per user (10 questions a minute, 200 a day), for everyone together (1,000 questions a day: it
   is our LLM key), on re-runs, and on logins per address and per email, so passwords can't be guessed in bulk.
   Over a limit: HTTP 429 with `Retry-After`, and the web UI counts down.
+- **Saved keys, encrypted.** The LLM keys and database passwords users will save (bring your own key) are encrypted
+  at rest, bound to their row (a copy moved to another account won't open), rotatable to a new key, and never
+  logged or sent back: an LLM key shows only its last 4 characters. Log lines also hide anything shaped like a key.
 - *Coming later:* PII masking, per-role table permissions and row-level security.
 
 ## How accurate is it?

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 
 from querymind.config import ConfigError, Settings, load_settings
 
@@ -231,3 +232,37 @@ def test_logins_need_the_app_role_too(valid_env: pytest.MonkeyPatch) -> None:
     valid_env.setenv("APP_DB_USER", "qm_app")
     valid_env.setenv("APP_DB_PASSWORD", "app-password")
     assert load_settings(env_file=None).require_logins().get_secret_value() == "x" * 40
+
+
+# --- Secrets store (5.7) ---
+
+
+def test_an_empty_secrets_key_means_not_set(valid_env: pytest.MonkeyPatch) -> None:
+    valid_env.setenv("SECRETS_KEY", "")  # as in .env.example: scripts and evals still load
+    settings = load_settings(env_file=None)
+
+    assert settings.secrets_key is None
+    with pytest.raises(ConfigError, match="SECRETS_KEY is not set"):
+        settings.require_secrets_keys()
+
+
+def test_secrets_key_holds_new_and_old_keys_in_order(valid_env: pytest.MonkeyPatch) -> None:
+    new, old = Fernet.generate_key().decode(), Fernet.generate_key().decode()
+    valid_env.setenv("SECRETS_KEY", f" {new} , {old} ")
+
+    keys = load_settings(env_file=None).require_secrets_keys()
+
+    assert [key.get_secret_value() for key in keys] == [new, old]
+
+
+def test_a_bad_secrets_key_is_refused_without_repeating_it(
+    valid_env: pytest.MonkeyPatch,
+) -> None:
+    good = Fernet.generate_key().decode()
+    valid_env.setenv("SECRETS_KEY", f"{good},not-a-real-key-but-secret")
+
+    with pytest.raises(ConfigError, match=r"SECRETS_KEY: .*key 2 isn't a valid Fernet key") as bad:
+        load_settings(env_file=None)
+
+    assert "not-a-real-key-but-secret" not in str(bad.value)
+    assert good not in str(bad.value)

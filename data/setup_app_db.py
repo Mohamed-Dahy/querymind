@@ -6,7 +6,8 @@ APP_DB_PASSWORD in .env):
 
 Safe to re-run: no table or row is dropped, and the role's password and privileges are reset every
 time. Since 5.1 it also holds the accounts (users, workspaces, memberships, refresh tokens), and
-conversations belong to a user. Rows saved before that have no owner; give them to your account with
+conversations belong to a user; since 5.7 it holds users' encrypted secrets too. Conversations saved
+before 5.1 have no owner; give them to your account with
     uv run python data/setup_app_db.py --owner you@example.com
 
 The agent and the app never share a role. `analyst_ro` reads business tables and can't see this
@@ -149,6 +150,21 @@ TABLES = (
     CREATE INDEX IF NOT EXISTS audit_log_per_workspace
         ON {SCHEMA}.audit_log (workspace_id, id DESC)
     """,
+    # --- The secrets store (5.7): users' LLM keys and database passwords, encrypted. ---
+    # `ciphertext` is a Fernet token bound to (workspace, id): see src/querymind/secrets/cipher.py.
+    # No DEFAULT on id: the app makes it before encrypting. `hint` = an LLM key's last 4 characters.
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.secrets (
+        id uuid PRIMARY KEY,
+        workspace_id uuid NOT NULL REFERENCES {SCHEMA}.workspaces (id) ON DELETE CASCADE,
+        kind text NOT NULL CHECK (kind IN ('llm_key', 'db_password')),
+        ciphertext text NOT NULL,
+        hint text CHECK (hint IS NULL OR (kind = 'llm_key' AND char_length(hint) = 4)),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+    )
+    """,
+    f"CREATE INDEX IF NOT EXISTS secrets_per_workspace ON {SCHEMA}.secrets (workspace_id)",
     # What the history list sorts by: one user's conversations.
     f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",
     f"""
