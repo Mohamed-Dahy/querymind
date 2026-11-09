@@ -68,6 +68,11 @@
     "status": 403,
     "message": "Only a workspace admin can see this."
   },
+  "rate_limited": {
+    "status": 429,
+    "message": "Too many questions for now. Please wait a moment before asking again.",
+    "retry_after_seconds": 30
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."

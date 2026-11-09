@@ -17,6 +17,7 @@ export const ERROR_TITLES = {
   forbidden: "Your role can't open this.",
   accounts_unavailable: "Logins aren't working right now.",
   llm_rate_limited: 'The AI model has reached its usage limit.',
+  rate_limited: "You've reached QueryMind's limit for now.",
   llm_unavailable: 'The AI model is unavailable right now. Please try again.',
   llm_bad_output: 'The AI model gave an unusable answer. Please try rephrasing.',
   api_unreachable: "The QueryMind API isn't reachable.",

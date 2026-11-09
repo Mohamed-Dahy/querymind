@@ -1810,7 +1810,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The LLM provider's usage limit was reached */
+            /** @description Too many questions, or the LLM's usage limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1881,6 +1881,15 @@ export interface operations {
             };
             /** @description Invalid question */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many questions: wait Retry-After seconds */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

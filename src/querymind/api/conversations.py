@@ -19,6 +19,7 @@ from querymind.api.deps import (
     get_audit,
     get_conversation_pipeline,
     get_store,
+    limit_reruns,
     owner_of,
 )
 from querymind.api.schemas import (
@@ -118,7 +119,10 @@ def delete_conversation(
 
 
 @router.post(
-    "/{conversation_id}/turns/{n}/rerun", response_model=RerunResponse, responses=_NOT_FOUND
+    "/{conversation_id}/turns/{n}/rerun",
+    response_model=RerunResponse,
+    responses=_NOT_FOUND,
+    dependencies=[Depends(limit_reruns)],  # 5.6
 )
 def rerun_turn(
     conversation_id: UUID,

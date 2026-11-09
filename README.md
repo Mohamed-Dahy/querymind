@@ -96,6 +96,9 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
   15 minutes). Passwords are stored only as Argon2id hashes. The refresh token sits in an httpOnly cookie, is
   replaced on every use, and a copied one that comes back logs that whole session out. Each user sees only their
   own conversations: someone else's reads as "doesn't exist". A test calls every route without a login.
+- **Rate limits.** Per user (10 questions a minute, 200 a day), for everyone together (1,000 questions a day: it
+  is our LLM key), on re-runs, and on logins per address and per email, so passwords can't be guessed in bulk.
+  Over a limit: HTTP 429 with `Retry-After`, and the web UI counts down.
 - *Coming later:* PII masking, per-role table permissions and row-level security.
 
 ## How accurate is it?

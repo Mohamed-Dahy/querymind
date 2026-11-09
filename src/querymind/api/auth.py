@@ -20,7 +20,8 @@ from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 from querymind.api import audit_trail
-from querymind.api.deps import CurrentUser, get_accounts, get_audit
+from querymind.api.deps import CurrentUser, client_ip, get_accounts, get_audit, get_limits
+from querymind.api.ratelimit import RateLimits
 from querymind.api.schemas import ErrorResponse
 from querymind.auth.errors import EmailTakenError, InvalidLoginError, NotAuthenticatedError
 from querymind.auth.passwords import (
@@ -40,6 +41,7 @@ REFRESH_COOKIE = "qm_refresh"
 router = APIRouter(prefix="/auth", tags=["auth"])
 Accounts = Annotated[AccountStore, Depends(get_accounts)]
 Audit = Annotated[AuditStore | None, Depends(get_audit)]
+Limits = Annotated[RateLimits | None, Depends(get_limits)]
 
 
 class SignupRequest(BaseModel):
@@ -156,9 +158,17 @@ def _expiry(cookies: CookieSettings) -> datetime:
     responses={409: {"model": ErrorResponse, "description": "The email has an account"}},
 )
 def signup(
-    body: SignupRequest, response: Response, accounts: Accounts, auth: Auth, audit: Audit
+    body: SignupRequest,
+    request: Request,
+    response: Response,
+    accounts: Accounts,
+    auth: Auth,
+    audit: Audit,
+    limits: Limits,
 ) -> TokenResponse:
     """Create an account and your own workspace (you are its admin), and log in."""
+    if limits is not None:
+        limits.check_signup(client_ip(request))  # 5.6, before any hashing
     email = body.email.lower()
     name = f"{email.split('@')[0]}'s workspace"[:100]
     try:
@@ -174,10 +184,19 @@ def signup(
 
 @router.post("/login", response_model=TokenResponse, responses=_BAD_LOGIN)
 def login(
-    body: LoginRequest, response: Response, accounts: Accounts, auth: Auth, audit: Audit
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    accounts: Accounts,
+    auth: Auth,
+    audit: Audit,
+    limits: Limits,
 ) -> TokenResponse:
     """Log in with email and password."""
     email = body.email.lower()
+    if limits is not None:
+        # 5.6: per address and per account, before the (deliberately slow) password check.
+        limits.check_login(client_ip(request), email)
     found = accounts.find_login(email)
     # Checked even when there's no account (against a dummy hash), so both take the same time.
     if not verify_password(found[1] if found else None, body.password) or found is None:

@@ -35,6 +35,7 @@ from querymind.api.evals import EvalsData, create_evals
 from querymind.api.evals import router as evals_router
 from querymind.api.explorer import ExplorerData, create_explorer
 from querymind.api.explorer import router as explorer_router
+from querymind.api.ratelimit import RateLimits
 from querymind.api.routes import router
 from querymind.api.saved_questions import router as saved_questions_router
 from querymind.api.schemas import ErrorResponse
@@ -58,6 +59,7 @@ def create_app(
     tokens: TokenService | None = None,
     auth_cookie: CookieSettings | None = None,
     audit: AuditStore | None = None,
+    limits: RateLimits | None = None,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
     real ones at startup, which then need logins set up (APP_DB_USER and JWT_SECRET, 5.1)."""
@@ -74,6 +76,7 @@ def create_app(
             app.state.tokens = tokens
             app.state.auth_cookie = auth_cookie
             app.state.audit = audit
+            app.state.limits = limits
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
@@ -82,6 +85,7 @@ def create_app(
             app.state.tokens = TokenService(secret, access_minutes=settings.access_token_minutes)
             app.state.auth_cookie = CookieSettings.from_settings(settings)
             app.state.audit = AuditStore(settings)  # needs the app's role, as logins do
+            app.state.limits = RateLimits.from_settings(settings)
             app.state.store = create_store(settings)
             app.state.explorer = create_explorer(settings)
             app.state.evals = create_evals(settings)

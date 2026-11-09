@@ -3321,7 +3321,7 @@
                 }
               }
             },
-            "description": "The LLM provider's usage limit was reached"
+            "description": "Too many questions, or the LLM's usage limit"
           },
           "502": {
             "content": {
@@ -3478,6 +3478,16 @@
               }
             },
             "description": "Invalid question"
+          },
+          "429": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many questions: wait Retry-After seconds"
           }
         },
         "security": [

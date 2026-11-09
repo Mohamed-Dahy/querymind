@@ -9,6 +9,7 @@ import logging
 import math
 
 from querymind.api.evals import EvalsUnavailableError
+from querymind.api.ratelimit import RateLimitedError
 from querymind.api.schemas import ErrorResponse
 from querymind.auth.errors import (
     EmailTakenError,
@@ -48,6 +49,7 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     InvalidLoginError: (401, "invalid_login"),
     EmailTakenError: (409, "email_taken"),
     ForbiddenError: (403, "forbidden"),
+    RateLimitedError: (429, "rate_limited"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a
@@ -77,7 +79,8 @@ def error_response(exc: Exception) -> tuple[int, ErrorResponse]:
         message = next(text for kind, text in LLM_MESSAGES.items() if isinstance(exc, kind))
     else:
         message = str(exc)
-    wait = exc.retry_after_seconds if isinstance(exc, LLMRateLimitError) else None
+    limited = (LLMRateLimitError, RateLimitedError)  # ours (5.6) or the LLM provider's
+    wait = exc.retry_after_seconds if isinstance(exc, limited) else None
     # Whole seconds, as the Retry-After header requires. Rounded up, so a retry is never too early.
     seconds = math.ceil(wait) if wait is not None else None
     return status, ErrorResponse(error=code, message=message, retry_after_seconds=seconds)

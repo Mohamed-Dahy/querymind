@@ -25,7 +25,7 @@ const ASK_KINDS: readonly string[] = ['answer', 'clarification', 'refusal']
 export class ApiError extends Error {
   readonly code: string
   readonly status: number | undefined
-  /** How long to wait before retrying, when the API knows (only `llm_rate_limited`). */
+  /** How long to wait before retrying, when the API knows (`llm_rate_limited`, `rate_limited`). */
   readonly retryAfterSeconds: number | undefined
 
   constructor(code: string, message: string, status?: number, retryAfterSeconds?: number) {

@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from querymind.agent.events import AgentEvent, Finished
 from querymind.agent.schemas import AgentReply
+from querymind.api.ratelimit import RateLimits
 from querymind.auth.errors import ForbiddenError, NotAuthenticatedError
 from querymind.auth.tokens import AuthUser, TokenService
 from querymind.db.executor import QueryResult
@@ -136,3 +137,36 @@ def get_audit(request: Request) -> AuditStore | None:
     """The audit store created at startup, or None (tests that don't look at it)."""
     audit: AuditStore | None = request.app.state.audit
     return audit
+
+
+def get_limits(request: Request) -> RateLimits | None:
+    """The rate limits created at startup, or None (tests that don't test them: no limits)."""
+    limits: RateLimits | None = request.app.state.limits
+    return limits
+
+
+def client_ip(request: Request) -> str:
+    """The caller's address, for per-IP limits. The socket's peer: in dev that's the Vite proxy
+    (127.0.0.1) for everyone. Behind a load balancer (Phase 6) this must read X-Forwarded-For, but
+    only as set by our own proxy: a client can write any value there."""
+    return request.client.host if request.client else "unknown"
+
+
+def limit_questions(
+    user: CurrentUser, limits: Annotated[RateLimits | None, Depends(get_limits)]
+) -> None:
+    """Room for one more question (5.6). After the login check: a 401 comes before a 429.
+
+    Raises:
+        RateLimitedError: over a limit (HTTP 429 with Retry-After).
+    """
+    if limits is not None:
+        limits.check_question(user.user_id)
+
+
+def limit_reruns(
+    user: CurrentUser, limits: Annotated[RateLimits | None, Depends(get_limits)]
+) -> None:
+    """Room for one more re-run (5.6)."""
+    if limits is not None:
+        limits.check_rerun(user.user_id)

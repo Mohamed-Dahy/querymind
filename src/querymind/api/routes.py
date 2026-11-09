@@ -20,6 +20,7 @@ from querymind.api.deps import (
     get_pipeline,
     get_store,
     get_streaming_pipeline,
+    limit_questions,
     owner_of,
 )
 from querymind.api.errors import error_response
@@ -100,14 +101,20 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse, "description": "Not logged in"},
     404: {"model": ErrorResponse, "description": "The conversation isn't yours, or doesn't exist"},
     422: {"model": ErrorResponse, "description": "Invalid question, or unsafe generated SQL"},
-    429: {"model": ErrorResponse, "description": "The LLM provider's usage limit was reached"},
+    429: {"model": ErrorResponse, "description": "Too many questions, or the LLM's usage limit"},
     502: {"model": ErrorResponse, "description": "The LLM or the database failed"},
     503: {"model": ErrorResponse, "description": "The database is not reachable"},
     504: {"model": ErrorResponse, "description": "The query took too long"},
 }
 
 
-@router.post("/ask", response_model=AskReply, responses=_ERRORS, tags=["questions"])
+@router.post(
+    "/ask",
+    response_model=AskReply,
+    responses=_ERRORS,
+    tags=["questions"],
+    dependencies=[Depends(limit_questions)],  # 5.6: 429 when over a limit
+)
 def ask(
     request: AskRequest,
     user: CurrentUser,
@@ -158,8 +165,14 @@ def ask(
     responses={
         401: {"model": ErrorResponse, "description": "Not logged in"},
         422: {"model": ErrorResponse, "description": "Invalid question"},
+        429: {
+            "model": ErrorResponse,
+            "description": "Too many questions: wait Retry-After seconds",
+        },
     },
     tags=["questions"],
+    # Checked before the stream starts, so an over-limit answer is a plain HTTP 429, not an event.
+    dependencies=[Depends(limit_questions)],
 )
 def ask_stream(
     request: AskRequest,

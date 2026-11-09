@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     auth_cookie_path: str = "/api/auth"
     auth_cookie_secure: bool = True
 
+    # --- Rate limits (5.6), per process. Questions cost LLM calls on our key until BYOK (5.8). ---
+    rate_questions_per_minute: int = Field(default=10, ge=1)  # per user
+    rate_questions_per_day: int = Field(default=200, ge=1)  # per user
+    rate_questions_total_per_day: int = Field(default=1000, ge=1)  # everyone together
+    rate_reruns_per_minute: int = Field(default=30, ge=1)  # per user
+    rate_logins_per_ip_per_minute: int = Field(default=10, ge=1)
+    rate_logins_per_email_per_minute: int = Field(default=5, ge=1)
+    rate_signups_per_ip_per_hour: int = Field(default=5, ge=1)
+
     # --- LLM (Bedrock is added in Phase 6) ---
     llm_provider: Literal["groq", "gemini"]
     # 0 = most predictable output, which is what we want for SQL. (Gemini 3.x ignores it.)
