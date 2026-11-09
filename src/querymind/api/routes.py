@@ -1,6 +1,7 @@
 """The HTTP endpoints: POST /ask, POST /ask/stream and GET /health."""
 
 import logging
+import time
 from collections.abc import Generator, Sequence
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -10,10 +11,12 @@ from fastapi.sse import EventSourceResponse
 
 from querymind import __version__
 from querymind.agent.events import AgentEvent, Finished
+from querymind.api import audit_trail
 from querymind.api.deps import (
     AnswersQuestions,
     CurrentUser,
     StreamsAnswers,
+    get_audit,
     get_pipeline,
     get_store,
     get_streaming_pipeline,
@@ -33,6 +36,7 @@ from querymind.api.schemas import (
     StreamEvent,
     reply_from,
 )
+from querymind.store.audit import AuditEntry, AuditStore
 from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import StoreError
 
@@ -109,6 +113,7 @@ def ask(
     user: CurrentUser,
     pipeline: Annotated[AnswersQuestions, Depends(get_pipeline)],
     store: Annotated[ConversationStore | None, Depends(get_store)],
+    audit: Annotated[AuditStore | None, Depends(get_audit)],
 ) -> AskResponse | ClarificationResponse | RefusalResponse:
     """Answer a question about the data: the answer, the SQL that ran, and the rows.
 
@@ -120,12 +125,30 @@ def ask(
     """
     # A plain `def` (not `async def`): the pipeline blocks on the database and the LLM, so
     # FastAPI runs it in a worker thread and the server stays free for other requests.
+    started = time.perf_counter()
     owner = owner_of(user)
-    _check_owner(store, request.conversation_id, owner)
     conversation_id = request.conversation_id or uuid4()
-    reply = pipeline.ask(request.question, conversation_id=str(conversation_id))
+    try:
+        _check_owner(store, request.conversation_id, owner)
+        reply = pipeline.ask(request.question, conversation_id=str(conversation_id))
+    except Exception as exc:
+        # Every question gets its audit line (5.5), however it ended. Then the usual error reply.
+        line = audit_trail.for_error(
+            exc,
+            action="ask",
+            user=user,
+            question=request.question,
+            started=started,
+            conversation_id=conversation_id,
+        )
+        audit_trail.write(audit, line)
+        raise
     response = reply_from(reply, conversation_id=conversation_id)
     _save(store, conversation_id, owner, response)
+    line = audit_trail.for_reply(
+        response, user=user, conversation_id=conversation_id, started=started
+    )
+    audit_trail.write(audit, line)
     return response
 
 
@@ -144,17 +167,21 @@ def ask_stream(
     pipeline: Annotated[StreamsAnswers, Depends(get_streaming_pipeline)],
     runs: Annotated[OpenRuns, Depends(close_runs_when_the_response_ends)],
     store: Annotated[ConversationStore | None, Depends(get_store)],
+    audit: Annotated[AuditStore | None, Depends(get_audit)],
 ) -> Generator[StreamEvent]:
     """The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).
 
     Each event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or
     `error` (its error body): the status is already sent, so a failed run still answers 200.
 
-    Closing the connection stops the run after the step working now, and nothing is saved.
+    Closing the connection stops the run after the step working now, and nothing is saved (the
+    audit log says `cancelled`).
     """
     # A plain `def`, as in `ask` above: FastAPI runs each step of this generator in a worker thread.
+    started = time.perf_counter()
     owner = owner_of(user)
     conversation_id = request.conversation_id or uuid4()
+    written = False  # the audit line, once per question (5.5)
     try:
         _check_owner(store, request.conversation_id, owner)  # a 404 arrives as the error event
         run = pipeline.stream(request.question, conversation_id=str(conversation_id))
@@ -165,13 +192,44 @@ def ask_stream(
                 response = reply_from(event.reply, conversation_id=conversation_id)
                 # Saved before the answer goes out, so a reload right after it finds the turn.
                 _save(store, conversation_id, owner, response, trace)
+                line = audit_trail.for_reply(
+                    response, user=user, conversation_id=conversation_id, started=started
+                )
+                audit_trail.write(audit, line)
+                written = True
                 yield FinalEvent(reply=response)
             else:
                 trace.append(event)
                 yield event
     except Exception as exc:
+        line = audit_trail.for_error(
+            exc,
+            action="ask",
+            user=user,
+            question=request.question,
+            started=started,
+            conversation_id=conversation_id,
+        )
+        audit_trail.write(audit, line)
+        written = True
         _, body = error_response(exc)
         yield ErrorEvent(error=body)
+    finally:
+        # The client went away mid-run (Stop, a closed tab): the generator is closed here.
+        if not written:
+            audit_trail.write(
+                audit,
+                AuditEntry(
+                    action="ask",
+                    outcome="cancelled",
+                    user_id=user.user_id,
+                    workspace_id=user.workspace_id,
+                    email=user.email,
+                    conversation_id=conversation_id,
+                    question=request.question,
+                    duration_ms=audit_trail.elapsed_ms(started),
+                ),
+            )
 
 
 @router.get("/health", response_model=HealthResponse, tags=["ops"])

@@ -7,7 +7,7 @@ import psycopg
 import pytest
 
 from querymind.db.errors import DatabaseUnavailableError
-from querymind.store.conversations import ConversationStore, _like_pattern, title_from
+from querymind.store.conversations import ConversationStore, like_pattern, title_from
 from querymind.store.errors import StoreUnavailableError
 from tests.auth_helpers import TEST_OWNER
 
@@ -42,7 +42,7 @@ def test_a_long_title_is_cut_at_a_word() -> None:
     ],
 )
 def test_like_pattern_escapes_wildcards(text: str, pattern: str) -> None:
-    assert _like_pattern(text) == pattern
+    assert like_pattern(text) == pattern
 
 
 @pytest.mark.parametrize(

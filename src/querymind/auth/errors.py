@@ -16,3 +16,7 @@ class InvalidLoginError(AuthError):
 
 class EmailTakenError(AuthError):
     """Sign-up with an email that already has an account."""
+
+
+class ForbiddenError(AuthError):
+    """Logged in, but the role may not do this (e.g. the audit log is for admins)."""

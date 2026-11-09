@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse
 
 from querymind import __version__
 from querymind.agent.pipeline import Pipeline
+from querymind.api.admin import router as admin_router
 from querymind.api.auth import CookieSettings
 from querymind.api.auth import router as auth_router
 from querymind.api.conversations import router as conversations_router
@@ -42,6 +43,7 @@ from querymind.config import get_settings
 from querymind.llm import create_embedding_provider, create_llm_provider
 from querymind.logging_setup import configure_logging
 from querymind.store.accounts import AccountStore
+from querymind.store.audit import AuditStore
 from querymind.store.conversations import ConversationStore, create_store, load_history
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,7 @@ def create_app(
     accounts: AccountStore | None = None,
     tokens: TokenService | None = None,
     auth_cookie: CookieSettings | None = None,
+    audit: AuditStore | None = None,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
     real ones at startup, which then need logins set up (APP_DB_USER and JWT_SECRET, 5.1)."""
@@ -70,6 +73,7 @@ def create_app(
             app.state.accounts = accounts
             app.state.tokens = tokens
             app.state.auth_cookie = auth_cookie
+            app.state.audit = audit
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
@@ -77,6 +81,7 @@ def create_app(
             app.state.accounts = AccountStore(settings)
             app.state.tokens = TokenService(secret, access_minutes=settings.access_token_minutes)
             app.state.auth_cookie = CookieSettings.from_settings(settings)
+            app.state.audit = AuditStore(settings)  # needs the app's role, as logins do
             app.state.store = create_store(settings)
             app.state.explorer = create_explorer(settings)
             app.state.evals = create_evals(settings)
@@ -106,6 +111,7 @@ def create_app(
     )
     app.include_router(router)
     app.include_router(auth_router)
+    app.include_router(admin_router)
     app.include_router(conversations_router)
     app.include_router(saved_questions_router)
     app.include_router(explorer_router)

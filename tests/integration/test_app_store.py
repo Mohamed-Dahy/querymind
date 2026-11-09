@@ -39,6 +39,7 @@ APP_TABLES = (
     "workspaces",
     "memberships",
     "refresh_tokens",
+    "audit_log",  # 5.5
 )
 REPLY = {
     "kind": "answer",

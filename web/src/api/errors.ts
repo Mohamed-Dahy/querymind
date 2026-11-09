@@ -14,6 +14,7 @@ export const ERROR_TITLES = {
   not_authenticated: "You're logged out.",
   invalid_login: "Couldn't log you in.",
   email_taken: 'That email already has an account.',
+  forbidden: "Your role can't open this.",
   accounts_unavailable: "Logins aren't working right now.",
   llm_rate_limited: 'The AI model has reached its usage limit.',
   llm_unavailable: 'The AI model is unavailable right now. Please try again.',

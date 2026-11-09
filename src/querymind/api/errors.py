@@ -10,7 +10,12 @@ import math
 
 from querymind.api.evals import EvalsUnavailableError
 from querymind.api.schemas import ErrorResponse
-from querymind.auth.errors import EmailTakenError, InvalidLoginError, NotAuthenticatedError
+from querymind.auth.errors import (
+    EmailTakenError,
+    ForbiddenError,
+    InvalidLoginError,
+    NotAuthenticatedError,
+)
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.llm import LLMError, LLMOutputError, LLMProviderError, LLMRateLimitError
 from querymind.safety.errors import UnsafeSqlError
@@ -42,6 +47,7 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     NotAuthenticatedError: (401, "not_authenticated"),
     InvalidLoginError: (401, "invalid_login"),
     EmailTakenError: (409, "email_taken"),
+    ForbiddenError: (403, "forbidden"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

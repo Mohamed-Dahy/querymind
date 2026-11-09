@@ -123,6 +123,32 @@ TABLES = (
     CREATE UNIQUE INDEX IF NOT EXISTS saved_questions_wording_per_user
     ON {SCHEMA}.saved_questions (user_id, md5(question))
     """,
+    # --- The audit log (5.5): one row per question, re-run, sign-up, login and logout. ---
+    # Users can be deleted; their lines stay (SET NULL), with the email kept as written.
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.audit_log (
+        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        at timestamptz NOT NULL DEFAULT now(),
+        action text NOT NULL
+            CHECK (action IN ('ask', 'rerun', 'signup', 'login', 'login_failed', 'logout')),
+        outcome text NOT NULL CHECK (char_length(outcome) BETWEEN 1 AND 50),
+        user_id uuid REFERENCES {SCHEMA}.users (id) ON DELETE SET NULL,
+        workspace_id uuid REFERENCES {SCHEMA}.workspaces (id) ON DELETE SET NULL,
+        email text,
+        conversation_id uuid,
+        question text,
+        sql text,
+        tables text[] NOT NULL DEFAULT '{{}}',
+        row_count integer,
+        duration_ms integer,
+        sql_attempts integer,
+        detail text
+    )
+    """,
+    f"""
+    CREATE INDEX IF NOT EXISTS audit_log_per_workspace
+        ON {SCHEMA}.audit_log (workspace_id, id DESC)
+    """,
     # What the history list sorts by: one user's conversations.
     f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",
     f"""
@@ -163,6 +189,10 @@ def set_up(conn: psycopg.Connection, *, db_name: str, user: str, password: str) 
         # Start clean, then grant exactly this: rows only, so no DROP, ALTER or TRUNCATE.
         sql.SQL("REVOKE ALL ON {} FROM {}").format(tables, role),
         sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON {} TO {}").format(tables, role),
+        # The audit log is append-only for the app (5.5): lines can be added, never changed.
+        sql.SQL("REVOKE UPDATE, DELETE ON {} FROM {}").format(
+            sql.Identifier(SCHEMA, "audit_log"), role
+        ),
     ]
     for statement in statements:
         conn.execute(statement)

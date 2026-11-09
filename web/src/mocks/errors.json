@@ -64,6 +64,10 @@
     "status": 409,
     "message": "An account with this email already exists."
   },
+  "forbidden": {
+    "status": 403,
+    "message": "Only a workspace admin can see this."
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."

@@ -482,6 +482,173 @@
         "title": "AttemptFailedEvent",
         "type": "object"
       },
+      "AuditLine": {
+        "description": "One line of the audit log, as the API shows it.",
+        "properties": {
+          "action": {
+            "enum": [
+              "ask",
+              "rerun",
+              "signup",
+              "login",
+              "login_failed",
+              "logout"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An error's message",
+            "title": "Detail"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "description": "answer, clarification, refusal, ok, cancelled, or an error code",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql"
+          },
+          "sql_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql Attempts"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "action",
+          "outcome",
+          "email",
+          "conversation_id",
+          "question",
+          "sql",
+          "tables",
+          "row_count",
+          "duration_ms",
+          "sql_attempts",
+          "detail"
+        ],
+        "title": "AuditLine",
+        "type": "object"
+      },
+      "AuditPage": {
+        "properties": {
+          "has_more": {
+            "description": "Ask again with before=<the last line's id> for more",
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/AuditLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lines",
+          "has_more"
+        ],
+        "title": "AuditPage",
+        "type": "object"
+      },
       "BirdInfo": {
         "description": "Who BIRD's data belongs to, and what to know about the version.",
         "properties": {
@@ -2895,6 +3062,183 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/audit": {
+      "get": {
+        "description": "Your workspace's audit log, newest first: who asked what, the SQL, and how it ended.",
+        "operationId": "audit_log_admin_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ask",
+                    "rerun",
+                    "signup",
+                    "login",
+                    "login_failed",
+                    "logout"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 254,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            }
+          },
+          {
+            "description": "Find in questions and SQL",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Find in questions and SQL",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Lines older than this id",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lines older than this id",
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The audit log isn't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Audit Log",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/ask": {
       "post": {
         "description": "Answer a question about the data: the answer, the SQL that ran, and the rows.\n\nOr, with `kind` = \"clarification\", a question back with options (the question was\nambiguous), or with `kind` = \"refusal\", why QueryMind won't do it (e.g. change data).\n\nEvery reply has a `conversation_id`: send it with the next question to follow up on this\none (\"now only for 1997\"). Without one, a new conversation starts.",
@@ -3023,7 +3367,7 @@
     },
     "/ask/stream": {
       "post": {
-        "description": "The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).\n\nEach event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or\n`error` (its error body): the status is already sent, so a failed run still answers 200.\n\nClosing the connection stops the run after the step working now, and nothing is saved.",
+        "description": "The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).\n\nEach event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or\n`error` (its error body): the status is already sent, so a failed run still answers 200.\n\nClosing the connection stops the run after the step working now, and nothing is saved (the\naudit log says `cancelled`).",
         "operationId": "ask_stream_ask_stream_post",
         "requestBody": {
           "content": {

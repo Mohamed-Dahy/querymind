@@ -125,7 +125,7 @@ def title_from(question: str) -> str:
     return f"{cut}…"
 
 
-def _like_pattern(text: str) -> str:
+def like_pattern(text: str) -> str:
     """`text` found anywhere, with LIKE's own wildcards meaning themselves."""
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
@@ -245,7 +245,7 @@ class ConversationStore:
                     {
                         "user": owner.user_id,
                         "search": search,
-                        "like": _like_pattern(search or ""),
+                        "like": like_pattern(search or ""),
                         "limit": limit + 1,  # one extra says whether another page exists
                         "offset": offset,
                     },

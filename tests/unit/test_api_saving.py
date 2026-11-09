@@ -105,7 +105,7 @@ def test_the_stream_saves_the_turn_with_its_steps() -> None:
 def test_the_stream_has_saved_before_it_sends_the_answer() -> None:
     # So a reload right after the answer finds it.
     store = FakeStore()
-    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store)  # type: ignore[arg-type]
+    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store, None)  # type: ignore[arg-type]
 
     for event in events:
         if isinstance(event, FinalEvent):
@@ -161,7 +161,7 @@ def test_a_failed_question_isnt_saved(path: str) -> None:
 
 def test_a_stopped_run_isnt_saved() -> None:
     store = FakeStore()
-    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store)  # type: ignore[arg-type]
+    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store, None)  # type: ignore[arg-type]
 
     next(events)
     events.close()

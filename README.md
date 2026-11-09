@@ -88,7 +88,9 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
   only allowed tables and an allowlist of functions. Writes hidden in CTEs, system catalogs, `pg_sleep` and
   similar tricks are rejected before anything runs.
 - **Query timeout and row limit.** Queries are stopped after 10 seconds and return at most 1,000 rows.
-- **Audit trail.** Every question, its SQL and its outcome is logged.
+- **Audit trail.** Every question, re-run, sign-up, login (failed ones too) and logout is a row in the database:
+  who, the question, the SQL, the tables, the row count, the time and how it ended. The app's database role can add
+  rows but never change or delete them. Workspace admins read theirs at `GET /admin/audit`.
 - **Secrets stay out of code.** All passwords and API keys come from environment variables.
 - **Logins.** Every route except health, the evals page and login itself needs a signed access token (JWT,
   15 minutes). Passwords are stored only as Argon2id hashes. The refresh token sits in an httpOnly cookie, is

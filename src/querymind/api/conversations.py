@@ -4,6 +4,7 @@ No route here takes SQL from the client. A re-run takes only which turn, and run
 through the validator and executor again, as the agent's read-only role, with no LLM call.
 """
 
+import time
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -11,9 +12,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path, Query, status
 from pydantic import TypeAdapter
 
+from querymind.api import audit_trail
 from querymind.api.deps import (
     CurrentUser,
     ManagesConversations,
+    get_audit,
     get_conversation_pipeline,
     get_store,
     owner_of,
@@ -27,6 +30,7 @@ from querymind.api.schemas import (
     RerunResponse,
     SavedTurnResponse,
 )
+from querymind.store.audit import AuditEntry, AuditStore
 from querymind.store.conversations import ConversationStore, ConversationSummary, SavedTurn
 from querymind.store.errors import StoreUnavailableError, TurnNotFoundError
 
@@ -122,12 +126,44 @@ def rerun_turn(
     user: CurrentUser,
     store: Store,
     pipeline: Annotated[ManagesConversations, Depends(get_conversation_pipeline)],
+    audit: Annotated[AuditStore | None, Depends(get_audit)],
 ) -> RerunResponse:
     """Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body."""
-    turn = store.get_turn(conversation_id, n, owner=owner_of(user))
-    if turn.sql is None:
-        raise TurnNotFoundError("This turn has no SQL to run.")
-    result = pipeline.rerun(turn.question, turn.sql, conversation_id=str(conversation_id))
+    started = time.perf_counter()
+    question, sql = "", None
+    try:
+        turn = store.get_turn(conversation_id, n, owner=owner_of(user))
+        question, sql = turn.question, turn.sql
+        if sql is None:
+            raise TurnNotFoundError("This turn has no SQL to run.")
+        result = pipeline.rerun(question, sql, conversation_id=str(conversation_id))
+    except Exception as exc:
+        line = audit_trail.for_error(
+            exc,
+            action="rerun",
+            user=user,
+            question=question,
+            started=started,
+            conversation_id=conversation_id,
+            sql=sql,
+        )
+        audit_trail.write(audit, line)
+        raise
+    audit_trail.write(
+        audit,
+        AuditEntry(
+            action="rerun",
+            outcome="answer",
+            user_id=user.user_id,
+            workspace_id=user.workspace_id,
+            email=user.email,
+            conversation_id=conversation_id,
+            question=question,
+            sql=sql,
+            row_count=result.row_count,
+            duration_ms=audit_trail.elapsed_ms(started),
+        ),
+    )
     return RerunResponse(
         columns=result.columns,
         rows=result.rows,

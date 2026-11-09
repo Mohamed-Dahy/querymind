@@ -12,10 +12,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from querymind.agent.events import AgentEvent, Finished
 from querymind.agent.schemas import AgentReply
-from querymind.auth.errors import NotAuthenticatedError
+from querymind.auth.errors import ForbiddenError, NotAuthenticatedError
 from querymind.auth.tokens import AuthUser, TokenService
 from querymind.db.executor import QueryResult
 from querymind.store.accounts import AccountStore
+from querymind.store.audit import AuditStore
 from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import AccountsUnavailableError
 
@@ -115,3 +116,23 @@ def get_accounts(request: Request) -> AccountStore:
     if accounts is None:
         raise AccountsUnavailableError("Accounts aren't available on this server.")
     return accounts
+
+
+def require_admin(user: CurrentUser) -> AuthUser:
+    """The current user, if they are an admin of their workspace (the role in their token).
+
+    Raises:
+        ForbiddenError: another role (HTTP 403).
+    """
+    if user.role != "admin":
+        raise ForbiddenError("Only a workspace admin can see this.")
+    return user
+
+
+AdminUser = Annotated[AuthUser, Depends(require_admin)]
+
+
+def get_audit(request: Request) -> AuditStore | None:
+    """The audit store created at startup, or None (tests that don't look at it)."""
+    audit: AuditStore | None = request.app.state.audit
+    return audit

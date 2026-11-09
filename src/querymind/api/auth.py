@@ -19,9 +19,10 @@ from uuid import UUID
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
-from querymind.api.deps import CurrentUser, get_accounts
+from querymind.api import audit_trail
+from querymind.api.deps import CurrentUser, get_accounts, get_audit
 from querymind.api.schemas import ErrorResponse
-from querymind.auth.errors import InvalidLoginError, NotAuthenticatedError
+from querymind.auth.errors import EmailTakenError, InvalidLoginError, NotAuthenticatedError
 from querymind.auth.passwords import (
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
@@ -32,11 +33,13 @@ from querymind.auth.passwords import (
 from querymind.auth.tokens import Role, TokenService, hash_refresh_token, new_refresh_token
 from querymind.config import Settings
 from querymind.store.accounts import Account, AccountStore
+from querymind.store.audit import AuditEntry, AuditStore
 
 REFRESH_COOKIE = "qm_refresh"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 Accounts = Annotated[AccountStore, Depends(get_accounts)]
+Audit = Annotated[AuditStore | None, Depends(get_audit)]
 
 
 class SignupRequest(BaseModel):
@@ -132,6 +135,16 @@ def _logged_in(
     return TokenResponse(access_token=access, expires_in=seconds, user=_me(account))
 
 
+def _account_line(action: Literal["signup", "login"], account: Account) -> AuditEntry:
+    return AuditEntry(
+        action=action,
+        outcome="ok",
+        user_id=account.user_id,
+        workspace_id=account.workspace_id,
+        email=account.email,
+    )
+
+
 def _expiry(cookies: CookieSettings) -> datetime:
     return datetime.now(UTC) + timedelta(days=cookies.days)
 
@@ -143,25 +156,43 @@ def _expiry(cookies: CookieSettings) -> datetime:
     responses={409: {"model": ErrorResponse, "description": "The email has an account"}},
 )
 def signup(
-    body: SignupRequest, response: Response, accounts: Accounts, auth: Auth
+    body: SignupRequest, response: Response, accounts: Accounts, auth: Auth, audit: Audit
 ) -> TokenResponse:
     """Create an account and your own workspace (you are its admin), and log in."""
     email = body.email.lower()
     name = f"{email.split('@')[0]}'s workspace"[:100]
-    account = accounts.sign_up(email, hash_password(body.password), workspace_name=name)
+    try:
+        account = accounts.sign_up(email, hash_password(body.password), workspace_name=name)
+    except EmailTakenError:
+        audit_trail.write(audit, AuditEntry(action="signup", outcome="email_taken", email=email))
+        raise
+    audit_trail.write(audit, _account_line("signup", account))
     refresh = new_refresh_token()
     accounts.start_session(account, hash_refresh_token(refresh), _expiry(auth[1]))
     return _logged_in(response, account, auth, refresh)
 
 
 @router.post("/login", response_model=TokenResponse, responses=_BAD_LOGIN)
-def login(body: LoginRequest, response: Response, accounts: Accounts, auth: Auth) -> TokenResponse:
+def login(
+    body: LoginRequest, response: Response, accounts: Accounts, auth: Auth, audit: Audit
+) -> TokenResponse:
     """Log in with email and password."""
-    found = accounts.find_login(body.email.lower())
+    email = body.email.lower()
+    found = accounts.find_login(email)
     # Checked even when there's no account (against a dummy hash), so both take the same time.
     if not verify_password(found[1] if found else None, body.password) or found is None:
+        # The email as typed, and the account if there is one: many of these = someone guessing.
+        line = AuditEntry(
+            action="login_failed",
+            outcome="invalid_login",
+            email=email,
+            user_id=found[0].user_id if found else None,
+            workspace_id=found[0].workspace_id if found else None,
+        )
+        audit_trail.write(audit, line)
         raise InvalidLoginError("Wrong email or password.")
     account, stored_hash = found
+    audit_trail.write(audit, _account_line("login", account))
     if needs_rehash(stored_hash):
         accounts.set_password_hash(account.user_id, hash_password(body.password))
     refresh = new_refresh_token()
@@ -196,12 +227,23 @@ def logout(
     response: Response,
     accounts: Accounts,
     auth: Auth,
+    audit: Audit,
     qm_refresh: Annotated[str | None, Cookie()] = None,
 ) -> None:
     """Log out: this login's refresh tokens are revoked and the cookie is cleared. An access token
     already issued still works until it expires (at most 15 minutes)."""
     if qm_refresh:
-        accounts.end_session(hash_refresh_token(qm_refresh))
+        ended = accounts.end_session(hash_refresh_token(qm_refresh))
+        if ended is not None:
+            user_id, workspace_id, email = ended
+            line = AuditEntry(
+                action="logout",
+                outcome="ok",
+                user_id=user_id,
+                workspace_id=workspace_id,
+                email=email,
+            )
+            audit_trail.write(audit, line)
     _, cookies = auth
     response.delete_cookie(
         REFRESH_COOKIE, path=cookies.path, secure=cookies.secure, httponly=True, samesite="strict"

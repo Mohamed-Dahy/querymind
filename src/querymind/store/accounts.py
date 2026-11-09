@@ -203,18 +203,22 @@ class AccountStore:
             raise NotAuthenticatedError("Please log in.")
         return account
 
-    def end_session(self, token_hash: str) -> None:
-        """Log out: revoke the whole family. An unknown token is fine (logged out already)."""
+    def end_session(self, token_hash: str) -> tuple[UUID, UUID, str] | None:
+        """Log out: revoke the whole family. Returns whose login it was (user, workspace, email),
+        for the audit log; None for an unknown or already revoked token (logged out already)."""
         with self._transaction() as conn:
-            conn.execute(
+            row = conn.execute(
                 """
-                UPDATE querymind_app.refresh_tokens SET revoked_at = now()
-                WHERE revoked_at IS NULL AND family_id = (
+                UPDATE querymind_app.refresh_tokens AS r SET revoked_at = now()
+                FROM querymind_app.users AS u
+                WHERE r.revoked_at IS NULL AND u.id = r.user_id AND r.family_id = (
                     SELECT family_id FROM querymind_app.refresh_tokens WHERE token_hash = %s
                 )
+                RETURNING r.user_id, r.workspace_id, u.email
                 """,
                 (token_hash,),
-            )
+            ).fetchone()
+        return (row[0], row[1], row[2]) if row else None
 
     def _rotate(
         self, conn: psycopg.Connection, token_hash: str, new_hash: str, expires_at: datetime

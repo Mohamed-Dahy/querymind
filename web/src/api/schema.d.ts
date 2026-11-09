@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Log
+         * @description Your workspace's audit log, newest first: who asked what, the SQL, and how it ended.
+         */
+        get: operations["audit_log_admin_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ask": {
         parameters: {
             query?: never;
@@ -46,7 +66,8 @@ export interface paths {
          *     Each event is one JSON object with a `type`. The last is `final` (the `POST /ask` reply) or
          *     `error` (its error body): the status is already sent, so a failed run still answers 200.
          *
-         *     Closing the connection stops the run after the step working now, and nothing is saved.
+         *     Closing the connection stops the run after the step working now, and nothing is saved (the
+         *     audit log says `cancelled`).
          */
         post: operations["ask_stream_ask_stream_post"];
         delete?: never;
@@ -587,6 +608,60 @@ export interface components {
              * @enum {string}
              */
             type: "attempt_failed";
+        };
+        /**
+         * AuditLine
+         * @description One line of the audit log, as the API shows it.
+         */
+        AuditLine: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout";
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Conversation Id */
+            conversation_id: string | null;
+            /**
+             * Detail
+             * @description An error's message
+             */
+            detail: string | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Email */
+            email: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Outcome
+             * @description answer, clarification, refusal, ok, cancelled, or an error code
+             */
+            outcome: string;
+            /** Question */
+            question: string | null;
+            /** Row Count */
+            row_count: number | null;
+            /** Sql */
+            sql: string | null;
+            /** Sql Attempts */
+            sql_attempts: number | null;
+            /** Tables */
+            tables: string[];
+        };
+        /** AuditPage */
+        AuditPage: {
+            /**
+             * Has More
+             * @description Ask again with before=<the last line's id> for more
+             */
+            has_more: boolean;
+            /** Lines */
+            lines: components["schemas"]["AuditLine"][];
         };
         /**
          * BirdInfo
@@ -1621,6 +1696,71 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    audit_log_admin_audit_get: {
+        parameters: {
+            query?: {
+                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout") | null;
+                outcome?: string | null;
+                email?: string | null;
+                /** @description Find in questions and SQL */
+                q?: string | null;
+                /** @description Lines older than this id */
+                before?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The audit log isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     ask_ask_post: {
         parameters: {
             query?: never;
