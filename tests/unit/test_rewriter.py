@@ -93,7 +93,12 @@ class RecordingRetriever:
         self.calls: list[tuple[str, Sequence[str]]] = []
 
     def select(
-        self, question: str, *, history: Sequence[Turn] = (), also: Sequence[str] = ()
+        self,
+        question: str,
+        *,
+        history: Sequence[Turn] = (),
+        also: Sequence[str] = (),
+        llm: object = None,
     ) -> Selection:
         self.calls.append((question, tuple(also)))
         info = SchemaSelection(mode="retrieved", tables=("customer",), schema_tokens=10)

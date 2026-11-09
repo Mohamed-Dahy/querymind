@@ -41,6 +41,7 @@ APP_TABLES = (
     "refresh_tokens",
     "audit_log",  # 5.5
     "secrets",  # 5.7: encrypted, but the agent must not even see the tokens
+    "llm_keys",  # 5.8
 )
 REPLY = {
     "kind": "answer",

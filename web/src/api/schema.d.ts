@@ -326,6 +326,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llm/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Key
+         * @description The workspace's own LLM, or `null`: questions then run on the free demo key.
+         */
+        get: operations["get_key_llm_key_get"];
+        /**
+         * Save Key
+         * @description Save (or replace) the workspace's provider, model and key, after one test call with it.
+         *
+         *     Its questions use it from the next one on. The key is stored encrypted and never shown again:
+         *     only its last 4 characters.
+         */
+        put: operations["save_key_llm_key_put"];
+        post?: never;
+        /**
+         * Delete Key
+         * @description Remove the workspace's own LLM and its key: questions go back to the demo key.
+         */
+        delete: operations["delete_key_llm_key_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description The providers a workspace can bring its own key for. No free-form address: a fixed list.
+         */
+        get: operations["list_providers_llm_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/saved-questions": {
         parameters: {
             query?: never;
@@ -618,7 +669,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout";
+            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused";
             /**
              * At
              * Format: date-time
@@ -1128,6 +1179,31 @@ export interface components {
             right: string;
         };
         JsonValue: unknown;
+        /**
+         * LLMKeyInfo
+         * @description The workspace's own LLM, as the API shows it. There is no field for the key.
+         */
+        LLMKeyInfo: {
+            /**
+             * Key Hint
+             * @description The key's last 4 characters, e.g. 'WXYZ'
+             */
+            key_hint: string | null;
+            /** Model */
+            model: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "groq" | "gemini" | "openai" | "openrouter" | "deepseek" | "together" | "anthropic";
+            /** Provider Label */
+            provider_label: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -1269,6 +1345,29 @@ export interface components {
             suites: string[];
             /** Title */
             title: string;
+        };
+        /**
+         * ProviderOption
+         * @description One provider a workspace can bring a key for.
+         */
+        ProviderOption: {
+            /**
+             * Example Model
+             * @description A model it serves, as a hint for the form
+             */
+            example_model: string;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "groq" | "gemini" | "openai" | "openrouter" | "deepseek" | "together" | "anthropic";
+            /**
+             * Keys Url
+             * @description Where to make a key
+             */
+            keys_url: string;
+            /** Label */
+            label: string;
         };
         /** QualityMetric */
         QualityMetric: {
@@ -1425,6 +1524,27 @@ export interface components {
              * @enum {string}
              */
             type: "rewrite";
+        };
+        /**
+         * SaveLLMKeyRequest
+         * @description What an admin sends to save the workspace's LLM.
+         */
+        SaveLLMKeyRequest: {
+            /**
+             * Api Key
+             * Format: password
+             */
+            api_key: string;
+            /**
+             * Model
+             * @example openai/gpt-oss-120b
+             */
+            model: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "groq" | "gemini" | "openai" | "openrouter" | "deepseek" | "together" | "anthropic";
         };
         /**
          * SavedQuestion
@@ -1699,7 +1819,7 @@ export interface operations {
     audit_log_admin_audit_get: {
         parameters: {
             query?: {
-                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout") | null;
+                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused") | null;
                 outcome?: string | null;
                 email?: string | null;
                 /** @description Find in questions and SQL */
@@ -2502,6 +2622,196 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_key_llm_key_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMKeyInfo"] | null;
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved keys aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_key_llm_key_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveLLMKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMKeyInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The key, the model or the provider failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many keys tried: wait Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved keys aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_key_llm_key_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved keys aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_providers_llm_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderOption"][];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved keys aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

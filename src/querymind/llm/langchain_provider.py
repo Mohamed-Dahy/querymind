@@ -21,7 +21,12 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel, ValidationError
 
 from querymind.llm.base import LLMProvider
-from querymind.llm.errors import LLMOutputError, LLMProviderError, LLMRateLimitError
+from querymind.llm.errors import (
+    LLMAuthError,
+    LLMOutputError,
+    LLMProviderError,
+    LLMRateLimitError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +44,7 @@ class LangChainProvider(LLMProvider):
         is_output_error: Callable[[Exception], bool] | None = None,
         is_rate_limit: Callable[[Exception], bool] | None = None,
         retry_after_seconds: Callable[[Exception], float | None] | None = None,
+        is_auth_error: Callable[[Exception], bool] | None = None,
     ) -> None:
         """
         Args:
@@ -54,6 +60,8 @@ class LangChainProvider(LLMProvider):
             is_rate_limit: picks out the provider errors that mean "too many requests"; they are
                 re-raised as `LLMRateLimitError`.
             retry_after_seconds: reads the provider's wait out of a rate-limit error, if it has one.
+            is_auth_error: picks out the provider errors that mean "this API key was refused"; they
+                are re-raised as `LLMAuthError` (5.8: users bring their own keys).
         """
         self.name = name
         self._chat_model = chat_model
@@ -62,6 +70,7 @@ class LangChainProvider(LLMProvider):
         self._is_output_error = is_output_error or (lambda _exc: False)
         self._is_rate_limit = is_rate_limit or (lambda _exc: False)
         self._retry_after_seconds = retry_after_seconds or (lambda _exc: None)
+        self._is_auth_error = is_auth_error or (lambda _exc: False)
 
     def generate_text(self, prompt: str, *, system: str | None = None) -> str:
         message = self._invoke(self._chat_model, prompt, system, kind="text")
@@ -112,6 +121,8 @@ class LangChainProvider(LLMProvider):
         except self._provider_errors as exc:
             if self._is_output_error(exc):
                 raise LLMOutputError(f"{self.name} output did not match the schema: {exc}") from exc
+            if self._is_auth_error(exc):
+                raise LLMAuthError(f"{self.name} refused the API key: {exc}") from exc
             if self._is_rate_limit(exc):
                 raise LLMRateLimitError(
                     f"{self.name} rate limit: {exc}",

@@ -23,6 +23,23 @@ def is_rate_limit(exc: Exception) -> bool:
     return error is not None and error.code == 429
 
 
+def is_auth_error(exc: Exception) -> bool:
+    """True if Google refused the key. A wrong key is *not* a 401 here: it is a 400 whose body
+    says `"reason": "API_KEY_INVALID"` (seen in 5.8). 401 / 403: no access to this API or model."""
+    error = _client_error(exc)
+    if error is None:
+        return False
+    if error.code in (401, 403):
+        return True
+    body = error.details
+    inner = body.get("error") if isinstance(body, dict) else None
+    details = inner.get("details") if isinstance(inner, dict) else None
+    return any(
+        isinstance(detail, dict) and detail.get("reason") == "API_KEY_INVALID"
+        for detail in (details if isinstance(details, list) else [])
+    )
+
+
 def retry_after_seconds(exc: Exception) -> float | None:
     """Gemini's wait, from the body of its 429: error.details[].retryDelay, e.g. "17s".
 
@@ -46,12 +63,14 @@ class GeminiProvider(LangChainProvider):
     warns on every call if it's sent), so LLM_TEMPERATURE only applies to Groq.
     """
 
-    def __init__(self, *, model: str, api_key: SecretStr, timeout_seconds: float = 60) -> None:
+    def __init__(
+        self, *, model: str, api_key: SecretStr, timeout_seconds: float = 60, max_retries: int = 2
+    ) -> None:
         chat_model = ChatGoogleGenerativeAI(
             model=model,
             google_api_key=api_key,
             timeout=timeout_seconds,
-            max_retries=2,  # the library default is 6; keep failures fast and the same as Groq
+            max_retries=max_retries,  # the library's default is 6: keep failures fast, as Groq
         )
         super().__init__(
             name="gemini",
@@ -65,4 +84,5 @@ class GeminiProvider(LangChainProvider):
             ),
             is_rate_limit=is_rate_limit,
             retry_after_seconds=retry_after_seconds,
+            is_auth_error=is_auth_error,
         )

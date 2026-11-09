@@ -32,6 +32,10 @@
     "status": 502,
     "message": "The AI model declined or answered in the wrong format. Try rewording it."
   },
+  "llm_key_rejected": {
+    "status": 502,
+    "message": "The AI provider refused the API key. If your workspace saved its own key, an admin can update it in Settings."
+  },
   "conversation_not_found": {
     "status": 404,
     "message": "This conversation doesn't exist."
@@ -72,6 +76,14 @@
     "status": 429,
     "message": "Too many questions for now. Please wait a moment before asking again.",
     "retry_after_seconds": 30
+  },
+  "llm_key_invalid": {
+    "status": 422,
+    "message": "Groq refused this key. Check it was copied whole and is still active."
+  },
+  "llm_key_unreadable": {
+    "status": 409,
+    "message": "A saved secret can't be read: save it again."
   },
   "internal_error": {
     "status": 500,

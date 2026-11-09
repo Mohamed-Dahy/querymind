@@ -18,6 +18,7 @@ from querymind.agent.schemas import (
 )
 from querymind.api.main import create_app
 from querymind.db.executor import QueryResult
+from querymind.llm import LLMProvider
 from querymind.safety.errors import UnsafeSqlError
 from scripts.record_fixtures import (
     RECORDINGS,
@@ -52,7 +53,7 @@ class ScriptedPipeline:
         self.conversation_ids: dict[str, str | None] = {}
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
     ) -> Generator[AgentEvent | Finished]:
         self.conversation_ids[question] = conversation_id
         yield StepEvent(node="retrieve_schema", status="started")

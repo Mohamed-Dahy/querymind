@@ -123,7 +123,12 @@ class Pipeline:
         self._run_locks = [threading.Lock() for _ in range(RUN_LOCKS)]
 
     def ask(
-        self, question: str, *, conversation_id: str | None = None, summarize_answer: bool = True
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        summarize_answer: bool = True,
+        llm: LLMProvider | None = None,
     ) -> AgentReply:
         """Answer one question, or ask back when it's ambiguous, or refuse a change request.
 
@@ -133,6 +138,9 @@ class Pipeline:
         `summarize_answer=False` skips the second LLM call and uses the plain templated answer.
         The eval uses it: it scores the SQL's results, so the summary would only cost tokens.
 
+        `llm` answers this one question instead of the pipeline's own (5.8: the workspace's own
+        key). Every LLM call of the run uses it; embeddings stay the pipeline's.
+
         Raises:
             ValueError: the question is empty.
             LLMProviderError / LLMOutputError: the LLM could not write the SQL.
@@ -141,7 +149,7 @@ class Pipeline:
             DatabaseUnavailableError: the database could not be reached.
         """
         run = self.stream(
-            question, conversation_id=conversation_id, summarize_answer=summarize_answer
+            question, conversation_id=conversation_id, summarize_answer=summarize_answer, llm=llm
         )
         with closing(run) as events:
             for event in events:
@@ -150,7 +158,12 @@ class Pipeline:
         raise RuntimeError("the run ended without a reply")  # stream() always ends with one
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None, summarize_answer: bool = True
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        summarize_answer: bool = True,
+        llm: LLMProvider | None = None,
     ) -> Generator[AgentEvent | Finished]:
         """The same run as `ask()`, reporting as it goes. The last item is `Finished(reply)`.
 
@@ -159,6 +172,7 @@ class Pipeline:
         made still finishes. A stopped run is audited too, and leaves the conversation as it was.
         """
         started = time.perf_counter()
+        llm = llm or self._llm
         state: AgentState = {"question": question}
         # A standalone question still needs a thread for the checkpointer: a throwaway one.
         thread_id = conversation_id or f"standalone-{uuid.uuid4()}"
@@ -173,7 +187,7 @@ class Pipeline:
                     table_names=sorted(catalog.schema.table_names),
                 )
                 context = AgentContext(
-                    llm=self._llm,
+                    llm=llm,
                     settings=self._settings,
                     connect=self._connect,
                     summarize_answer=summarize_answer,
@@ -211,6 +225,7 @@ class Pipeline:
                     outcome="cancelled",
                     started=started,
                     conversation_id=conversation_id,
+                    provider=llm.name,
                 )
                 raise
             except Exception as exc:
@@ -220,11 +235,14 @@ class Pipeline:
                     outcome=type(exc).__name__,
                     started=started,
                     conversation_id=conversation_id,
+                    provider=llm.name,
                 )
                 raise
             finally:
                 self._keep_or_forget(thread_id, keep=conversation_id is not None)
-        yield Finished(self._finish(question, state, reply, started, conversation_id))
+        yield Finished(
+            self._finish(question, state, reply, started, conversation_id, provider=llm.name)
+        )
 
     def rerun(self, question: str, sql: str, *, conversation_id: str | None = None) -> QueryResult:
         """Run a saved answer's SQL again for fresh rows, with no LLM call.
@@ -309,12 +327,19 @@ class Pipeline:
         reply: AgentReply | None,
         started: float,
         conversation_id: str | None,
+        *,
+        provider: str,
     ) -> AgentReply:
         """The audit line of a run that ended normally, and its reply."""
         if reply is not None:
             outcome = "refusal" if isinstance(reply, Refusal) else "clarification"
             self._audit(
-                question, state, outcome=outcome, started=started, conversation_id=conversation_id
+                question,
+                state,
+                outcome=outcome,
+                started=started,
+                conversation_id=conversation_id,
+                provider=provider,
             )
             return reply
         result = require(state.get("result"), "result")
@@ -331,6 +356,7 @@ class Pipeline:
             started=started,
             conversation_id=conversation_id,
             confidence=confidence.level,
+            provider=provider,
         )
         selection = state.get("schema_selection")
         return AskResult(
@@ -442,6 +468,7 @@ class Pipeline:
         started: float,
         conversation_id: str | None,
         confidence: str | None = None,
+        provider: str | None = None,
     ) -> None:
         failed = state.get("attempts", [])
         result = state.get("result")
@@ -468,7 +495,7 @@ class Pipeline:
                 "examples": list(shown.examples) if shown else [],  # few-shot ids (3.5)
                 "search_question": state.get("search_question"),  # the rewritten follow-up (3.6)
                 "confidence": confidence,
-                "provider": self._llm.name,
+                "provider": provider or self._llm.name,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )

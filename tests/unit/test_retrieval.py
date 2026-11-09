@@ -347,6 +347,17 @@ def test_a_failed_rerank_keeps_the_fused_order(monkeypatch: pytest.MonkeyPatch) 
     assert info.reason.startswith("rerank failed")
 
 
+def test_the_questions_own_llm_does_the_rerank(monkeypatch: pytest.MonkeyPatch) -> None:
+    """5.8: a workspace's own key answers its questions, rerank included, never our key."""
+    ours = FakeLLMProvider()  # nothing queued: a call to it would fail the rerank
+    theirs = FakeLLMProvider([RerankResult(tables=["customer", "invoice", "customers"])])
+
+    info = rerank_retriever(monkeypatch, ours).select("Music customers", llm=theirs).info
+
+    assert info.search == "hybrid_rerank"
+    assert len(theirs.calls) == 1 and ours.calls == []
+
+
 def test_rerank_needs_an_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValueError, match="needs an LLM"):
         retriever(monkeypatch, retrieval_mode="hybrid_rerank")

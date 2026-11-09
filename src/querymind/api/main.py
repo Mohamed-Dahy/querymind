@@ -35,6 +35,7 @@ from querymind.api.evals import EvalsData, create_evals
 from querymind.api.evals import router as evals_router
 from querymind.api.explorer import ExplorerData, create_explorer
 from querymind.api.explorer import router as explorer_router
+from querymind.api.llm_keys import router as llm_keys_router
 from querymind.api.ratelimit import RateLimits
 from querymind.api.routes import router
 from querymind.api.saved_questions import router as saved_questions_router
@@ -42,10 +43,13 @@ from querymind.api.schemas import ErrorResponse
 from querymind.auth.tokens import TokenService
 from querymind.config import get_settings
 from querymind.llm import create_embedding_provider, create_llm_provider
+from querymind.llm.workspace import WorkspaceLLMs
 from querymind.logging_setup import configure_logging
+from querymind.secrets.store import LocalSecretStore
 from querymind.store.accounts import AccountStore
 from querymind.store.audit import AuditStore
 from querymind.store.conversations import ConversationStore, create_store, load_history
+from querymind.store.llm_keys import LLMKeyStore
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +64,12 @@ def create_app(
     auth_cookie: CookieSettings | None = None,
     audit: AuditStore | None = None,
     limits: RateLimits | None = None,
+    llm_keys: LLMKeyStore | None = None,
+    workspace_llms: WorkspaceLLMs | None = None,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
-    real ones at startup, which then need logins set up (APP_DB_USER and JWT_SECRET, 5.1)."""
+    real ones at startup, which then need logins set up (APP_DB_USER and JWT_SECRET, 5.1) and
+    SECRETS_KEY (5.8: workspaces' own LLM keys are stored encrypted)."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -77,6 +84,8 @@ def create_app(
             app.state.auth_cookie = auth_cookie
             app.state.audit = audit
             app.state.limits = limits
+            app.state.llm_keys = llm_keys
+            app.state.workspace_llms = workspace_llms
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
@@ -86,6 +95,15 @@ def create_app(
             app.state.auth_cookie = CookieSettings.from_settings(settings)
             app.state.audit = AuditStore(settings)  # needs the app's role, as logins do
             app.state.limits = RateLimits.from_settings(settings)
+            # Workspaces' own LLM keys (5.8). No SECRETS_KEY = ConfigError: the server won't start.
+            secrets = LocalSecretStore(settings)
+            app.state.llm_keys = LLMKeyStore(settings, secrets)
+            app.state.workspace_llms = WorkspaceLLMs(
+                app.state.llm_keys,
+                secrets,
+                temperature=settings.llm_temperature,
+                timeout_seconds=settings.llm_timeout_seconds,
+            )
             app.state.store = create_store(settings)
             app.state.explorer = create_explorer(settings)
             app.state.evals = create_evals(settings)
@@ -116,6 +134,7 @@ def create_app(
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(admin_router)
+    app.include_router(llm_keys_router)
     app.include_router(conversations_router)
     app.include_router(saved_questions_router)
     app.include_router(explorer_router)

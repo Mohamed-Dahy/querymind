@@ -6,8 +6,8 @@ APP_DB_PASSWORD in .env):
 
 Safe to re-run: no table or row is dropped, and the role's password and privileges are reset every
 time. Since 5.1 it also holds the accounts (users, workspaces, memberships, refresh tokens), and
-conversations belong to a user; since 5.7 it holds users' encrypted secrets too. Conversations saved
-before 5.1 have no owner; give them to your account with
+conversations belong to a user. Since 5.7 it holds users' encrypted secrets, since 5.8 each
+workspace's LLM choice. Conversations saved before 5.1 have no owner; give them to your account with
     uv run python data/setup_app_db.py --owner you@example.com
 
 The agent and the app never share a role. `analyst_ro` reads business tables and can't see this
@@ -27,6 +27,21 @@ from querymind.config import ConfigError, get_settings
 logger = logging.getLogger("setup_app_db")
 
 SCHEMA = "querymind_app"
+
+# What the audit log may record (src/querymind/store/audit.py `Action`). 5.8 added the LLM key
+# events: a key saved, deleted, or refused by its provider's check.
+AUDIT_ACTIONS = (
+    "ask",
+    "rerun",
+    "signup",
+    "login",
+    "login_failed",
+    "logout",
+    "llm_key_saved",
+    "llm_key_deleted",
+    "llm_key_refused",
+)
+_ACTIONS_SQL = ", ".join(f"'{action}'" for action in AUDIT_ACTIONS)
 APP_STATEMENT_TIMEOUT = "5s"  # these are small queries: anything slower is a bug
 
 # IF NOT EXISTS: running this again leaves saved conversations as they are.
@@ -131,7 +146,7 @@ TABLES = (
         id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         at timestamptz NOT NULL DEFAULT now(),
         action text NOT NULL
-            CHECK (action IN ('ask', 'rerun', 'signup', 'login', 'login_failed', 'logout')),
+            CHECK (action IN ({_ACTIONS_SQL})),
         outcome text NOT NULL CHECK (char_length(outcome) BETWEEN 1 AND 50),
         user_id uuid REFERENCES {SCHEMA}.users (id) ON DELETE SET NULL,
         workspace_id uuid REFERENCES {SCHEMA}.workspaces (id) ON DELETE SET NULL,
@@ -145,6 +160,13 @@ TABLES = (
         sql_attempts integer,
         detail text
     )
+    """,
+    # A database set up before 5.8 has the old list: replace the check (same name as Postgres
+    # gives the inline one above).
+    f"""
+    ALTER TABLE {SCHEMA}.audit_log
+        DROP CONSTRAINT IF EXISTS audit_log_action_check,
+        ADD CONSTRAINT audit_log_action_check CHECK (action IN ({_ACTIONS_SQL}))
     """,
     f"""
     CREATE INDEX IF NOT EXISTS audit_log_per_workspace
@@ -165,6 +187,18 @@ TABLES = (
     )
     """,
     f"CREATE INDEX IF NOT EXISTS secrets_per_workspace ON {SCHEMA}.secrets (workspace_id)",
+    # --- Each workspace's own LLM (5.8): one per workspace; the key is a secret (above). ---
+    # Deleting the secret deletes this row; deleting the workspace deletes both.
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.llm_keys (
+        workspace_id uuid PRIMARY KEY REFERENCES {SCHEMA}.workspaces (id) ON DELETE CASCADE,
+        provider text NOT NULL CHECK (char_length(provider) BETWEEN 1 AND 50),
+        model text NOT NULL CHECK (char_length(model) BETWEEN 1 AND 200),
+        secret_id uuid NOT NULL UNIQUE REFERENCES {SCHEMA}.secrets (id) ON DELETE CASCADE,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+    )
+    """,
     # What the history list sorts by: one user's conversations.
     f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",
     f"""

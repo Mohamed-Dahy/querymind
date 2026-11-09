@@ -16,24 +16,29 @@ from querymind.api.ratelimit import RateLimits
 from querymind.auth.errors import ForbiddenError, NotAuthenticatedError
 from querymind.auth.tokens import AuthUser, TokenService
 from querymind.db.executor import QueryResult
+from querymind.llm import LLMProvider
+from querymind.llm.workspace import WorkspaceLLMs
 from querymind.store.accounts import AccountStore
 from querymind.store.audit import AuditStore
 from querymind.store.conversations import ConversationStore, Owner
-from querymind.store.errors import AccountsUnavailableError
+from querymind.store.errors import AccountsUnavailableError, StoreUnavailableError
+from querymind.store.llm_keys import LLMKeyStore
 
 
 class AnswersQuestions(Protocol):
-    """Anything with `ask(question, conversation_id=...) -> AgentReply`: the real Pipeline,
-    or a test fake."""
+    """Anything with `ask(question, conversation_id=..., llm=...) -> AgentReply`: the real
+    Pipeline, or a test fake. `llm`: the workspace's own provider (5.8), None = the pipeline's."""
 
-    def ask(self, question: str, *, conversation_id: str | None = None) -> AgentReply: ...
+    def ask(
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+    ) -> AgentReply: ...
 
 
 class StreamsAnswers(Protocol):
-    """Anything with `stream(question, conversation_id=...)`, reporting as it goes."""
+    """Anything with `stream(question, conversation_id=..., llm=...)`, reporting as it goes."""
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
     ) -> Generator[AgentEvent | Finished]: ...
 
 
@@ -162,6 +167,33 @@ def limit_questions(
     """
     if limits is not None:
         limits.check_question(user.user_id)
+
+
+def limit_key_checks(
+    user: CurrentUser, limits: Annotated[RateLimits | None, Depends(get_limits)]
+) -> None:
+    """Room for one more LLM key check (5.8): each one is a call with the key being saved."""
+    if limits is not None:
+        limits.check_key_check(user.user_id)
+
+
+def get_llm_keys(request: Request) -> LLMKeyStore:
+    """The workspaces' own LLM keys (5.8), created at startup.
+
+    Raises:
+        StoreUnavailableError: the app was started without them (HTTP 503).
+    """
+    keys: LLMKeyStore | None = request.app.state.llm_keys
+    if keys is None:
+        raise StoreUnavailableError("Saved keys aren't available on this server.")
+    return keys
+
+
+def get_workspace_llms(request: Request) -> WorkspaceLLMs | None:
+    """What builds each workspace's own provider, or None (tests: every question on the
+    pipeline's own LLM)."""
+    llms: WorkspaceLLMs | None = request.app.state.workspace_llms
+    return llms
 
 
 def limit_reruns(

@@ -492,7 +492,10 @@
               "signup",
               "login",
               "login_failed",
-              "logout"
+              "logout",
+              "llm_key_saved",
+              "llm_key_deleted",
+              "llm_key_refused"
             ],
             "title": "Action",
             "type": "string"
@@ -1742,6 +1745,58 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LLMKeyInfo": {
+        "description": "The workspace's own LLM, as the API shows it. There is no field for the key.",
+        "properties": {
+          "key_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The key's last 4 characters, e.g. 'WXYZ'",
+            "title": "Key Hint"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "groq",
+              "gemini",
+              "openai",
+              "openrouter",
+              "deepseek",
+              "together",
+              "anthropic"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_label": {
+            "title": "Provider Label",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "provider_label",
+          "model",
+          "key_hint",
+          "updated_at"
+        ],
+        "title": "LLMKeyInfo",
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -2099,6 +2154,46 @@
           "reports"
         ],
         "title": "ModelStudy",
+        "type": "object"
+      },
+      "ProviderOption": {
+        "description": "One provider a workspace can bring a key for.",
+        "properties": {
+          "example_model": {
+            "description": "A model it serves, as a hint for the form",
+            "title": "Example Model",
+            "type": "string"
+          },
+          "id": {
+            "enum": [
+              "groq",
+              "gemini",
+              "openai",
+              "openrouter",
+              "deepseek",
+              "together",
+              "anthropic"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "keys_url": {
+            "description": "Where to make a key",
+            "title": "Keys Url",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "example_model",
+          "keys_url"
+        ],
+        "title": "ProviderOption",
         "type": "object"
       },
       "QualityMetric": {
@@ -2474,6 +2569,48 @@
           "search_question"
         ],
         "title": "RewriteEvent",
+        "type": "object"
+      },
+      "SaveLLMKeyRequest": {
+        "additionalProperties": false,
+        "description": "What an admin sends to save the workspace's LLM.",
+        "properties": {
+          "api_key": {
+            "format": "password",
+            "maxLength": 512,
+            "minLength": 8,
+            "title": "Api Key",
+            "type": "string",
+            "writeOnly": true
+          },
+          "model": {
+            "examples": [
+              "openai/gpt-oss-120b"
+            ],
+            "pattern": "^[A-Za-z0-9._:/@-]{1,200}$",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "groq",
+              "gemini",
+              "openai",
+              "openrouter",
+              "deepseek",
+              "together",
+              "anthropic"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "api_key"
+        ],
+        "title": "SaveLLMKeyRequest",
         "type": "object"
       },
       "SavedQuestion": {
@@ -3080,7 +3217,10 @@
                     "signup",
                     "login",
                     "login_failed",
-                    "logout"
+                    "logout",
+                    "llm_key_saved",
+                    "llm_key_deleted",
+                    "llm_key_refused"
                   ],
                   "type": "string"
                 },
@@ -4351,6 +4491,245 @@
         "summary": "Health",
         "tags": [
           "ops"
+        ]
+      }
+    },
+    "/llm/key": {
+      "delete": {
+        "description": "Remove the workspace's own LLM and its key: questions go back to the demo key.",
+        "operationId": "delete_key_llm_key_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved keys aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Key",
+        "tags": [
+          "llm keys"
+        ]
+      },
+      "get": {
+        "description": "The workspace's own LLM, or `null`: questions then run on the free demo key.",
+        "operationId": "get_key_llm_key_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LLMKeyInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Key Llm Key Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved keys aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Key",
+        "tags": [
+          "llm keys"
+        ]
+      },
+      "put": {
+        "description": "Save (or replace) the workspace's provider, model and key, after one test call with it.\n\nIts questions use it from the next one on. The key is stored encrypted and never shown again:\nonly its last 4 characters.",
+        "operationId": "save_key_llm_key_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLLMKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMKeyInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The key, the model or the provider failed"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many keys tried: wait Retry-After"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved keys aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Key",
+        "tags": [
+          "llm keys"
+        ]
+      }
+    },
+    "/llm/providers": {
+      "get": {
+        "description": "The providers a workspace can bring its own key for. No free-form address: a fixed list.",
+        "operationId": "list_providers_llm_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderOption"
+                  },
+                  "title": "Response List Providers Llm Providers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved keys aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Providers",
+        "tags": [
+          "llm keys"
         ]
       }
     },

@@ -106,6 +106,7 @@ class RateLimits:
         logins_per_ip_per_minute: int,
         logins_per_email_per_minute: int,
         signups_per_ip_per_hour: int,
+        key_checks_per_hour: int = 10,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         # Check-then-count over several windows as one step: two requests can't both take the
@@ -122,6 +123,7 @@ class RateLimits:
         self._logins_ip = window(logins_per_ip_per_minute, MINUTE)
         self._logins_email = window(logins_per_email_per_minute, MINUTE)
         self._signups_ip = window(signups_per_ip_per_hour, HOUR)
+        self._key_checks = window(key_checks_per_hour, HOUR)
 
     @classmethod
     def from_settings(
@@ -135,6 +137,7 @@ class RateLimits:
             logins_per_ip_per_minute=settings.rate_logins_per_ip_per_minute,
             logins_per_email_per_minute=settings.rate_logins_per_email_per_minute,
             signups_per_ip_per_hour=settings.rate_signups_per_ip_per_hour,
+            key_checks_per_hour=settings.rate_key_checks_per_hour,
             clock=clock,
         )
 
@@ -168,6 +171,13 @@ class RateLimits:
         self._check(
             [(self._logins_ip, ip), (self._logins_email, email)],
             "Too many login attempts. Please wait a moment before trying again.",
+        )
+
+    def check_key_check(self, user_id: UUID) -> None:
+        """Saving an LLM key (5.8): each save is a call to the provider with that key."""
+        self._check(
+            [(self._key_checks, str(user_id))],
+            "Too many keys tried in a short time. Please wait before trying another.",
         )
 
     def check_signup(self, ip: str) -> None:

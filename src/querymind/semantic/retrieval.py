@@ -253,7 +253,12 @@ class SchemaRetriever:
         self._documents = dict(documents or {})
 
     def select(
-        self, question: str, *, history: Sequence[Turn] = (), also: Sequence[str] = ()
+        self,
+        question: str,
+        *,
+        history: Sequence[Turn] = (),
+        also: Sequence[str] = (),
+        llm: LLMProvider | None = None,
     ) -> Selection:
         """The schema text for this question. Never raises for an embedding or search failure:
         keyword search carries on alone, or the full schema is sent, and the selection says so.
@@ -263,9 +268,9 @@ class SchemaRetriever:
         the new part, its rewrite has what "that" means.
         """
         try:
-            ranking = self._rank(question)
+            ranking = self._rank(question, llm)
             for other in also:
-                ranking = _fused(ranking, self._rank(other))
+                ranking = _fused(ranking, self._rank(other, llm))
         except psycopg.Error as exc:
             logger.warning(
                 "schema retrieval failed, sending the full schema", extra={"error": str(exc)}
@@ -315,7 +320,7 @@ class SchemaRetriever:
         ]
         return picked[: self._settings.few_shot_examples]
 
-    def _rank(self, question: str) -> _Ranking:
+    def _rank(self, question: str, llm: LLMProvider | None) -> _Ranking:
         """Every matching table and example, best first; the search that really ran; and a
         note if a step failed (embeddings → keyword only; rerank → fused order).
 
@@ -347,7 +352,7 @@ class SchemaRetriever:
         if by_words_only:
             return _Ranking(tables, examples, "keyword", note)
         if mode == "hybrid_rerank":
-            reranked, rerank_note = self._rerank(question, tables)
+            reranked, rerank_note = self._rerank(question, tables, llm or self._llm)
             used = "hybrid" if rerank_note else "hybrid_rerank"
             return _Ranking(reranked, examples, used, rerank_note)
         return _Ranking(tables, examples, mode, note)
@@ -387,16 +392,20 @@ class SchemaRetriever:
                 tables.append(hit.table)
         return tables
 
-    def _rerank(self, question: str, ranked: list[str]) -> tuple[list[str], str]:
+    def _rerank(
+        self, question: str, ranked: list[str], llm: LLMProvider | None
+    ) -> tuple[list[str], str]:
         """One LLM call reorders the top candidates. It can only reorder: names it invents are
-        dropped, candidates it leaves out keep their fused order after the ones it ranked."""
-        assert self._llm is not None  # checked in __init__
+        dropped, candidates it leaves out keep their fused order after the ones it ranked.
+
+        `llm`: the question's own provider (5.8: a workspace's key), else the one given at start."""
+        assert llm is not None  # checked in __init__
         candidates = ranked[:RERANK_CANDIDATES]
         described = [
             (t, self._documents.get(t, f"Table {t}")[:RERANK_TEXT_CHARS]) for t in candidates
         ]
         try:
-            result = self._llm.generate_structured(
+            result = llm.generate_structured(
                 rerank_prompt(question=question, candidates=described),
                 RerankResult,
                 system=RERANK_SYSTEM,

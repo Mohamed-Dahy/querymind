@@ -22,7 +22,7 @@ from querymind.api.main import create_app
 from querymind.api.schemas import AskResponse, SavedTurnResponse
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult
-from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
+from querymind.llm import LLMOutputError, LLMProvider, LLMProviderError, LLMRateLimitError
 from querymind.logging_setup import JsonFormatter
 from querymind.safety.errors import UnsafeSqlError
 from tests.auth_helpers import signed_in
@@ -50,7 +50,9 @@ class FakePipeline:
         self.questions: list[str] = []
         self.conversation_ids: list[str | None] = []
 
-    def ask(self, question: str, *, conversation_id: str | None = None) -> AgentReply:
+    def ask(
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+    ) -> AgentReply:
         self.questions.append(question)
         self.conversation_ids.append(conversation_id)
         if self.error is not None:

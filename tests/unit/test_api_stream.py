@@ -22,7 +22,7 @@ from querymind.agent.schemas import AgentReply, Clarification, ClarificationRequ
 from querymind.api.main import create_app
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.schema import describe_schema
-from querymind.llm import LLMOutputError, LLMProviderError, LLMRateLimitError
+from querymind.llm import LLMOutputError, LLMProvider, LLMProviderError, LLMRateLimitError
 from querymind.safety.errors import UnsafeSqlError
 from tests.auth_helpers import signed_in
 from tests.unit.test_api import RESULT
@@ -41,11 +41,13 @@ class FakeStreamingPipeline:
         self.conversation_ids: list[str | None] = []
         self.closed = False
 
-    def ask(self, question: str, *, conversation_id: str | None = None) -> AgentReply:
+    def ask(
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+    ) -> AgentReply:
         return self.reply
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
     ) -> Generator[AgentEvent | Finished]:
         self.conversation_ids.append(conversation_id)
         try:
@@ -203,7 +205,7 @@ class EndlessPipeline:
         self.closed = threading.Event()
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
     ) -> Generator[AgentEvent | Finished]:
         try:
             while True:

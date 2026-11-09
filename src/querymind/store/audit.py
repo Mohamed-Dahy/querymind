@@ -31,7 +31,17 @@ from querymind.store.errors import StoreUnavailableError
 
 logger = logging.getLogger(__name__)
 
-Action = Literal["ask", "rerun", "signup", "login", "login_failed", "logout"]
+Action = Literal[
+    "ask",
+    "rerun",
+    "signup",
+    "login",
+    "login_failed",
+    "logout",
+    "llm_key_saved",
+    "llm_key_deleted",
+    "llm_key_refused",
+]
 
 _COLUMNS = """
     id, at, action, outcome, user_id, workspace_id, email, conversation_id, question, sql, tables,

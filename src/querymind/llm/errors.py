@@ -21,5 +21,13 @@ class LLMRateLimitError(LLMProviderError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class LLMAuthError(LLMProviderError):
+    """The provider refused the API key (HTTP 401 / 403, or Google's "API key not valid").
+
+    A subclass of LLMProviderError, like the rate limit. Since users bring their own keys (5.8),
+    "your key was refused" must be told apart from "the provider is down".
+    """
+
+
 class LLMOutputError(LLMError):
     """The provider answered, but the output was empty or did not match the requested schema."""

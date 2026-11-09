@@ -18,8 +18,16 @@ from querymind.auth.errors import (
     NotAuthenticatedError,
 )
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
-from querymind.llm import LLMError, LLMOutputError, LLMProviderError, LLMRateLimitError
+from querymind.llm import (
+    LLMAuthError,
+    LLMError,
+    LLMOutputError,
+    LLMProviderError,
+    LLMRateLimitError,
+)
+from querymind.llm.key_check import KeyCheckError
 from querymind.safety.errors import UnsafeSqlError
+from querymind.secrets.errors import SecretUnreadableError
 from querymind.store.errors import (
     AccountsUnavailableError,
     ConversationNotFoundError,
@@ -38,6 +46,7 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     QueryExecutionError: (502, "query_failed"),
     DatabaseUnavailableError: (503, "db_unavailable"),
     LLMRateLimitError: (429, "llm_rate_limited"),
+    LLMAuthError: (502, "llm_key_rejected"),  # before its parent, below
     LLMProviderError: (502, "llm_unavailable"),
     LLMOutputError: (502, "llm_bad_output"),
     ConversationNotFoundError: (404, "conversation_not_found"),
@@ -50,12 +59,18 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     EmailTakenError: (409, "email_taken"),
     ForbiddenError: (403, "forbidden"),
     RateLimitedError: (429, "rate_limited"),
+    KeyCheckError: (422, "llm_key_invalid"),  # saving a key (5.8): our own wording
+    SecretUnreadableError: (409, "llm_key_unreadable"),  # wrong SECRETS_KEY: save it again
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a
 # fixed message instead and the details go to the server log only.
 LLM_MESSAGES: dict[type[Exception], str] = {
     LLMRateLimitError: "The AI provider's usage limit was reached. Please try again later.",
+    LLMAuthError: (
+        "The AI provider refused the API key. If your workspace saved its own key, an admin "
+        "can update it in Settings."
+    ),
     LLMProviderError: "The AI provider did not respond (network or outage).",
     LLMOutputError: "The AI model declined or answered in the wrong format. Try rewording it.",
 }

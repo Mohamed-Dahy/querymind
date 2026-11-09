@@ -99,6 +99,10 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 - **Rate limits.** Per user (10 questions a minute, 200 a day), for everyone together (1,000 questions a day: it
   is our LLM key), on re-runs, and on logins per address and per email, so passwords can't be guessed in bulk.
   Over a limit: HTTP 429 with `Retry-After`, and the web UI counts down.
+- **Bring your own LLM key.** A workspace admin picks a provider from a fixed list (Groq, Gemini, OpenAI,
+  OpenRouter, DeepSeek, Together, Anthropic), a model and a key; one tiny test call checks them before saving, and
+  the workspace's questions then run on it. No free-form server address (it would let anyone make our server call
+  internal addresses). Without a key, questions use the rate-limited demo key.
 - **Saved keys, encrypted.** The LLM keys and database passwords users will save (bring your own key) are encrypted
   at rest, bound to their row (a copy moved to another account won't open), rotatable to a new key, and never
   logged or sent back: an LLM key shows only its last 4 characters. Log lines also hide anything shaped like a key.

@@ -30,6 +30,11 @@ def is_rate_limit(exc: Exception) -> bool:
     return isinstance(exc, groq.RateLimitError)
 
 
+def is_auth_error(exc: Exception) -> bool:
+    """True if Groq refused the key: 401 ("Invalid API Key") or 403 (no access)."""
+    return isinstance(exc, groq.AuthenticationError | groq.PermissionDeniedError)
+
+
 def retry_after_seconds(exc: Exception) -> float | None:
     """Groq's wait, from the `retry-after` header of its 429 response."""
     if not isinstance(exc, groq.APIStatusError):
@@ -47,13 +52,14 @@ class GroqProvider(LangChainProvider):
         api_key: SecretStr,
         temperature: float = 0.0,
         timeout_seconds: float = 60,
+        max_retries: int = 2,
     ) -> None:
         chat_model = ChatGroq(
             model_name=model,
             api_key=api_key,
             temperature=temperature,
             timeout=timeout_seconds,
-            max_retries=2,  # retries rate limits and network blips, with backoff
+            max_retries=max_retries,  # retries rate limits and network blips, with backoff
         )
         # Other models keep LangChain's default (tool calling).
         options = (
@@ -68,4 +74,5 @@ class GroqProvider(LangChainProvider):
             is_output_error=is_output_error,
             is_rate_limit=is_rate_limit,
             retry_after_seconds=retry_after_seconds,
+            is_auth_error=is_auth_error,
         )

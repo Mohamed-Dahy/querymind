@@ -138,7 +138,8 @@ def _retrieve_schema(state: AgentState, runtime: Runtime[AgentContext]) -> Agent
     # Both wordings are searched and fused: the typed follow-up has the new part ("by carrier"),
     # the rewrite what "that" means. The rewrite alone lost tables the typed one found (3.6 eval).
     also = (search_question,) if search_question != question else ()
-    selection = retriever.select(question, history=history, also=also)
+    # The run's own LLM (5.8: the workspace's key) also does the rerank, if that mode is on.
+    selection = retriever.select(question, history=history, also=also, llm=runtime.context.llm)
     return {
         "schema_text": selection.schema_text,
         "repair_schema_text": selection.repair_schema_text,

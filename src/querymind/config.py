@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     rate_logins_per_ip_per_minute: int = Field(default=10, ge=1)
     rate_logins_per_email_per_minute: int = Field(default=5, ge=1)
     rate_signups_per_ip_per_hour: int = Field(default=5, ge=1)
+    # Saving an LLM key makes one test call (5.8): limited, so our server can't be used to try
+    # out a list of stolen keys.
+    rate_key_checks_per_hour: int = Field(default=10, ge=1)  # per user
 
     # --- LLM (Bedrock is added in Phase 6) ---
     llm_provider: Literal["groq", "gemini"]

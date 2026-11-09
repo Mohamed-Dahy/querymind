@@ -13,7 +13,7 @@ from querymind.agent.schemas import AgentReply, Clarification, ClarificationRequ
 from querymind.api.main import create_app
 from querymind.api.routes import ask_stream
 from querymind.api.schemas import AskRequest, FinalEvent
-from querymind.llm import LLMProviderError
+from querymind.llm import LLMProvider, LLMProviderError
 from querymind.store.conversations import Owner
 from querymind.store.errors import ConversationNotFoundError, StoreUnavailableError
 from tests.auth_helpers import TEST_OWNER, TEST_USER, signed_in
@@ -28,13 +28,15 @@ class FakePipeline:
         self.reply = reply
         self.error = error
 
-    def ask(self, question: str, *, conversation_id: str | None = None) -> AgentReply:
+    def ask(
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+    ) -> AgentReply:
         if self.error is not None:
             raise self.error
         return self.reply
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None
+        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
     ) -> Generator[AgentEvent | Finished]:
         yield STEP
         yield SQL
@@ -105,7 +107,15 @@ def test_the_stream_saves_the_turn_with_its_steps() -> None:
 def test_the_stream_has_saved_before_it_sends_the_answer() -> None:
     # So a reload right after the answer finds it.
     store = FakeStore()
-    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store, None)  # type: ignore[arg-type]
+    events = ask_stream(
+        AskRequest(question="q"),
+        TEST_USER,
+        FakePipeline(),
+        [],
+        store,  # type: ignore[arg-type]
+        None,
+        None,
+    )
 
     for event in events:
         if isinstance(event, FinalEvent):
@@ -161,7 +171,15 @@ def test_a_failed_question_isnt_saved(path: str) -> None:
 
 def test_a_stopped_run_isnt_saved() -> None:
     store = FakeStore()
-    events = ask_stream(AskRequest(question="q"), TEST_USER, FakePipeline(), [], store, None)  # type: ignore[arg-type]
+    events = ask_stream(
+        AskRequest(question="q"),
+        TEST_USER,
+        FakePipeline(),
+        [],
+        store,  # type: ignore[arg-type]
+        None,
+        None,
+    )
 
     next(events)
     events.close()

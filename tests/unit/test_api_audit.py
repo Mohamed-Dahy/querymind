@@ -149,6 +149,7 @@ def test_a_stopped_stream_is_written_as_cancelled() -> None:
         [],
         None,
         audit,  # type: ignore[arg-type]
+        None,
     )
 
     next(events)  # the first step arrived, then the client went away

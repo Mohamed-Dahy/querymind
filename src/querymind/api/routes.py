@@ -20,6 +20,7 @@ from querymind.api.deps import (
     get_pipeline,
     get_store,
     get_streaming_pipeline,
+    get_workspace_llms,
     limit_questions,
     owner_of,
 )
@@ -37,6 +38,9 @@ from querymind.api.schemas import (
     StreamEvent,
     reply_from,
 )
+from querymind.auth.tokens import AuthUser
+from querymind.llm import LLMProvider
+from querymind.llm.workspace import WorkspaceLLMs
 from querymind.store.audit import AuditEntry, AuditStore
 from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import StoreError
@@ -69,6 +73,13 @@ def _check_owner(
     agent loads any of its turns. (A new id, or no store, is fine.)"""
     if store is not None and conversation_id is not None:
         store.check_owner(conversation_id, owner=owner)
+
+
+def _workspace_llm(llms: WorkspaceLLMs | None, user: AuthUser) -> LLMProvider | None:
+    """The LLM for this user's question: their workspace's own key (5.8), or None for the demo
+    key in .env. Called inside the route's `try`, so a key that can't be read still gets the
+    question's audit line (§8.7), like every other failure."""
+    return llms.provider_for(user.workspace_id) if llms is not None else None
 
 
 def _save(
@@ -121,6 +132,7 @@ def ask(
     pipeline: Annotated[AnswersQuestions, Depends(get_pipeline)],
     store: Annotated[ConversationStore | None, Depends(get_store)],
     audit: Annotated[AuditStore | None, Depends(get_audit)],
+    llms: Annotated[WorkspaceLLMs | None, Depends(get_workspace_llms)],
 ) -> AskResponse | ClarificationResponse | RefusalResponse:
     """Answer a question about the data: the answer, the SQL that ran, and the rows.
 
@@ -137,7 +149,8 @@ def ask(
     conversation_id = request.conversation_id or uuid4()
     try:
         _check_owner(store, request.conversation_id, owner)
-        reply = pipeline.ask(request.question, conversation_id=str(conversation_id))
+        llm = _workspace_llm(llms, user)  # 5.8: the workspace's own key, or None (demo)
+        reply = pipeline.ask(request.question, conversation_id=str(conversation_id), llm=llm)
     except Exception as exc:
         # Every question gets its audit line (5.5), however it ended. Then the usual error reply.
         line = audit_trail.for_error(
@@ -181,6 +194,7 @@ def ask_stream(
     runs: Annotated[OpenRuns, Depends(close_runs_when_the_response_ends)],
     store: Annotated[ConversationStore | None, Depends(get_store)],
     audit: Annotated[AuditStore | None, Depends(get_audit)],
+    llms: Annotated[WorkspaceLLMs | None, Depends(get_workspace_llms)],
 ) -> Generator[StreamEvent]:
     """The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).
 
@@ -197,7 +211,8 @@ def ask_stream(
     written = False  # the audit line, once per question (5.5)
     try:
         _check_owner(store, request.conversation_id, owner)  # a 404 arrives as the error event
-        run = pipeline.stream(request.question, conversation_id=str(conversation_id))
+        llm = _workspace_llm(llms, user)  # an unreadable key, too
+        run = pipeline.stream(request.question, conversation_id=str(conversation_id), llm=llm)
         runs.append(run)
         trace: list[AgentEvent] = []
         for event in run:
