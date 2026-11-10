@@ -17,7 +17,16 @@ from querymind.auth.errors import (
     InvalidLoginError,
     NotAuthenticatedError,
 )
-from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
+from querymind.db.errors import (
+    DatabaseUnavailableError,
+    QueryExecutionError,
+    QueryTimeoutError,
+    RemoteLoginError,
+    RemoteTlsError,
+    RemoteUnreachableError,
+    UnsafeConnectionError,
+    WritableLoginError,
+)
 from querymind.llm import (
     LLMAuthError,
     LLMError,
@@ -30,6 +39,8 @@ from querymind.safety.errors import UnsafeSqlError
 from querymind.secrets.errors import SecretUnreadableError
 from querymind.store.errors import (
     AccountsUnavailableError,
+    ConnectionNameTakenError,
+    ConnectionNotFoundError,
     ConversationNotFoundError,
     StoreUnavailableError,
     TurnNotFoundError,
@@ -61,6 +72,14 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     RateLimitedError: (429, "rate_limited"),
     KeyCheckError: (422, "llm_key_invalid"),  # saving a key (5.8): our own wording
     SecretUnreadableError: (409, "llm_key_unreadable"),  # wrong SECRETS_KEY: save it again
+    # A user's own database (5.9). Each message is our own wording: what to fix.
+    UnsafeConnectionError: (422, "connection_unsafe"),
+    RemoteUnreachableError: (422, "connection_unreachable"),
+    RemoteLoginError: (422, "connection_login_failed"),
+    RemoteTlsError: (422, "connection_tls_failed"),
+    WritableLoginError: (422, "connection_writable"),
+    ConnectionNotFoundError: (404, "connection_not_found"),
+    ConnectionNameTakenError: (409, "connection_name_taken"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

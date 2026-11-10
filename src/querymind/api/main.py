@@ -28,6 +28,7 @@ from querymind.agent.pipeline import Pipeline
 from querymind.api.admin import router as admin_router
 from querymind.api.auth import CookieSettings
 from querymind.api.auth import router as auth_router
+from querymind.api.connections import router as connections_router
 from querymind.api.conversations import router as conversations_router
 from querymind.api.deps import AnswersQuestions, ManagesConversations, StreamsAnswers
 from querymind.api.errors import ERROR_MAP, INTERNAL_ERROR, error_response
@@ -48,6 +49,7 @@ from querymind.logging_setup import configure_logging
 from querymind.secrets.store import LocalSecretStore
 from querymind.store.accounts import AccountStore
 from querymind.store.audit import AuditStore
+from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, create_store, load_history
 from querymind.store.llm_keys import LLMKeyStore
 
@@ -66,6 +68,8 @@ def create_app(
     limits: RateLimits | None = None,
     llm_keys: LLMKeyStore | None = None,
     workspace_llms: WorkspaceLLMs | None = None,
+    connections: ConnectionStore | None = None,
+    allow_private_databases: bool = False,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
     real ones at startup, which then need logins set up (APP_DB_USER and JWT_SECRET, 5.1) and
@@ -86,6 +90,8 @@ def create_app(
             app.state.limits = limits
             app.state.llm_keys = llm_keys
             app.state.workspace_llms = workspace_llms
+            app.state.connections = connections
+            app.state.allow_private_databases = allow_private_databases
         else:
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
@@ -104,6 +110,11 @@ def create_app(
                 temperature=settings.llm_temperature,
                 timeout_seconds=settings.llm_timeout_seconds,
             )
+            # Workspaces' own databases (5.9); their passwords are secrets too.
+            app.state.connections = ConnectionStore(settings, secrets)
+            app.state.allow_private_databases = settings.allow_private_databases
+            if settings.allow_private_databases:
+                logger.warning("ALLOW_PRIVATE_DATABASES is on: development only (no SSRF guard)")
             app.state.store = create_store(settings)
             app.state.explorer = create_explorer(settings)
             app.state.evals = create_evals(settings)
@@ -135,6 +146,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(llm_keys_router)
+    app.include_router(connections_router)
     app.include_router(conversations_router)
     app.include_router(saved_questions_router)
     app.include_router(explorer_router)

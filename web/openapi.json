@@ -495,7 +495,11 @@
               "logout",
               "llm_key_saved",
               "llm_key_deleted",
-              "llm_key_refused"
+              "llm_key_refused",
+              "connection_saved",
+              "connection_tested",
+              "connection_refused",
+              "connection_deleted"
             ],
             "title": "Action",
             "type": "string"
@@ -949,6 +953,70 @@
           "dictionary_note"
         ],
         "title": "ColumnMeaning",
+        "type": "object"
+      },
+      "ConnectionInfo": {
+        "description": "A saved database, as the API shows it. There is no field for the password.",
+        "properties": {
+          "checked_at": {
+            "description": "When it was last found reachable and read-only",
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dbname": {
+            "title": "Dbname",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "sslmode": {
+            "enum": [
+              "verify-full",
+              "require",
+              "prefer",
+              "disable"
+            ],
+            "title": "Sslmode",
+            "type": "string"
+          },
+          "user": {
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "host",
+          "port",
+          "dbname",
+          "user",
+          "sslmode",
+          "checked_at",
+          "created_at"
+        ],
+        "title": "ConnectionInfo",
         "type": "object"
       },
       "ConversationDetail": {
@@ -2571,6 +2639,80 @@
         "title": "RewriteEvent",
         "type": "object"
       },
+      "SaveConnectionRequest": {
+        "additionalProperties": false,
+        "description": "What an admin sends to add a database.",
+        "properties": {
+          "dbname": {
+            "examples": [
+              "sales"
+            ],
+            "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.$-]{0,62}$",
+            "title": "Dbname",
+            "type": "string"
+          },
+          "host": {
+            "examples": [
+              "db.example.com"
+            ],
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$",
+            "title": "Host",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Sales"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "port": {
+            "default": 5432,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "sslmode": {
+            "default": "verify-full",
+            "enum": [
+              "verify-full",
+              "require",
+              "prefer",
+              "disable"
+            ],
+            "title": "Sslmode",
+            "type": "string"
+          },
+          "user": {
+            "examples": [
+              "querymind_reader"
+            ],
+            "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.$-]{0,62}$",
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "host",
+          "dbname",
+          "user",
+          "password"
+        ],
+        "title": "SaveConnectionRequest",
+        "type": "object"
+      },
       "SaveLLMKeyRequest": {
         "additionalProperties": false,
         "description": "What an admin sends to save the workspace's LLM.",
@@ -3220,7 +3362,11 @@
                     "logout",
                     "llm_key_saved",
                     "llm_key_deleted",
-                    "llm_key_refused"
+                    "llm_key_refused",
+                    "connection_saved",
+                    "connection_tested",
+                    "connection_refused",
+                    "connection_deleted"
                   ],
                   "type": "string"
                 },
@@ -4000,6 +4146,343 @@
         "summary": "Get Table Questions",
         "tags": [
           "explorer"
+        ]
+      }
+    },
+    "/connections": {
+      "get": {
+        "description": "The workspace's own databases, by name. Passwords are never shown.",
+        "operationId": "list_connections_connections_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectionInfo"
+                  },
+                  "title": "Response List Connections Connections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved databases aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Connections",
+        "tags": [
+          "databases"
+        ]
+      },
+      "post": {
+        "description": "Add a database: QueryMind connects, checks the login can only read, then saves it.\n\nThe address must be public (no private or internal addresses), the port a PostgreSQL one,\nthe connection encrypted. A login that could change anything is refused, with how to fix it.",
+        "operationId": "save_connection_connections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such database in this workspace"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Name taken"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Refused: an address, port or TLS mode not allowed, no connection, a refused login, or a login that can change data"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many checks: wait Retry-After"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved databases aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Connection",
+        "tags": [
+          "databases"
+        ]
+      }
+    },
+    "/connections/{connection_id}": {
+      "delete": {
+        "description": "Remove the database from the workspace, with its password.",
+        "operationId": "delete_connection_connections__connection_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such database in this workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved databases aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Connection",
+        "tags": [
+          "databases"
+        ]
+      }
+    },
+    "/connections/{connection_id}/test": {
+      "post": {
+        "description": "Connect again and check the login is still read-only (grants can change after saving).",
+        "operationId": "test_connection_connections__connection_id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such database in this workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Refused: an address, port or TLS mode not allowed, no connection, a refused login, or a login that can change data"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many checks: wait Retry-After"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Saved databases aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Connection",
+        "tags": [
+          "databases"
         ]
       }
     },

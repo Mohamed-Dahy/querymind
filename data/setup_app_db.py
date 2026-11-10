@@ -7,7 +7,8 @@ APP_DB_PASSWORD in .env):
 Safe to re-run: no table or row is dropped, and the role's password and privileges are reset every
 time. Since 5.1 it also holds the accounts (users, workspaces, memberships, refresh tokens), and
 conversations belong to a user. Since 5.7 it holds users' encrypted secrets, since 5.8 each
-workspace's LLM choice. Conversations saved before 5.1 have no owner; give them to your account with
+workspace's LLM choice, since 5.9 its own databases. Conversations saved before 5.1 have no owner;
+give them to your account with
     uv run python data/setup_app_db.py --owner you@example.com
 
 The agent and the app never share a role. `analyst_ro` reads business tables and can't see this
@@ -40,6 +41,10 @@ AUDIT_ACTIONS = (
     "llm_key_saved",
     "llm_key_deleted",
     "llm_key_refused",
+    "connection_saved",
+    "connection_tested",
+    "connection_refused",
+    "connection_deleted",
 )
 _ACTIONS_SQL = ", ".join(f"'{action}'" for action in AUDIT_ACTIONS)
 APP_STATEMENT_TIMEOUT = "5s"  # these are small queries: anything slower is a bug
@@ -197,6 +202,24 @@ TABLES = (
         secret_id uuid NOT NULL UNIQUE REFERENCES {SCHEMA}.secrets (id) ON DELETE CASCADE,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
+    )
+    """,
+    # --- Users' own databases (5.9): several per workspace; the password is a secret (above). ---
+    # Deleting the secret deletes the connection; deleting the workspace deletes both.
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.connections (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        workspace_id uuid NOT NULL REFERENCES {SCHEMA}.workspaces (id) ON DELETE CASCADE,
+        name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 100),
+        host text NOT NULL CHECK (char_length(host) BETWEEN 1 AND 253),
+        port integer NOT NULL CHECK (port BETWEEN 1 AND 65535),
+        dbname text NOT NULL CHECK (char_length(dbname) BETWEEN 1 AND 63),
+        username text NOT NULL CHECK (char_length(username) BETWEEN 1 AND 63),
+        sslmode text NOT NULL CHECK (sslmode IN ('verify-full', 'require', 'prefer', 'disable')),
+        secret_id uuid NOT NULL UNIQUE REFERENCES {SCHEMA}.secrets (id) ON DELETE CASCADE,
+        checked_at timestamptz NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (workspace_id, name)
     )
     """,
     # What the history list sorts by: one user's conversations.

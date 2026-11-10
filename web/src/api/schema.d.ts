@@ -218,6 +218,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connections
+         * @description The workspace's own databases, by name. Passwords are never shown.
+         */
+        get: operations["list_connections_connections_get"];
+        put?: never;
+        /**
+         * Save Connection
+         * @description Add a database: QueryMind connects, checks the login can only read, then saves it.
+         *
+         *     The address must be public (no private or internal addresses), the port a PostgreSQL one,
+         *     the connection encrypted. A login that could change anything is refused, with how to fix it.
+         */
+        post: operations["save_connection_connections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Connection
+         * @description Remove the database from the workspace, with its password.
+         */
+        delete: operations["delete_connection_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/connections/{connection_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Connection
+         * @description Connect again and check the login is still read-only (grants can change after saving).
+         */
+        post: operations["test_connection_connections__connection_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations": {
         parameters: {
             query?: never;
@@ -669,7 +736,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused";
+            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted";
             /**
              * At
              * Format: date-time
@@ -835,6 +902,43 @@ export interface components {
             pii: boolean;
             /** Synonyms */
             synonyms: string[];
+        };
+        /**
+         * ConnectionInfo
+         * @description A saved database, as the API shows it. There is no field for the password.
+         */
+        ConnectionInfo: {
+            /**
+             * Checked At
+             * Format: date-time
+             * @description When it was last found reachable and read-only
+             */
+            checked_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dbname */
+            dbname: string;
+            /** Host */
+            host: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Port */
+            port: number;
+            /**
+             * Sslmode
+             * @enum {string}
+             */
+            sslmode: "verify-full" | "require" | "prefer" | "disable";
+            /** User */
+            user: string;
         };
         /**
          * ConversationDetail
@@ -1526,6 +1630,48 @@ export interface components {
             type: "rewrite";
         };
         /**
+         * SaveConnectionRequest
+         * @description What an admin sends to add a database.
+         */
+        SaveConnectionRequest: {
+            /**
+             * Dbname
+             * @example sales
+             */
+            dbname: string;
+            /**
+             * Host
+             * @example db.example.com
+             */
+            host: string;
+            /**
+             * Name
+             * @example Sales
+             */
+            name: string;
+            /**
+             * Password
+             * Format: password
+             */
+            password: string;
+            /**
+             * Port
+             * @default 5432
+             */
+            port: number;
+            /**
+             * Sslmode
+             * @default verify-full
+             * @enum {string}
+             */
+            sslmode: "verify-full" | "require" | "prefer" | "disable";
+            /**
+             * User
+             * @example querymind_reader
+             */
+            user: string;
+        };
+        /**
          * SaveLLMKeyRequest
          * @description What an admin sends to save the workspace's LLM.
          */
@@ -1819,7 +1965,7 @@ export interface operations {
     audit_log_admin_audit_get: {
         parameters: {
             query?: {
-                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused") | null;
+                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted") | null;
                 outcome?: string | null;
                 email?: string | null;
                 /** @description Find in questions and SQL */
@@ -2271,6 +2417,272 @@ export interface operations {
                 };
             };
             /** @description History isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_connections_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionInfo"][];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved databases aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_connection_connections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such database in this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Name taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused: an address, port or TLS mode not allowed, no connection, a refused login, or a login that can change data */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many checks: wait Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved databases aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_connection_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such database in this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Saved databases aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_connection_connections__connection_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such database in this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused: an address, port or TLS mode not allowed, no connection, a refused login, or a login that can change data */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many checks: wait Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Saved databases aren't available */
             503: {
                 headers: {
                     [name: string]: unknown;

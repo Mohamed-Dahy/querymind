@@ -41,6 +41,10 @@ Action = Literal[
     "llm_key_saved",
     "llm_key_deleted",
     "llm_key_refused",
+    "connection_saved",
+    "connection_tested",
+    "connection_refused",
+    "connection_deleted",
 ]
 
 _COLUMNS = """

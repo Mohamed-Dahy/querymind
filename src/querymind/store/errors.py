@@ -19,3 +19,11 @@ class TurnNotFoundError(StoreError):
 
 class AccountsUnavailableError(StoreUnavailableError):
     """The accounts tables could not be reached. The message is safe to show."""
+
+
+class ConnectionNotFoundError(StoreError):
+    """This workspace has no database connection with that id. The message is safe to show."""
+
+
+class ConnectionNameTakenError(StoreError):
+    """The workspace already has a connection with this name. The message is safe to show."""

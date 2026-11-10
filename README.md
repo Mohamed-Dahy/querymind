@@ -103,6 +103,10 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
   OpenRouter, DeepSeek, Together, Anthropic), a model and a key; one tiny test call checks them before saving, and
   the workspace's questions then run on it. No free-form server address (it would let anyone make our server call
   internal addresses). Without a key, questions use the rate-limited demo key.
+- **Bring your own database, safely.** A workspace admin adds a PostgreSQL connection; QueryMind connects only to
+  public addresses on database ports (never internal or cloud-metadata addresses: an SSRF guard, re-checked after DNS
+  at every connect), with the certificate verified by default, and refuses any login that could change data (role
+  powers, write grants down to a single column, CREATE on a schema), saying exactly how to fix it.
 - **Saved keys, encrypted.** The LLM keys and database passwords users will save (bring your own key) are encrypted
   at rest, bound to their row (a copy moved to another account won't open), rotatable to a new key, and never
   logged or sent back: an LLM key shows only its last 4 characters. Log lines also hide anything shaped like a key.

@@ -107,6 +107,7 @@ class RateLimits:
         logins_per_email_per_minute: int,
         signups_per_ip_per_hour: int,
         key_checks_per_hour: int = 10,
+        connection_checks_per_hour: int = 10,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         # Check-then-count over several windows as one step: two requests can't both take the
@@ -124,6 +125,7 @@ class RateLimits:
         self._logins_email = window(logins_per_email_per_minute, MINUTE)
         self._signups_ip = window(signups_per_ip_per_hour, HOUR)
         self._key_checks = window(key_checks_per_hour, HOUR)
+        self._connection_checks = window(connection_checks_per_hour, HOUR)
 
     @classmethod
     def from_settings(
@@ -138,6 +140,7 @@ class RateLimits:
             logins_per_email_per_minute=settings.rate_logins_per_email_per_minute,
             signups_per_ip_per_hour=settings.rate_signups_per_ip_per_hour,
             key_checks_per_hour=settings.rate_key_checks_per_hour,
+            connection_checks_per_hour=settings.rate_connection_checks_per_hour,
             clock=clock,
         )
 
@@ -178,6 +181,13 @@ class RateLimits:
         self._check(
             [(self._key_checks, str(user_id))],
             "Too many keys tried in a short time. Please wait before trying another.",
+        )
+
+    def check_connection_check(self, user_id: UUID) -> None:
+        """Saving or testing a database (5.9): each one connects to an address a user typed."""
+        self._check(
+            [(self._connection_checks, str(user_id))],
+            "Too many database checks in a short time. Please wait before trying again.",
         )
 
     def check_signup(self, ip: str) -> None:

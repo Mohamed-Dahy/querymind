@@ -177,6 +177,14 @@ def limit_key_checks(
         limits.check_key_check(user.user_id)
 
 
+def limit_connection_checks(
+    user: CurrentUser, limits: Annotated[RateLimits | None, Depends(get_limits)]
+) -> None:
+    """Room for one more database check (5.9): each one connects out to a typed address."""
+    if limits is not None:
+        limits.check_connection_check(user.user_id)
+
+
 def get_llm_keys(request: Request) -> LLMKeyStore:
     """The workspaces' own LLM keys (5.8), created at startup.
 

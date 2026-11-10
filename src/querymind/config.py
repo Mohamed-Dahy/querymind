@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     # Saving an LLM key makes one test call (5.8): limited, so our server can't be used to try
     # out a list of stolen keys.
     rate_key_checks_per_hour: int = Field(default=10, ge=1)  # per user
+    # Saving or re-testing a database connection (5.9) connects out to an address a user typed.
+    rate_connection_checks_per_hour: int = Field(default=10, ge=1)  # per user
+
+    # --- Users' own databases (5.9) ---
+    # Development and tests only: lets a saved connection point at a private address (the Docker
+    # database on 127.0.0.1) and skip TLS. Never on a shared server: it turns off the SSRF guard.
+    allow_private_databases: bool = False
 
     # --- LLM (Bedrock is added in Phase 6) ---
     llm_provider: Literal["groq", "gemini"]

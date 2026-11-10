@@ -85,6 +85,34 @@
     "status": 409,
     "message": "A saved secret can't be read: save it again."
   },
+  "connection_unsafe": {
+    "status": 422,
+    "message": "This address isn't allowed: QueryMind only connects to databases on the public internet (not private, local or cloud-internal addresses)."
+  },
+  "connection_unreachable": {
+    "status": 422,
+    "message": "Couldn't reach the database at this host and port. Check them, and that the server accepts connections from the internet."
+  },
+  "connection_login_failed": {
+    "status": 422,
+    "message": "The database refused this user name or password."
+  },
+  "connection_tls_failed": {
+    "status": 422,
+    "message": "The server's certificate couldn't be verified. If your host uses a self-signed certificate, choose 'require' instead of 'verify-full'."
+  },
+  "connection_writable": {
+    "status": 422,
+    "message": "This login can change your database, so QueryMind won't use it. The login can create tables in schema public. Run: REVOKE CREATE ON SCHEMA \"public\" FROM PUBLIC, \"reader\";"
+  },
+  "connection_not_found": {
+    "status": 404,
+    "message": "No database connection with this id."
+  },
+  "connection_name_taken": {
+    "status": 409,
+    "message": "This workspace already has a database called 'Sales'."
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."
