@@ -222,6 +222,14 @@ TABLES = (
         UNIQUE (workspace_id, name)
     )
     """,
+    # 5.11: a conversation belongs to one database: NULL = the demo, else a workspace's own.
+    # Deleting a saved database deletes its conversations (they can't go on without it).
+    f"""
+    ALTER TABLE {SCHEMA}.conversations ADD COLUMN IF NOT EXISTS connection_id uuid
+        REFERENCES {SCHEMA}.connections (id) ON DELETE CASCADE
+    """,
+    # Which database a question ran on (no foreign key: the line outlives the database).
+    f"ALTER TABLE {SCHEMA}.audit_log ADD COLUMN IF NOT EXISTS connection_id uuid",
     # What the history list sorts by: one user's conversations.
     f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",
     f"""

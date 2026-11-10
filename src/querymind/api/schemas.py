@@ -41,6 +41,11 @@ class AskRequest(BaseModel):
         description="Continue this conversation (from an earlier reply), so follow-ups like "
         '"now only for 1997" work. Leave it out to start a new one.',
     )
+    connection_id: UUID | None = Field(
+        default=None,
+        description="Ask one of the workspace's own databases (GET /connections). Leave it out for "
+        "the demo database. A follow-up stays on its conversation's database.",
+    )
 
 
 class ResultWarning(BaseModel):

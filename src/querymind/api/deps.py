@@ -11,6 +11,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from querymind.agent.events import AgentEvent, Finished
+from querymind.agent.registry import PipelineRegistry
 from querymind.agent.schemas import AgentReply
 from querymind.api.ratelimit import RateLimits
 from querymind.auth.errors import ForbiddenError, NotAuthenticatedError
@@ -68,6 +69,12 @@ def get_conversation_pipeline(request: Request) -> ManagesConversations:
     """The same pipeline, for the conversation routes."""
     pipeline: ManagesConversations = request.app.state.pipeline
     return pipeline
+
+
+def get_pipelines(request: Request) -> PipelineRegistry | None:
+    """The pipelines of saved databases (5.11), or None (tests: the demo pipeline only)."""
+    pipelines: PipelineRegistry | None = getattr(request.app.state, "pipelines", None)
+    return pipelines
 
 
 def get_store(request: Request) -> ConversationStore | None:

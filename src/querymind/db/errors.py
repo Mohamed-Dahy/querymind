@@ -58,3 +58,7 @@ class WritableLoginError(RemoteDatabaseError):
     def __init__(self, message: str, *, problems: list[str]) -> None:
         super().__init__(message)
         self.problems = problems
+
+
+class NoReadableTablesError(RemoteDatabaseError):
+    """The login can read no table in schema `public`: nothing to ask about (5.11)."""

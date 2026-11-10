@@ -40,12 +40,15 @@ import psycopg
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from psycopg import errors as pg_errors
+from psycopg import sql
 
 from querymind.agent.confidence import score_confidence
 from querymind.agent.events import AgentEvent, Finished, TraceBuilder, shown_schema
 from querymind.agent.graph import FIXABLE_ERRORS, build_graph, failed_attempt
 from querymind.agent.schemas import (
     AgentReply,
+    AnswerSource,
     AskResult,
     ClarificationRequest,
     Refusal,
@@ -55,9 +58,9 @@ from querymind.agent.schemas import (
 from querymind.agent.state import CHECKPOINT_TYPES, AgentContext, AgentState, new_turn, require
 from querymind.config import ConfigError, Settings
 from querymind.db.connection import connect_readonly
-from querymind.db.errors import QueryExecutionError, QueryTimeoutError
+from querymind.db.errors import NoReadableTablesError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult, execute_query
-from querymind.db.schema import introspect_schema
+from querymind.db.schema import SchemaInfo, introspect_schema
 from querymind.llm import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.safety.errors import UnsafeSqlError
@@ -74,6 +77,8 @@ audit_logger = logging.getLogger("querymind.audit")
 
 MAX_CONVERSATIONS = 100  # saved conversations; the least recently used is forgotten first
 RUN_LOCKS = 64  # see Pipeline._one_run_at_a_time
+# Reading the schema (tables, keys, a few sample rows each) on a database we don't know (5.11).
+SCHEMA_READ_TIMEOUT = "30s"
 
 
 class Pipeline:
@@ -88,6 +93,7 @@ class Pipeline:
         embeddings: EmbeddingProvider | None = None,
         index_table: str = INDEX_TABLE,
         history_loader: Callable[[str], list[Turn]] | None = None,
+        source: AnswerSource | None = None,
     ) -> None:
         """`connect` must open a *read-only* connection; it's a parameter so tests can swap it.
 
@@ -95,6 +101,8 @@ class Pipeline:
         LLM always sees the whole schema. `index_table` lets tests use their own index.
         `history_loader` gives a conversation's earlier turns when they aren't in memory (after a
         restart). None = nothing outlives this object: what evals and scripts want.
+        `source` names the database in every answer when no semantic layer does (5.11: a
+        workspace's own database, which has no YAML layers).
 
         Raises:
             ConfigError: SCHEMA_RETRIEVAL=on without an embedding provider (GOOGLE_API_KEY).
@@ -107,6 +115,7 @@ class Pipeline:
         self._embeddings = embeddings
         self._index_table = index_table
         self._history_loader = history_loader
+        self._source = source
         # The serializer may only rebuild our own state classes from a saved checkpoint.
         serde = JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
         self._checkpointer = InMemorySaver(serde=serde)
@@ -375,7 +384,10 @@ class Pipeline:
                 else None
             ),
             tables_used=tuple(state.get("tables_used", [])),
-            sources=answer_sources(self._semantic_layers, state.get("tables_used", [])),
+            sources=(
+                answer_sources(self._semantic_layers, state.get("tables_used", []))
+                or ((self._source,) if self._source else ())
+            ),
             search_question=state.get("search_question"),
             example_questions=tuple(e.question for e in state.get("examples", [])),
             duration_ms=round((time.perf_counter() - started) * 1000),
@@ -390,7 +402,7 @@ class Pipeline:
         with self._schema_lock:
             if self._schema is None:
                 with self._connect(self._settings) as conn:
-                    schema = introspect_schema(conn)
+                    schema = _read_schema(conn)
                 for layer in self._semantic_layers:
                     check_against(layer, schema)  # every name it uses must exist (3.1)
                 catalog = SchemaCatalog(schema, self._semantic_layers, self._examples)
@@ -499,6 +511,29 @@ class Pipeline:
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )
+
+
+def _read_schema(conn: psycopg.Connection) -> SchemaInfo:
+    """The schema, read in one transaction with a time limit: a user's database may be huge or slow.
+
+    Raises:
+        QueryTimeoutError: reading took longer than SCHEMA_READ_TIMEOUT.
+        NoReadableTablesError: the login can read no table (nothing to send the LLM).
+    """
+    try:
+        with conn.transaction():
+            conn.execute(
+                sql.SQL("SET LOCAL statement_timeout = {}").format(sql.Literal(SCHEMA_READ_TIMEOUT))
+            )
+            schema = introspect_schema(conn)
+    except pg_errors.QueryCanceled as exc:
+        raise QueryTimeoutError("Reading the database's tables took too long.") from exc
+    if not schema.table_names:
+        raise NoReadableTablesError(
+            "This login can read no tables in schema public. Grant it SELECT on the tables to ask "
+            "about."
+        )
+    return schema
 
 
 def _reply_without_result(

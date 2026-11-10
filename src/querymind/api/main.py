@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse
 
 from querymind import __version__
 from querymind.agent.pipeline import Pipeline
+from querymind.agent.registry import PipelineRegistry
 from querymind.api.admin import router as admin_router
 from querymind.api.auth import CookieSettings
 from querymind.api.auth import router as auth_router
@@ -69,6 +70,7 @@ def create_app(
     llm_keys: LLMKeyStore | None = None,
     workspace_llms: WorkspaceLLMs | None = None,
     connections: ConnectionStore | None = None,
+    pipelines: PipelineRegistry | None = None,
     allow_private_databases: bool = False,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
@@ -91,6 +93,7 @@ def create_app(
             app.state.llm_keys = llm_keys
             app.state.workspace_llms = workspace_llms
             app.state.connections = connections
+            app.state.pipelines = pipelines
             app.state.allow_private_databases = allow_private_databases
         else:
             configure_logging()
@@ -122,6 +125,16 @@ def create_app(
                 llm=create_llm_provider(settings),
                 settings=settings,
                 embeddings=create_embedding_provider(settings),  # schema retrieval (3.3)
+                history_loader=(
+                    partial(load_history, app.state.store) if app.state.store else None
+                ),
+            )
+            # 5.11: the demo pipeline above, and one per saved database, built on first use.
+            app.state.pipelines = PipelineRegistry(
+                app.state.pipeline,
+                app.state.connections,
+                settings=settings,
+                allow_private=settings.allow_private_databases,
                 history_loader=(
                     partial(load_history, app.state.store) if app.state.store else None
                 ),

@@ -120,6 +120,10 @@ class FakeStore:
         self._check(owner, conversation_id)
         self.deleted.append(conversation_id)
 
+    def database_of(self, conversation_id: UUID, *, owner: Owner) -> tuple[bool, UUID | None]:
+        self._check(owner, conversation_id)
+        return True, None  # the demo database
+
 
 class FakePipeline:
     def __init__(self, error: Exception | None = None) -> None:
@@ -410,5 +414,6 @@ def test_every_route_asks_the_store_for_the_logged_in_users_rows() -> None:
         api.post(f"/conversations/{ID}/turns/1/rerun")
         api.delete(f"/conversations/{ID}")
 
-    assert len(store.owners) == 5
+    # 7: the rerun and the delete also ask which database the conversation is about (5.11).
+    assert len(store.owners) == 7
     assert set(store.owners) == {TEST_OWNER}

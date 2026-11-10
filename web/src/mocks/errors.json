@@ -113,6 +113,22 @@
     "status": 409,
     "message": "This workspace already has a database called 'Sales'."
   },
+  "connection_no_tables": {
+    "status": 422,
+    "message": "This login can read no tables in schema public. Grant it SELECT on the tables to ask about."
+  },
+  "connection_unreadable": {
+    "status": 409,
+    "message": "This database's saved password can't be read: delete it and add it again."
+  },
+  "conversation_other_database": {
+    "status": 409,
+    "message": "This conversation is about another database. Start a new conversation to ask this one."
+  },
+  "llm_key_required": {
+    "status": 409,
+    "message": "Questions on your own database run on your own LLM key: an admin can save one in Settings."
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."

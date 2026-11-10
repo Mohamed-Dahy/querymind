@@ -345,6 +345,8 @@ export interface paths {
         /**
          * Rerun Turn
          * @description Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body.
+         *
+         *     It runs on the conversation's own database (5.11), checked again by that database's validator.
          */
         post: operations["rerun_turn_conversations__conversation_id__turns__n__rerun_post"];
         delete?: never;
@@ -585,6 +587,11 @@ export interface components {
         /** AskRequest */
         AskRequest: {
             /**
+             * Connection Id
+             * @description Ask one of the workspace's own databases (GET /connections). Leave it out for the demo database. A follow-up stays on its conversation's database.
+             */
+            connection_id?: string | null;
+            /**
              * Conversation Id
              * @description Continue this conversation (from an earlier reply), so follow-ups like "now only for 1997" work. Leave it out to start a new one.
              */
@@ -742,6 +749,8 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /** Connection Id */
+            connection_id?: string | null;
             /** Conversation Id */
             conversation_id: string | null;
             /**
@@ -945,6 +954,8 @@ export interface components {
          * @description A saved conversation with its turns, oldest first.
          */
         ConversationDetail: {
+            /** Connection Id */
+            connection_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -987,6 +998,8 @@ export interface components {
          * @description One line of the history list.
          */
         ConversationSummary: {
+            /** Connection Id */
+            connection_id?: string | null;
             /**
              * Created At
              * Format: date-time

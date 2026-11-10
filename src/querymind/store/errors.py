@@ -27,3 +27,11 @@ class ConnectionNotFoundError(StoreError):
 
 class ConnectionNameTakenError(StoreError):
     """The workspace already has a connection with this name. The message is safe to show."""
+
+
+class ConversationOtherDatabaseError(StoreError):
+    """A follow-up asked on another database than its conversation's. Safe to show."""
+
+
+class ConnectionUnreadableError(StoreError):
+    """A saved database's password can't be decrypted: save the database again. Safe to show."""

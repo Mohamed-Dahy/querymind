@@ -37,6 +37,7 @@ class AuditLine(BaseModel):
     )
     email: str | None
     conversation_id: UUID | None
+    connection_id: UUID | None = None  # the database it ran on; None = the demo
     question: str | None
     sql: str | None
     tables: list[str]

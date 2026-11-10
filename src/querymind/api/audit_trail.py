@@ -44,6 +44,7 @@ def for_reply(
     user: AuthUser,
     conversation_id: UUID,
     started: float,
+    connection_id: UUID | None = None,
 ) -> AuditEntry:
     """A question that got a reply: its kind is the outcome; an answer adds its SQL and size."""
     answer = reply if isinstance(reply, AskResponse) else None
@@ -60,6 +61,7 @@ def for_reply(
         user_id=user.user_id,
         workspace_id=user.workspace_id,
         email=user.email,
+        connection_id=connection_id,
     )
 
 
@@ -72,6 +74,7 @@ def for_error(
     started: float,
     conversation_id: UUID | None = None,
     sql: str | None = None,
+    connection_id: UUID | None = None,
 ) -> AuditEntry:
     """A request that failed: the API's error code is the outcome, its safe message the detail."""
     _, body = error_response(exc)
@@ -80,6 +83,7 @@ def for_error(
         outcome=body.error,
         detail=body.message,
         conversation_id=conversation_id,
+        connection_id=connection_id,
         question=question,
         sql=sql,
         duration_ms=elapsed_ms(started),

@@ -8,6 +8,7 @@ messages never reach the client (§9).
 import logging
 import math
 
+from querymind.agent.registry import OwnKeyRequiredError
 from querymind.api.evals import EvalsUnavailableError
 from querymind.api.ratelimit import RateLimitedError
 from querymind.api.schemas import ErrorResponse
@@ -19,6 +20,7 @@ from querymind.auth.errors import (
 )
 from querymind.db.errors import (
     DatabaseUnavailableError,
+    NoReadableTablesError,
     QueryExecutionError,
     QueryTimeoutError,
     RemoteLoginError,
@@ -41,7 +43,9 @@ from querymind.store.errors import (
     AccountsUnavailableError,
     ConnectionNameTakenError,
     ConnectionNotFoundError,
+    ConnectionUnreadableError,
     ConversationNotFoundError,
+    ConversationOtherDatabaseError,
     StoreUnavailableError,
     TurnNotFoundError,
 )
@@ -80,6 +84,11 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     WritableLoginError: (422, "connection_writable"),
     ConnectionNotFoundError: (404, "connection_not_found"),
     ConnectionNameTakenError: (409, "connection_name_taken"),
+    # Asking on a saved database (5.11).
+    NoReadableTablesError: (422, "connection_no_tables"),
+    ConnectionUnreadableError: (409, "connection_unreadable"),
+    ConversationOtherDatabaseError: (409, "conversation_other_database"),
+    OwnKeyRequiredError: (409, "llm_key_required"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

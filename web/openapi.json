@@ -218,6 +218,19 @@
       },
       "AskRequest": {
         "properties": {
+          "connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ask one of the workspace's own databases (GET /connections). Leave it out for the demo database. A follow-up stays on its conversation's database.",
+            "title": "Connection Id"
+          },
           "conversation_id": {
             "anyOf": [
               {
@@ -508,6 +521,18 @@
             "format": "date-time",
             "title": "At",
             "type": "string"
+          },
+          "connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Id"
           },
           "conversation_id": {
             "anyOf": [
@@ -1022,6 +1047,18 @@
       "ConversationDetail": {
         "description": "A saved conversation with its turns, oldest first.",
         "properties": {
+          "connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -1095,6 +1132,18 @@
       "ConversationSummary": {
         "description": "One line of the history list.",
         "properties": {
+          "connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -4836,7 +4885,7 @@
     },
     "/conversations/{conversation_id}/turns/{n}/rerun": {
       "post": {
-        "description": "Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body.",
+        "description": "Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body.\n\nIt runs on the conversation's own database (5.11), checked again by that database's validator.",
         "operationId": "rerun_turn_conversations__conversation_id__turns__n__rerun_post",
         "parameters": [
           {

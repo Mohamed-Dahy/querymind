@@ -48,7 +48,8 @@ Action = Literal[
 ]
 
 _COLUMNS = """
-    id, at, action, outcome, user_id, workspace_id, email, conversation_id, question, sql, tables,
+    id, at, action, outcome, user_id, workspace_id, email, conversation_id, connection_id, question,
+    sql, tables,
     row_count, duration_ms, sql_attempts, detail
 """
 
@@ -65,6 +66,7 @@ class AuditEntry(BaseModel):
     workspace_id: UUID | None = None
     email: str | None = None  # as typed on a failed login; the user's on everything else
     conversation_id: UUID | None = None
+    connection_id: UUID | None = None  # the database it ran on (5.11); None = the demo
     question: str | None = None
     sql: str | None = None  # the validated SQL that ran (or the last one tried)
     tables: tuple[str, ...] = ()
@@ -108,11 +110,12 @@ class AuditStore:
             conn.execute(
                 """
                 INSERT INTO querymind_app.audit_log
-                    (action, outcome, user_id, workspace_id, email, conversation_id, question,
-                     sql, tables, row_count, duration_ms, sql_attempts, detail)
+                    (action, outcome, user_id, workspace_id, email, conversation_id,
+                     connection_id, question, sql, tables, row_count, duration_ms, sql_attempts,
+                     detail)
                 VALUES (%(action)s, %(outcome)s, %(user_id)s, %(workspace_id)s, %(email)s,
-                        %(conversation_id)s, %(question)s, %(sql)s, %(tables)s, %(row_count)s,
-                        %(duration_ms)s, %(sql_attempts)s, %(detail)s)
+                        %(conversation_id)s, %(connection_id)s, %(question)s, %(sql)s, %(tables)s,
+                        %(row_count)s, %(duration_ms)s, %(sql_attempts)s, %(detail)s)
                 """,
                 {**entry.model_dump(), "tables": list(entry.tables)},
             )

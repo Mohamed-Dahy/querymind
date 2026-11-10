@@ -12,12 +12,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Path, Query, status
 from pydantic import TypeAdapter
 
+from querymind.agent.registry import PipelineRegistry
 from querymind.api import audit_trail
 from querymind.api.deps import (
     CurrentUser,
     ManagesConversations,
     get_audit,
     get_conversation_pipeline,
+    get_pipelines,
     get_store,
     limit_reruns,
     owner_of,
@@ -112,10 +114,17 @@ def delete_conversation(
     user: CurrentUser,
     store: Store,
     pipeline: Annotated[ManagesConversations, Depends(get_conversation_pipeline)],
+    pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
 ) -> None:
     """Delete a conversation for good, from the store and from the agent's memory."""
-    store.delete(conversation_id, owner=owner_of(user))  # 404 unless it's yours
-    pipeline.forget(str(conversation_id))
+    owner = owner_of(user)
+    _, database = store.database_of(conversation_id, owner=owner)  # 404 unless it's yours
+    store.delete(conversation_id, owner=owner)
+    # Its own database's memory (5.11), or the demo's.
+    if pipelines is not None:
+        pipelines.forget_conversation(database, str(conversation_id))
+    else:
+        pipeline.forget(str(conversation_id))
 
 
 @router.post(
@@ -131,16 +140,29 @@ def rerun_turn(
     store: Store,
     pipeline: Annotated[ManagesConversations, Depends(get_conversation_pipeline)],
     audit: Annotated[AuditStore | None, Depends(get_audit)],
+    pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
 ) -> RerunResponse:
-    """Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body."""
+    """Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body.
+
+    It runs on the conversation's own database (5.11), checked again by that database's validator.
+    """
     started = time.perf_counter()
     question, sql = "", None
+    database: UUID | None = None
     try:
-        turn = store.get_turn(conversation_id, n, owner=owner_of(user))
+        owner = owner_of(user)
+        turn = store.get_turn(conversation_id, n, owner=owner)
         question, sql = turn.question, turn.sql
         if sql is None:
             raise TurnNotFoundError("This turn has no SQL to run.")
-        result = pipeline.rerun(question, sql, conversation_id=str(conversation_id))
+        _, database = store.database_of(conversation_id, owner=owner)
+        # No LLM call, so no key needed: the database's own pipeline, or the demo's.
+        runner: ManagesConversations = (
+            pipelines.for_database(user.workspace_id, database)
+            if pipelines is not None and database is not None
+            else pipeline
+        )
+        result = runner.rerun(question, sql, conversation_id=str(conversation_id))
     except Exception as exc:
         line = audit_trail.for_error(
             exc,
@@ -150,6 +172,7 @@ def rerun_turn(
             started=started,
             conversation_id=conversation_id,
             sql=sql,
+            connection_id=database,
         )
         audit_trail.write(audit, line)
         raise
@@ -162,6 +185,7 @@ def rerun_turn(
             workspace_id=user.workspace_id,
             email=user.email,
             conversation_id=conversation_id,
+            connection_id=database,
             question=question,
             sql=sql,
             row_count=result.row_count,

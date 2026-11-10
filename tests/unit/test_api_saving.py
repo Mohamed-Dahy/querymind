@@ -57,6 +57,11 @@ class FakeStore:
         if conversation_id in self.foreign:
             raise ConversationNotFoundError("This conversation doesn't exist.")
 
+    def database_of(self, conversation_id: UUID, *, owner: Owner) -> tuple[bool, UUID | None]:
+        self.check_owner(conversation_id, owner=owner)
+        exists = any(turn["conversation_id"] == conversation_id for turn in self.saved)
+        return exists, None  # every conversation here is about the demo database
+
     def save_turn(self, conversation_id: UUID, **turn: Any) -> int:
         if self.error is not None:
             raise self.error
@@ -113,6 +118,7 @@ def test_the_stream_has_saved_before_it_sends_the_answer() -> None:
         FakePipeline(),
         [],
         store,  # type: ignore[arg-type]
+        None,
         None,
         None,
     )
@@ -177,6 +183,7 @@ def test_a_stopped_run_isnt_saved() -> None:
         FakePipeline(),
         [],
         store,  # type: ignore[arg-type]
+        None,
         None,
         None,
     )

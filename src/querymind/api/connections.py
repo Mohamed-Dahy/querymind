@@ -18,8 +18,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from querymind.agent.registry import PipelineRegistry
 from querymind.api import audit_trail
-from querymind.api.deps import AdminUser, CurrentUser, get_audit, limit_connection_checks
+from querymind.api.deps import (
+    AdminUser,
+    CurrentUser,
+    get_audit,
+    get_pipelines,
+    limit_connection_checks,
+)
 from querymind.api.errors import error_response
 from querymind.api.schemas import ErrorResponse
 from querymind.auth.tokens import AuthUser
@@ -126,6 +133,7 @@ def allow_private(request: Request) -> bool:
 Connections = Annotated[ConnectionStore, Depends(get_connections)]
 Audit = Annotated[AuditStore | None, Depends(get_audit)]
 AllowPrivate = Annotated[bool, Depends(allow_private)]
+Pipelines = Annotated[PipelineRegistry | None, Depends(get_pipelines)]
 
 
 def _check(spec: ConnectionSpec, password: SecretStr, *, allow_private: bool) -> None:
@@ -178,7 +186,12 @@ def save_connection(
     dependencies=[Depends(limit_connection_checks)],
 )
 def test_connection(
-    connection_id: UUID, user: AdminUser, store: Connections, audit: Audit, private: AllowPrivate
+    connection_id: UUID,
+    user: AdminUser,
+    store: Connections,
+    audit: Audit,
+    private: AllowPrivate,
+    pipelines: Pipelines,
 ) -> ConnectionInfo:
     """Connect again and check the login is still read-only (grants can change after saving)."""
     started = time.perf_counter()
@@ -190,6 +203,8 @@ def test_connection(
         _write(audit, user, "connection_refused", exc, spec, started)
         raise
     checked = store.mark_checked(user.workspace_id, connection_id)
+    if pipelines is not None:
+        pipelines.forget(connection_id)  # its tables may have changed: read them again
     _write(audit, user, "connection_tested", None, spec, started)
     return ConnectionInfo.of(checked)
 
@@ -201,12 +216,14 @@ def test_connection(
     responses=_ADMIN_ERRORS,
 )
 def delete_connection(
-    connection_id: UUID, user: AdminUser, store: Connections, audit: Audit
+    connection_id: UUID, user: AdminUser, store: Connections, audit: Audit, pipelines: Pipelines
 ) -> Response:
     """Remove the database from the workspace, with its password."""
     started = time.perf_counter()
     record = store.get(user.workspace_id, connection_id)
-    store.delete(user.workspace_id, connection_id)
+    store.delete(user.workspace_id, connection_id)  # its conversations go with it (cascade)
+    if pipelines is not None:
+        pipelines.forget(connection_id)  # and its pipeline, with its password, from memory
     _write(audit, user, "connection_deleted", None, record.spec(), started)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

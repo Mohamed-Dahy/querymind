@@ -36,6 +36,7 @@ from querymind.db.connection import connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.store.errors import (
     ConversationNotFoundError,
+    ConversationOtherDatabaseError,
     StoreError,
     StoreUnavailableError,
     TurnNotFoundError,
@@ -47,8 +48,12 @@ TITLE_LENGTH = 80  # a title is the first question, cut to fit the history list
 MAX_SAVED_QUESTIONS = 200  # newest first; more than anyone scrolls through in a side rail
 _NOT_FOUND = "This conversation doesn't exist."
 
+_OTHER_DATABASE = (
+    "This conversation is about another database. Start a new conversation to ask this one."
+)
+
 _SUMMARY_COLUMNS = """
-    id, title, pinned, created_at, updated_at,
+    id, title, pinned, created_at, updated_at, connection_id,
     (SELECT count(*) FROM querymind_app.turns AS t WHERE t.conversation_id = c.id) AS turns
 """
 
@@ -73,6 +78,8 @@ class ConversationSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     turns: int
+    # Which database it is about (5.11): None = the demo, else one of the workspace's own.
+    connection_id: UUID | None = None
 
 
 class SavedTurn(BaseModel):
@@ -163,6 +170,7 @@ class ConversationStore:
         sql: str | None,
         reply: Mapping[str, Any],
         trace: Sequence[Mapping[str, Any]] = (),
+        connection_id: UUID | None = None,
     ) -> int:
         """Save one turn, creating the conversation on its first. Returns the turn's number.
 
@@ -170,18 +178,26 @@ class ConversationStore:
         one conversation run at once the second waits, and then `MAX(n) + 1` sees the first one's
         turn: the numbers can't collide.
 
+        `connection_id`: the database the turn ran on (None = the demo). A conversation keeps the
+        database of its first turn.
+
         Raises:
             ConversationNotFoundError: the id is someone else's conversation (nothing is saved).
+            ConversationOtherDatabaseError: the conversation is about another database (two first
+                turns raced with different databases: the second one isn't saved).
         """
         without_rows = {key: value for key, value in reply.items() if key != "rows"}
         with self._transaction() as conn:
-            # The WHERE makes the update (and so RETURNING) skip someone else's conversation.
+            # The WHERE makes the update (and so RETURNING) skip someone else's conversation, and
+            # one about another database (IS NOT DISTINCT FROM: NULL, the demo, equals NULL).
             mine = conn.execute(
                 """
-                INSERT INTO querymind_app.conversations (id, title, user_id, workspace_id)
-                VALUES (%(id)s, %(title)s, %(user)s, %(workspace)s)
+                INSERT INTO querymind_app.conversations
+                    (id, title, user_id, workspace_id, connection_id)
+                VALUES (%(id)s, %(title)s, %(user)s, %(workspace)s, %(connection)s)
                 ON CONFLICT (id) DO UPDATE SET updated_at = now()
                 WHERE conversations.user_id = %(user)s
+                  AND conversations.connection_id IS NOT DISTINCT FROM %(connection)s
                 RETURNING id
                 """,
                 {
@@ -189,9 +205,16 @@ class ConversationStore:
                     "title": title_from(question),
                     "user": owner.user_id,
                     "workspace": owner.workspace_id,
+                    "connection": connection_id,
                 },
             ).fetchone()
             if mine is None:
+                place = conn.execute(
+                    "SELECT user_id FROM querymind_app.conversations WHERE id = %s",
+                    (conversation_id,),
+                ).fetchone()
+                if place is not None and place[0] == owner.user_id:
+                    raise ConversationOtherDatabaseError(_OTHER_DATABASE)
                 raise ConversationNotFoundError(_NOT_FOUND)
             row = conn.execute(
                 """
@@ -288,6 +311,25 @@ class ConversationStore:
         if found is None:
             raise TurnNotFoundError("This turn doesn't exist.")
         return found
+
+    def database_of(self, conversation_id: UUID, *, owner: Owner) -> tuple[bool, UUID | None]:
+        """Whether this owner's conversation exists yet, and its database (None = the demo).
+
+        A new id gives (False, None). The routes use it to send a follow-up to its own database.
+
+        Raises:
+            ConversationNotFoundError: the id is someone else's conversation, or an unowned one.
+        """
+        with self._transaction() as conn:
+            found = conn.execute(
+                "SELECT user_id, connection_id FROM querymind_app.conversations WHERE id = %s",
+                (conversation_id,),
+            ).fetchone()
+        if found is None:
+            return False, None
+        if found[0] != owner.user_id:
+            raise ConversationNotFoundError(_NOT_FOUND)
+        return True, found[1]
 
     def check_owner(self, conversation_id: UUID, *, owner: Owner) -> None:
         """Fine if the id is this owner's conversation or no conversation yet (a new one).
