@@ -134,7 +134,14 @@ class FakePipeline:
     def forget(self, conversation_id: str) -> None:
         self.forgotten.append(conversation_id)
 
-    def rerun(self, question: str, sql: str, *, conversation_id: str | None = None) -> QueryResult:
+    def rerun(
+        self,
+        question: str,
+        sql: str,
+        *,
+        conversation_id: str | None = None,
+        allowed_tables: frozenset[str] | None = None,
+    ) -> QueryResult:
         self.reruns.append((question, sql, conversation_id))
         if self.error is not None:
             raise self.error

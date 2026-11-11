@@ -42,12 +42,22 @@ class FakeStreamingPipeline:
         self.closed = False
 
     def ask(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> AgentReply:
         return self.reply
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.conversation_ids.append(conversation_id)
         try:
@@ -205,7 +215,12 @@ class EndlessPipeline:
         self.closed = threading.Event()
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         try:
             while True:

@@ -17,6 +17,8 @@ from querymind.api import audit_trail
 from querymind.api.deps import (
     CurrentUser,
     ManagesConversations,
+    TableAccess,
+    allowed_tables,
     get_audit,
     get_conversation_pipeline,
     get_pipelines,
@@ -141,6 +143,7 @@ def rerun_turn(
     pipeline: Annotated[ManagesConversations, Depends(get_conversation_pipeline)],
     audit: Annotated[AuditStore | None, Depends(get_audit)],
     pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
+    access: TableAccess,
 ) -> RerunResponse:
     """Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body.
 
@@ -162,7 +165,12 @@ def rerun_turn(
             if pipelines is not None and database is not None
             else pipeline
         )
-        result = runner.rerun(question, sql, conversation_id=str(conversation_id))
+        result = runner.rerun(
+            question,
+            sql,
+            conversation_id=str(conversation_id),
+            allowed_tables=allowed_tables(access, user, database),  # 5.2
+        )
     except Exception as exc:
         line = audit_trail.for_error(
             exc,

@@ -10,7 +10,12 @@ import pytest
 import sqlglot
 
 from querymind.safety.errors import UnsafeSqlError
-from querymind.safety.sql_validator import MAX_SQL_CHARS, ValidatedQuery, validate_sql
+from querymind.safety.sql_validator import (
+    MAX_SQL_CHARS,
+    ValidatedQuery,
+    tables_read,
+    validate_sql,
+)
 
 ALLOWED = frozenset({"orders", "customers", "products", "order_details", "employees"})
 MAX_ROWS = 100
@@ -344,3 +349,37 @@ def test_rejections_are_logged(caplog: pytest.LogCaptureFixture) -> None:
     [record] = [r for r in caplog.records if r.message == "unsafe sql rejected"]
     assert record.reason == "Function pg_sleep is not allowed."  # type: ignore[attr-defined]
     assert record.sql == "SELECT pg_sleep(1)"  # type: ignore[attr-defined]
+
+
+# --- tables_read (5.2): which tables trusted SQL reads, to compare with a role's tables ----------
+
+
+@pytest.mark.parametrize(
+    ("sql", "tables"),
+    [
+        ("SELECT * FROM orders", {"orders"}),
+        ("SELECT * FROM orders o JOIN customers c USING (customer_id)", {"orders", "customers"}),
+        (
+            "SELECT * FROM orders WHERE customer_id IN (SELECT customer_id FROM customers)",
+            {"orders", "customers"},
+        ),
+        ("WITH big AS (SELECT * FROM orders) SELECT * FROM big", {"orders"}),  # big isn't a table
+        ("SELECT 1", set()),
+    ],
+)
+def test_tables_read_lists_every_table_and_no_cte(sql: str, tables: set[str]) -> None:
+    assert tables_read(sql) == tables
+
+
+@pytest.mark.parametrize(
+    "sql", ["DELETE FROM orders", "SELECT 1; SELECT 2", "SELECT * FROM pg_catalog.pg_user"]
+)
+def test_tables_read_still_refuses_what_isnt_one_public_select(sql: str) -> None:
+    with pytest.raises(UnsafeSqlError):
+        tables_read(sql)
+
+
+def test_tables_read_logs_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    tables_read("SELECT * FROM salaries")
+
+    assert caplog.records == []

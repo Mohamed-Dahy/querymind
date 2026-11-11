@@ -43,18 +43,35 @@ class FakeDatabasePipeline:
         self.forgotten: list[str] = []
 
     def ask(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> AgentReply:
         self.asked.append((question, llm))
         return RESULT
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.asked.append((question, llm))
         yield Finished(RESULT)
 
-    def rerun(self, question: str, sql: str, *, conversation_id: str | None = None) -> QueryResult:
+    def rerun(
+        self,
+        question: str,
+        sql: str,
+        *,
+        conversation_id: str | None = None,
+        allowed_tables: frozenset[str] | None = None,
+    ) -> QueryResult:
         self.reruns.append(sql)
         return ROWS
 

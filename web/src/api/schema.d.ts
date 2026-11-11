@@ -187,7 +187,7 @@ export interface paths {
         };
         /**
          * Get Catalog
-         * @description Every table with its columns, keys, business and approximate row count.
+         * @description Every table you may use, with its columns, keys, business and approximate row count.
          */
         get: operations["get_catalog_catalog_get"];
         put?: never;
@@ -207,7 +207,8 @@ export interface paths {
         };
         /**
          * Get Table Questions
-         * @description Your recent saved questions whose SQL read this table. No such table: an empty list.
+         * @description Your recent saved questions whose SQL read this table. No such table (or one your role may
+         *     not use, 5.2): an empty list, the same answer, so it can't tell which tables exist.
          */
         get: operations["get_table_questions_catalog_tables__table__questions_get"];
         put?: never;
@@ -274,7 +275,8 @@ export interface paths {
         };
         /**
          * Get Dictionary
-         * @description The drafted descriptions of the database's tables and columns, for review.
+         * @description The drafted descriptions of the database's tables and columns, for review. A restricted role
+         *     (5.2) gets only the tables it may use: the rest aren't even named.
          */
         get: operations["get_dictionary_connections__connection_id__dictionary_get"];
         /**
@@ -321,6 +323,9 @@ export interface paths {
         /**
          * Get Onboarding Status
          * @description Where the database's onboarding is. Poll it while it is queued, reading or drafting.
+         *
+         *     Admins only (5.2): running onboarding is theirs, and its counts are the whole database's, which
+         *     would tell a restricted role how many tables it can't see.
          */
         get: operations["get_onboarding_status_connections__connection_id__onboarding_get"];
         put?: never;
@@ -565,10 +570,35 @@ export interface paths {
         };
         /**
          * Get Semantic
-         * @description Per business: what the tables and columns mean, the terms and the preferred joins.
+         * @description Per business: what the tables and columns mean, the terms and the preferred joins (only
+         *     the tables you may use).
          */
         get: operations["get_semantic_semantic_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/table-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Table Access
+         * @description The database's tables and each role's rule. Admins only.
+         */
+        get: operations["get_table_access_table_access_get"];
+        /**
+         * Put Table Access
+         * @description Set which tables a role may use on a database (null = every table). Admins only; audited.
+         */
+        put: operations["put_table_access_table_access_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -809,7 +839,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited";
+            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed";
             /**
              * At
              * Format: date-time
@@ -2024,6 +2054,35 @@ export interface components {
             type: "step";
         };
         /**
+         * TableAccessInfo
+         * @description A database's tables, and which of them each restrictable role may use.
+         */
+        TableAccessInfo: {
+            /** Analyst */
+            analyst: string[] | null;
+            /** Connection Id */
+            connection_id: string | null;
+            /** Tables */
+            tables: string[];
+            /** Viewer */
+            viewer: string[] | null;
+        };
+        /**
+         * TableAccessUpdate
+         * @description One role's rule. `tables: null` lifts it (every table); `[]` leaves the role no table.
+         */
+        TableAccessUpdate: {
+            /** Connection Id */
+            connection_id?: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "analyst" | "viewer";
+            /** Tables */
+            tables?: string[] | null;
+        };
+        /**
          * TableEdit
          * @description One table's reviewed description.
          */
@@ -2159,7 +2218,7 @@ export interface operations {
     audit_log_admin_audit_get: {
         parameters: {
             query?: {
-                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited") | null;
+                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed") | null;
                 outcome?: string | null;
                 email?: string | null;
                 /** @description Find in questions and SQL */
@@ -3063,8 +3122,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description No such database, or no dictionary yet */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A run is going on, or no LLM key saved */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3837,6 +3914,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SemanticOverview"];
+                };
+            };
+        };
+    };
+    get_table_access_table_access_get: {
+        parameters: {
+            query?: {
+                connection_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableAccessInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not one of this workspace's databases */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Permissions or the database aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_table_access_table_access_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TableAccessUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableAccessInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not one of this workspace's databases */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A table it doesn't have */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Permissions or the database aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

@@ -151,6 +151,7 @@ def test_a_stopped_stream_is_written_as_cancelled() -> None:
         audit,  # type: ignore[arg-type]
         None,
         None,
+        None,  # table access: none (every table)
     )
 
     next(events)  # the first step arrived, then the client went away

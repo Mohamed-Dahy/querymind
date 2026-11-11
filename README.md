@@ -109,6 +109,9 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
   powers, write grants down to a single column, CREATE on a schema), saying exactly how to fix it.
 - **Ask your own database.** Once saved, a database is asked like the demo (`connection_id` on `/ask`), on the
   workspace's own LLM key only; each conversation stays on its database, and every answer says which one answered.
+- **Table permissions.** A workspace admin chooses which tables analysts and viewers may use, per database. A
+  restricted role's questions, schema search and data explorer only ever see those tables (no key, business term or
+  example that names another), and generated SQL on any other table is refused. New tables stay hidden until granted.
 - **Onboarding a new database.** Saving a database starts a background job that reads its tables and drafts a
   data dictionary (what each table and column means) with the workspace's own LLM; admins review and correct it.
   It becomes that database's semantic layer, so "customers" stops being a guess between two similar tables.

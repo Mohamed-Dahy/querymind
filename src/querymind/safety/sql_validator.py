@@ -27,7 +27,7 @@ even if a query got past this validator.
 """
 
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Container
 from dataclasses import dataclass, field
 
 import sqlglot
@@ -121,6 +121,25 @@ def validate_sql(sql: str, *, allowed_tables: Collection[str], max_rows: int) ->
     )
 
 
+class _AnyName:
+    """Every name is "in" it: for listing a query's tables without judging them."""
+
+    def __contains__(self, name: object) -> bool:
+        return True
+
+
+def tables_read(sql: str) -> frozenset[str]:
+    """The tables a query reads (a WITH name isn't one), without judging or logging them.
+
+    For trusted SQL only (business terms, verified examples), to compare with a role's tables
+    (5.2). Not a safety check: run anything through `validate_sql`.
+
+    Raises:
+        UnsafeSqlError: it isn't one SELECT, or names a table outside the public schema.
+    """
+    return frozenset(_check_tables(_parse_single_select(sql), _AnyName()))
+
+
 def _parse_single_select(sql: str) -> exp.Query:
     """Checks 1 and 2: exactly one statement, and it is a SELECT (or UNION etc. of SELECTs)."""
     if not sql.strip():
@@ -154,7 +173,7 @@ def _reject_forbidden_nodes(query: exp.Query) -> None:
             raise UnsafeSqlError(f"The query may only read data ({_describe_node(node)} found).")
 
 
-def _check_tables(query: exp.Query, allowed_tables: Collection[str]) -> set[str]:
+def _check_tables(query: exp.Query, allowed_tables: Container[str]) -> set[str]:
     """Check 4: every table is allowed and in the public schema. Returns the tables read."""
     tables: set[str] = set()
     for table in query.find_all(exp.Table):

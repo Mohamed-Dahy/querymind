@@ -51,7 +51,12 @@ class FakePipeline:
         self.conversation_ids: list[str | None] = []
 
     def ask(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> AgentReply:
         self.questions.append(question)
         self.conversation_ids.append(conversation_id)

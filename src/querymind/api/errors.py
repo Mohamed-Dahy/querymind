@@ -38,6 +38,7 @@ from querymind.llm import (
 )
 from querymind.llm.key_check import KeyCheckError
 from querymind.safety.errors import UnsafeSqlError
+from querymind.safety.permissions import NoPermittedTablesError
 from querymind.secrets.errors import SecretUnreadableError
 from querymind.store.errors import (
     AccountsUnavailableError,
@@ -50,6 +51,7 @@ from querymind.store.errors import (
     DictionaryNotFoundError,
     OnboardingRunningError,
     StoreUnavailableError,
+    TableAccessInvalidError,
     TurnNotFoundError,
 )
 
@@ -96,6 +98,8 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     OnboardingRunningError: (409, "onboarding_running"),
     DictionaryNotFoundError: (404, "dictionary_not_found"),
     DictionaryEditError: (422, "dictionary_invalid"),
+    NoPermittedTablesError: (403, "no_tables_permitted"),  # 5.2: a role with no table here
+    TableAccessInvalidError: (422, "table_access_invalid"),  # 5.2: an admin named a missing table
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

@@ -6,6 +6,7 @@ so the app creates the pipeline once at startup and tests can hand in a fake.
 
 from collections.abc import Generator
 from typing import Annotated, Protocol
+from uuid import UUID
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -25,22 +26,34 @@ from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import AccountsUnavailableError, StoreUnavailableError
 from querymind.store.llm_keys import LLMKeyStore
+from querymind.store.table_access import TableAccessStore
 
 
 class AnswersQuestions(Protocol):
-    """Anything with `ask(question, conversation_id=..., llm=...) -> AgentReply`: the real
-    Pipeline, or a test fake. `llm`: the workspace's own provider (5.8), None = the pipeline's."""
+    """Anything with `ask(question, conversation_id=..., llm=..., allowed_tables=...)`: the real
+    Pipeline, or a test fake. `llm`: the workspace's own provider (5.8), None = the pipeline's.
+    `allowed_tables`: the tables this user may use (5.2), None = every table."""
 
     def ask(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> AgentReply: ...
 
 
 class StreamsAnswers(Protocol):
-    """Anything with `stream(question, conversation_id=..., llm=...)`, reporting as it goes."""
+    """Anything with `stream(question, ...)` (as `ask`), reporting as it goes."""
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> Generator[AgentEvent | Finished]: ...
 
 
@@ -50,7 +63,12 @@ class ManagesConversations(Protocol):
     def forget(self, conversation_id: str) -> None: ...
 
     def rerun(
-        self, question: str, sql: str, *, conversation_id: str | None = None
+        self,
+        question: str,
+        sql: str,
+        *,
+        conversation_id: str | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> QueryResult: ...
 
 
@@ -203,6 +221,26 @@ def get_connections(request: Request) -> ConnectionStore:
     if store is None:
         raise StoreUnavailableError("Saved databases aren't available on this server.")
     return store
+
+
+def get_table_access(request: Request) -> TableAccessStore | None:
+    """Which tables each role may use (5.2), created at startup. None only in a test app built
+    without it: then every table. A real server always has it, and a lookup that fails raises."""
+    access: TableAccessStore | None = getattr(request.app.state, "table_access", None)
+    return access
+
+
+TableAccess = Annotated[TableAccessStore | None, Depends(get_table_access)]
+
+
+def allowed_tables(
+    access: TableAccessStore | None, user: AuthUser, connection_id: UUID | None
+) -> frozenset[str] | None:
+    """The tables this user may use on this database (None = every table). Fails closed: a
+    store that can't be read raises StoreUnavailableError (503), never "every table"."""
+    if access is None:
+        return None
+    return access.allowed(user.workspace_id, connection_id, user.role)
 
 
 def get_llm_keys(request: Request) -> LLMKeyStore:

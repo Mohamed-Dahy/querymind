@@ -53,7 +53,12 @@ class ScriptedPipeline:
         self.conversation_ids: dict[str, str | None] = {}
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.conversation_ids[question] = conversation_id
         yield StepEvent(node="retrieve_schema", status="started")

@@ -47,3 +47,7 @@ class DictionaryNotFoundError(StoreError):
 
 class DictionaryEditError(StoreError):
     """An edit names a table or column the dictionary doesn't have. Safe to show."""
+
+
+class TableAccessInvalidError(StoreError):
+    """A table permission names a table this database doesn't have (5.2). Safe to show."""

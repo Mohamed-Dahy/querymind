@@ -97,13 +97,23 @@ class RecordingPipeline:
         self.llms: list[LLMProvider | None] = []
 
     def ask(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> AgentReply:
         self.llms.append(llm)
         return RESULT
 
     def stream(
-        self, question: str, *, conversation_id: str | None = None, llm: LLMProvider | None = None
+        self,
+        question: str,
+        *,
+        conversation_id: str | None = None,
+        llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.llms.append(llm)
         yield Finished(RESULT)

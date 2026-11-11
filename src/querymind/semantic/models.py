@@ -60,6 +60,13 @@ class Metric(_Model):
     description: str = Field(min_length=1)
     synonyms: tuple[str, ...] = ()
 
+    @property
+    def query(self) -> str:
+        """The definition inside a whole query, so the validator can say which tables it reads."""
+        if self.kind == "measure":
+            return f"SELECT {self.sql} AS value FROM {self.table}"
+        return f"SELECT count(*) FROM {self.table} WHERE {self.sql}"
+
 
 class JoinPath(_Model):
     """A preferred way to join two tables, e.g. orders.ship_via = shippers.shipper_id."""

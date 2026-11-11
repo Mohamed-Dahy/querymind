@@ -23,6 +23,8 @@ from querymind.api import audit_trail
 from querymind.api.deps import (
     AdminUser,
     CurrentUser,
+    TableAccess,
+    allowed_tables,
     get_audit,
     get_connections,
     get_pipelines,
@@ -198,11 +200,14 @@ def onboard(
     return OnboardingInfo.of(start_onboarding(onboarder, llms, user, connection_id, audit))
 
 
-@router.get("/{connection_id}/onboarding", response_model=OnboardingInfo, responses=_ERRORS)
+@router.get("/{connection_id}/onboarding", response_model=OnboardingInfo, responses=_ADMIN_ERRORS)
 def get_onboarding_status(
-    connection_id: UUID, user: CurrentUser, onboarding: Onboarding
+    connection_id: UUID, user: AdminUser, onboarding: Onboarding
 ) -> OnboardingInfo:
-    """Where the database's onboarding is. Poll it while it is queued, reading or drafting."""
+    """Where the database's onboarding is. Poll it while it is queued, reading or drafting.
+
+    Admins only (5.2): running onboarding is theirs, and its counts are the whole database's, which
+    would tell a restricted role how many tables it can't see."""
     record = onboarding.get(user.workspace_id, connection_id)
     if record is None:
         raise DictionaryNotFoundError("This database hasn't been onboarded yet.")
@@ -211,13 +216,19 @@ def get_onboarding_status(
 
 @router.get("/{connection_id}/dictionary", response_model=DataDictionary, responses=_ERRORS)
 def get_dictionary(
-    connection_id: UUID, user: CurrentUser, onboarding: Onboarding
+    connection_id: UUID, user: CurrentUser, onboarding: Onboarding, access: TableAccess
 ) -> DataDictionary:
-    """The drafted descriptions of the database's tables and columns, for review."""
+    """The drafted descriptions of the database's tables and columns, for review. A restricted role
+    (5.2) gets only the tables it may use: the rest aren't even named."""
     record = onboarding.get(user.workspace_id, connection_id)
     if record is None or record.dictionary_version == 0:
         raise DictionaryNotFoundError("This database has no data dictionary yet: onboard it.")
-    return record.dictionary
+    allowed = allowed_tables(access, user, connection_id)
+    if allowed is None:
+        return record.dictionary
+    return record.dictionary.model_copy(
+        update={"tables": {n: t for n, t in record.dictionary.tables.items() if n in allowed}}
+    )
 
 
 @router.put("/{connection_id}/dictionary", response_model=DataDictionary, responses=_ADMIN_ERRORS)

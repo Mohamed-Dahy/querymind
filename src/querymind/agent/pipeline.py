@@ -24,6 +24,11 @@ provider, and a usable index (scripts/build_index.py). In `auto`, anything missi
 whole schema plus a warning; in `on`, it's an error. A saved database (5.10b) has its own
 index in the app database: synced at the first question (no LLM call), searched by keyword.
 
+Table permissions (5.2): one pipeline serves every user of its database, so the tables a user may
+use come with each call (`allowed_tables`, None = all). The run then sees a restricted view of the
+catalog (safety/permissions.py): the prompt, retrieval, examples and the validator's allowlist only
+know those tables. Views are cached per set of visible tables.
+
 Every question writes one structured "ask" log line with the outcome, every SQL attempt and
 which tables the LLM was shown (CLAUDE.md §8.7; the real audit table arrives in Phase 5).
 """
@@ -63,6 +68,7 @@ from querymind.db.schema import read_schema
 from querymind.llm import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.safety.errors import UnsafeSqlError
+from querymind.safety.permissions import NoPermittedTablesError
 from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.dictionary import DataDictionary, layer_from_dictionary
 from querymind.semantic.documents import build_documents, index_documents
@@ -83,6 +89,7 @@ audit_logger = logging.getLogger("querymind.audit")
 
 MAX_CONVERSATIONS = 100  # saved conversations; the least recently used is forgotten first
 RUN_LOCKS = 64  # see Pipeline._one_run_at_a_time
+MAX_VIEWS = 16  # restricted catalogs kept (5.2): one per distinct set of visible tables
 
 
 class Pipeline:
@@ -142,6 +149,11 @@ class Pipeline:
         self._examples = load_all_examples(settings.semantic_layer_paths)  # few-shot (3.5)
         self._schema: tuple[SchemaCatalog, SchemaRetriever | None] | None = None
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
+        # 5.2: visible tables -> (restricted catalog, its retriever); least recently used first.
+        self._views: OrderedDict[frozenset[str], tuple[SchemaCatalog, SchemaRetriever | None]] = (
+            OrderedDict()
+        )
+        self._views_lock = threading.Lock()
         self._conversations: OrderedDict[str, None] = OrderedDict()  # least recent first
         self._conversations_lock = threading.Lock()
         self._run_locks = [threading.Lock() for _ in range(RUN_LOCKS)]
@@ -153,6 +165,7 @@ class Pipeline:
         conversation_id: str | None = None,
         summarize_answer: bool = True,
         llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> AgentReply:
         """Answer one question, or ask back when it's ambiguous, or refuse a change request.
 
@@ -165,15 +178,23 @@ class Pipeline:
         `llm` answers this one question instead of the pipeline's own (5.8: the workspace's own
         key). Every LLM call of the run uses it; embeddings stay the pipeline's.
 
+        `allowed_tables` (5.2): the only tables this user may use; None = every table. The LLM is
+        shown only those, and the validator refuses SQL on any other.
+
         Raises:
             ValueError: the question is empty.
+            NoPermittedTablesError: `allowed_tables` leaves no table of this database.
             LLMProviderError / LLMOutputError: the LLM could not write the SQL.
             UnsafeSqlError / QueryExecutionError / QueryTimeoutError: every SQL attempt failed
                 (up to `settings.max_sql_attempts`); the error is the last attempt's.
             DatabaseUnavailableError: the database could not be reached.
         """
         run = self.stream(
-            question, conversation_id=conversation_id, summarize_answer=summarize_answer, llm=llm
+            question,
+            conversation_id=conversation_id,
+            summarize_answer=summarize_answer,
+            llm=llm,
+            allowed_tables=allowed_tables,
         )
         with closing(run) as events:
             for event in events:
@@ -188,6 +209,7 @@ class Pipeline:
         conversation_id: str | None = None,
         summarize_answer: bool = True,
         llm: LLMProvider | None = None,
+        allowed_tables: frozenset[str] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         """The same run as `ask()`, reporting as it goes. The last item is `Finished(reply)`.
 
@@ -204,7 +226,7 @@ class Pipeline:
             try:
                 if conversation_id is not None:
                     self._restore_history(conversation_id)
-                catalog, retriever = self._schema_info()
+                catalog, retriever = self._view(allowed_tables)  # 5.2: only what this user may see
                 start = new_turn(
                     question=question,
                     schema_text=catalog.full_text,  # retrieve_schema narrows it when it can
@@ -268,11 +290,19 @@ class Pipeline:
             self._finish(question, state, reply, started, conversation_id, provider=llm.name)
         )
 
-    def rerun(self, question: str, sql: str, *, conversation_id: str | None = None) -> QueryResult:
+    def rerun(
+        self,
+        question: str,
+        sql: str,
+        *,
+        conversation_id: str | None = None,
+        allowed_tables: frozenset[str] | None = None,
+    ) -> QueryResult:
         """Run a saved answer's SQL again for fresh rows, with no LLM call.
 
         The SQL comes from storage, so it isn't trusted: it goes through the validator again, with
         today's tables and row limit, and runs as the read-only role. Audited like any question.
+        `allowed_tables` (5.2): as for `ask`, so a saved answer can't reach a table hidden since.
 
         Raises:
             UnsafeSqlError / QueryExecutionError / QueryTimeoutError / DatabaseUnavailableError:
@@ -281,7 +311,7 @@ class Pipeline:
         started = time.perf_counter()
         state: AgentState = {"question": question}
         try:
-            catalog, _ = self._schema_info()
+            catalog, _ = self._view(allowed_tables)
             query = validate_sql(
                 sql,
                 allowed_tables=catalog.schema.table_names,
@@ -430,6 +460,48 @@ class Pipeline:
                 catalog = SchemaCatalog(schema, self._semantic_layers, self._examples)
                 self._schema = (catalog, self._make_retriever(catalog))
             return self._schema
+
+    def table_names(self) -> list[str]:
+        """Every table of this database the read-only login can read (reads the schema once)."""
+        catalog, _ = self._schema_info()
+        return sorted(catalog.schema.table_names)
+
+    def _view(self, allowed: frozenset[str] | None) -> tuple[SchemaCatalog, SchemaRetriever | None]:
+        """The catalog and retriever as a user allowed `allowed` sees them (None = everything).
+
+        Cached by the tables really visible (`allowed` ∩ the schema), so names in a rule that no
+        longer exist don't make a new view.
+
+        Raises:
+            NoPermittedTablesError: no table of this database is allowed.
+        """
+        catalog, retriever = self._schema_info()
+        if allowed is None:
+            return catalog, retriever
+        visible = frozenset(allowed & catalog.schema.table_names)
+        if visible == catalog.schema.table_names:
+            return catalog, retriever
+        if not visible:
+            raise NoPermittedTablesError(
+                "You can't use any table of this database. Ask an admin of your workspace "
+                "for access."
+            )
+        with self._views_lock:
+            cached = self._views.get(visible)
+            if cached is not None:
+                self._views.move_to_end(visible)
+                return cached
+            restricted = catalog.restricted(visible)
+            settings = self._settings
+            # A few visible tables are sent whole, as for a small database: no recall risk.
+            searches = retriever is not None and (
+                settings.schema_retrieval == "on" or len(visible) > settings.retrieval_min_tables
+            )
+            view = (restricted, retriever.narrowed(restricted) if retriever and searches else None)
+            self._views[visible] = view
+            while len(self._views) > MAX_VIEWS:
+                self._views.popitem(last=False)
+            return view
 
     def _make_retriever(self, catalog: SchemaCatalog) -> SchemaRetriever | None:
         """A retriever when retrieval should and can run; None = send the whole schema.

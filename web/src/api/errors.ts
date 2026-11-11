@@ -37,6 +37,8 @@ export const ERROR_TITLES = {
   onboarding_running: 'This database is being onboarded.',
   dictionary_not_found: 'No data dictionary yet.',
   dictionary_invalid: "That change doesn't fit the dictionary.",
+  no_tables_permitted: "You can't use any table of this database.",
+  table_access_invalid: 'That database has no such table.',
   api_unreachable: "The QueryMind API isn't reachable.",
   api_timeout: 'The API took too long to answer.',
   stream_interrupted: 'The connection to the API was lost.',

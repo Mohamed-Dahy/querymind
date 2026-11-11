@@ -141,6 +141,14 @@
     "status": 422,
     "message": "The dictionary has no table 'orderz'."
   },
+  "no_tables_permitted": {
+    "status": 403,
+    "message": "You can't use any table of this database. Ask an admin of your workspace for access."
+  },
+  "table_access_invalid": {
+    "status": 422,
+    "message": "This database has no table called ordres."
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."

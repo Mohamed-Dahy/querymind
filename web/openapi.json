@@ -514,7 +514,8 @@
               "connection_refused",
               "connection_deleted",
               "onboarding_started",
-              "dictionary_edited"
+              "dictionary_edited",
+              "table_access_changed"
             ],
             "title": "Action",
             "type": "string"
@@ -3312,6 +3313,112 @@
         "title": "StepEvent",
         "type": "object"
       },
+      "TableAccessInfo": {
+        "description": "A database's tables, and which of them each restrictable role may use.",
+        "properties": {
+          "analyst": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analyst"
+          },
+          "connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Id"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "viewer": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer"
+          }
+        },
+        "required": [
+          "connection_id",
+          "tables",
+          "analyst",
+          "viewer"
+        ],
+        "title": "TableAccessInfo",
+        "type": "object"
+      },
+      "TableAccessUpdate": {
+        "additionalProperties": false,
+        "description": "One role's rule. `tables: null` lifts it (every table); `[]` leaves the role no table.",
+        "properties": {
+          "connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Id"
+          },
+          "role": {
+            "enum": [
+              "analyst",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "tables": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tables"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "TableAccessUpdate",
+        "type": "object"
+      },
       "TableEdit": {
         "additionalProperties": false,
         "description": "One table's reviewed description.",
@@ -3592,7 +3699,8 @@
                     "connection_refused",
                     "connection_deleted",
                     "onboarding_started",
-                    "dictionary_edited"
+                    "dictionary_edited",
+                    "table_access_changed"
                   ],
                   "type": "string"
                 },
@@ -4269,7 +4377,7 @@
     },
     "/catalog": {
       "get": {
-        "description": "Every table with its columns, keys, business and approximate row count.",
+        "description": "Every table you may use, with its columns, keys, business and approximate row count.",
         "operationId": "get_catalog_catalog_get",
         "responses": {
           "200": {
@@ -4306,7 +4414,7 @@
     },
     "/catalog/tables/{table}/questions": {
       "get": {
-        "description": "Your recent saved questions whose SQL read this table. No such table: an empty list.",
+        "description": "Your recent saved questions whose SQL read this table. No such table (or one your role may\nnot use, 5.2): an empty list, the same answer, so it can't tell which tables exist.",
         "operationId": "get_table_questions_catalog_tables__table__questions_get",
         "parameters": [
           {
@@ -4615,7 +4723,7 @@
     },
     "/connections/{connection_id}/dictionary": {
       "get": {
-        "description": "The drafted descriptions of the database's tables and columns, for review.",
+        "description": "The drafted descriptions of the database's tables and columns, for review. A restricted role\n(5.2) gets only the tables it may use: the rest aren't even named.",
         "operationId": "get_dictionary_connections__connection_id__dictionary_get",
         "parameters": [
           {
@@ -4910,7 +5018,7 @@
     },
     "/connections/{connection_id}/onboarding": {
       "get": {
-        "description": "Where the database's onboarding is. Poll it while it is queued, reading or drafting.",
+        "description": "Where the database's onboarding is. Poll it while it is queued, reading or drafting.\n\nAdmins only (5.2): running onboarding is theirs, and its counts are the whole database's, which\nwould tell a restricted role how many tables it can't see.",
         "operationId": "get_onboarding_status_connections__connection_id__onboarding_get",
         "parameters": [
           {
@@ -4945,6 +5053,16 @@
             },
             "description": "Not logged in"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -4954,6 +5072,16 @@
               }
             },
             "description": "No such database, or no dictionary yet"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A run is going on, or no LLM key saved"
           },
           "422": {
             "content": {
@@ -5972,7 +6100,7 @@
     },
     "/semantic": {
       "get": {
-        "description": "Per business: what the tables and columns mean, the terms and the preferred joins.",
+        "description": "Per business: what the tables and columns mean, the terms and the preferred joins (only\nthe tables you may use).",
         "operationId": "get_semantic_semantic_get",
         "responses": {
           "200": {
@@ -5994,6 +6122,187 @@
         "summary": "Get Semantic",
         "tags": [
           "explorer"
+        ]
+      }
+    },
+    "/table-access": {
+      "get": {
+        "description": "The database's tables and each role's rule. Admins only.",
+        "operationId": "get_table_access_table_access_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "connection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableAccessInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not one of this workspace's databases"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Permissions or the database aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Table Access",
+        "tags": [
+          "databases"
+        ]
+      },
+      "put": {
+        "description": "Set which tables a role may use on a database (null = every table). Admins only; audited.",
+        "operationId": "put_table_access_table_access_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TableAccessUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableAccessInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not one of this workspace's databases"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A table it doesn't have"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Permissions or the database aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Table Access",
+        "tags": [
+          "databases"
         ]
       }
     }

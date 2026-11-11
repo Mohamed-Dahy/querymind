@@ -8,8 +8,8 @@ Safe to re-run: no table or row is dropped, and the role's password and privileg
 time. Since 5.1 it also holds the accounts (users, workspaces, memberships, refresh tokens), and
 conversations belong to a user. Since 5.7 it holds users' encrypted secrets, since 5.8 each
 workspace's LLM choice, since 5.9 its own databases, since 5.10 their data dictionaries and
-schema indexes. Conversations saved before 5.1 have no owner;
-give them to your account with
+schema indexes, since 5.2 which tables each role may use. Conversations saved before 5.1
+have no owner; give them to your account with
     uv run python data/setup_app_db.py --owner you@example.com
 
 The agent and the app never share a role. `analyst_ro` reads business tables and can't see this
@@ -48,6 +48,7 @@ AUDIT_ACTIONS = (
     "connection_deleted",
     "onboarding_started",
     "dictionary_edited",
+    "table_access_changed",
 )
 _ACTIONS_SQL = ", ".join(f"'{action}'" for action in AUDIT_ACTIONS)
 APP_STATEMENT_TIMEOUT = "5s"  # these are small queries: anything slower is a bug
@@ -269,6 +270,20 @@ TABLES = (
     f"""
     CREATE INDEX IF NOT EXISTS connection_schema_docs_words
         ON {SCHEMA}.connection_schema_docs USING gin (words)
+    """,
+    # --- Table permissions (5.2): which tables a role may use, per workspace and database. No row:
+    # every table. A row: only these tables, so a table added later stays hidden until granted.
+    # connection_id NULL = the shared demo (the rule holds only in this workspace). Admins are never
+    # restricted, so there is no admin row. NULLS NOT DISTINCT: one demo row per role (PG 15+).
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.table_access (
+        workspace_id uuid NOT NULL REFERENCES {SCHEMA}.workspaces (id) ON DELETE CASCADE,
+        connection_id uuid REFERENCES {SCHEMA}.connections (id) ON DELETE CASCADE,
+        role text NOT NULL CHECK (role IN ('analyst', 'viewer')),
+        tables text[] NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE NULLS NOT DISTINCT (workspace_id, connection_id, role)
+    )
     """,
     # 5.11: a conversation belongs to one database: NULL = the demo, else a workspace's own.
     # Deleting a saved database deletes its conversations (they can't go on without it).

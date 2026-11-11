@@ -33,6 +33,7 @@ finds nothing, the full schema is sent instead (`info.mode == "fallback"`). Eval
 so neither can pass for a retrieval success. A failed rerank keeps the fused order.
 """
 
+import copy
 import logging
 from collections import deque
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
@@ -52,6 +53,7 @@ from querymind.llm.base import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.llm.errors import LLMError, LLMProviderError
 from querymind.safety.errors import UnsafeSqlError
+from querymind.safety.permissions import visible_examples, visible_layers, visible_schema
 from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.documents import EXAMPLE_KINDS, SCHEMA_KINDS
 from querymind.semantic.index import INDEX_TABLE, IndexHit, keyword_search, search
@@ -150,6 +152,7 @@ class SchemaCatalog:
     ) -> None:
         self.schema = schema
         self.layers = list(layers)
+        self._all_examples = list(examples)
         self.full_text = schema_prompt_text(schema, self.layers)
         # Each example's tables, found once by the validator. An example reading a table this
         # role can't see is left out: the LLM is never shown SQL it couldn't run itself.
@@ -176,6 +179,15 @@ class SchemaCatalog:
                 if metric.table in self._links:
                     needs = _metric_tables(metric, schema.table_names)
                     self._metric_needs.setdefault(metric.table, set()).update(needs)
+
+    def restricted(self, allowed: Collection[str]) -> "SchemaCatalog":
+        """The same catalog as one role sees it (5.2): only `allowed` tables, and only the keys,
+        business terms, joins and examples that stay within them (safety/permissions.py)."""
+        return SchemaCatalog(
+            visible_schema(self.schema, allowed),
+            visible_layers(self.layers, allowed),
+            visible_examples(self._all_examples, allowed),  # quietly: no warning per hidden one
+        )
 
     def text(self, tables: Collection[str]) -> str:
         """Schema + definitions for these tables only, in the schema's own order."""
@@ -265,6 +277,13 @@ class SchemaRetriever:
         self._connection_id = connection_id
         self._llm = llm
         self._documents = dict(documents or {})
+
+    def narrowed(self, catalog: SchemaCatalog) -> "SchemaRetriever":
+        """The same search over a restricted catalog (5.2): a hit on a table it doesn't have is
+        dropped (`_tables`), so no join path, follow-up or term can bring a hidden table back."""
+        narrowed = copy.copy(self)
+        narrowed.catalog = catalog
+        return narrowed
 
     def select(
         self,
@@ -441,12 +460,8 @@ class SchemaRetriever:
 
 def _metric_tables(metric: Metric, allowed: Collection[str]) -> set[str]:
     """The tables a metric's SQL reads, found by wrapping it in a query (as its tests do)."""
-    if metric.kind == "measure":
-        query = f"SELECT {metric.sql} AS value FROM {metric.table}"
-    else:
-        query = f"SELECT count(*) FROM {metric.table} WHERE {metric.sql}"
     try:
-        return set(validate_sql(query, allowed_tables=allowed, max_rows=1).tables)
+        return set(validate_sql(metric.query, allowed_tables=allowed, max_rows=1).tables)
     except UnsafeSqlError:  # can't happen for a checked layer; then the metric's table alone
         return {metric.table}
 

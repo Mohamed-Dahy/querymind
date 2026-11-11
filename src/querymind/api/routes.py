@@ -18,6 +18,8 @@ from querymind.api.deps import (
     AnswersQuestions,
     CurrentUser,
     StreamsAnswers,
+    TableAccess,
+    allowed_tables,
     get_audit,
     get_pipeline,
     get_pipelines,
@@ -170,6 +172,7 @@ def ask(
     audit: Annotated[AuditStore | None, Depends(get_audit)],
     llms: Annotated[WorkspaceLLMs | None, Depends(get_workspace_llms)],
     pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
+    access: TableAccess,
 ) -> AskResponse | ClarificationResponse | RefusalResponse:
     """Answer a question about the data: the answer, the SQL that ran, and the rows.
 
@@ -191,7 +194,12 @@ def ask(
         chosen: AnswersQuestions = (
             pipeline if database is None else _own_database(pipelines, user, database, llm)
         )
-        reply = chosen.ask(request.question, conversation_id=str(conversation_id), llm=llm)
+        reply = chosen.ask(
+            request.question,
+            conversation_id=str(conversation_id),
+            llm=llm,
+            allowed_tables=allowed_tables(access, user, database),  # 5.2
+        )
     except Exception as exc:
         # Every question gets its audit line (5.5), however it ended. Then the usual error reply.
         line = audit_trail.for_error(
@@ -242,6 +250,7 @@ def ask_stream(
     audit: Annotated[AuditStore | None, Depends(get_audit)],
     llms: Annotated[WorkspaceLLMs | None, Depends(get_workspace_llms)],
     pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
+    access: TableAccess,
 ) -> Generator[StreamEvent]:
     """The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).
 
@@ -264,7 +273,12 @@ def ask_stream(
         chosen: StreamsAnswers = (
             pipeline if database is None else _own_database(pipelines, user, database, llm)
         )
-        run = chosen.stream(request.question, conversation_id=str(conversation_id), llm=llm)
+        run = chosen.stream(
+            request.question,
+            conversation_id=str(conversation_id),
+            llm=llm,
+            allowed_tables=allowed_tables(access, user, database),  # 5.2
+        )
         runs.append(run)
         trace: list[AgentEvent] = []
         for event in run:
