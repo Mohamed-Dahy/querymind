@@ -180,11 +180,12 @@ def test_a_user_databases_own_llm_refuses_so_our_key_never_answers_there() -> No
         NoOwnLLM().generate_structured("q", Answer)
 
 
-def test_a_user_database_gets_no_demo_semantic_layers_and_no_retrieval() -> None:
+def test_a_user_database_gets_no_demo_semantic_layers_and_keyword_retrieval() -> None:
     settings = database_settings(pipeline_with()[0]._settings)
 
     assert settings.semantic_layer_paths == []
-    assert settings.schema_retrieval == "off"
+    # 5.10b: above RETRIEVAL_MIN_TABLES, keyword search over its index in the app database.
+    assert (settings.schema_retrieval, settings.retrieval_mode) == ("auto", "keyword")
 
 
 # --- The routes -----------------------------------------------------------------------------------

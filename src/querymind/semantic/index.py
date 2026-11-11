@@ -5,6 +5,10 @@
     hits = search(ro_conn, embeddings.embed_query(question), limit=10)
     hits = keyword_search(ro_conn, question, limit=10)  # Postgres full-text search (3.4)
 
+    # A saved database's index (5.10b): its rows in the app database, keyword search only.
+    sync_connection_documents(app_conn, connection_id, docs)     # writes only what changed
+    hits = keyword_search(app_conn, question, limit=10, connection_id=connection_id)
+
 It lives in its own schema, `querymind`, not in `public`: the SQL validator only allows
 `public` tables, so SQL written by the LLM can never read (or learn about) the index. The
 read-only role may SELECT from it for searching; only the admin role writes to it.
@@ -15,19 +19,38 @@ dozen rows. An approximate index (HNSW) only pays off at many thousands of rows.
 Keyword search (3.4) uses a `tsvector` column Postgres keeps up to date itself (GENERATED):
 the document's words, stemmed ("categories" → "categori") and without stopwords, with the
 table/metric name weighted higher than the description. A GIN index makes it fast.
+
+A workspace's own database (5.10b) is read-only to us, so its index can't live there: its
+documents are kept in **our** app database (`querymind_app.connection_schema_docs`), one set of
+rows per saved database, every query filtered by `connection_id`. Keyword search only (no
+embedding call on the workspace's key; 3.4 measured 98.0% table recall for keyword vs 100% for
+hybrid). The retriever searches the app database while the SQL runs on the user's.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from typing import NamedTuple
+from uuid import UUID
 
 import psycopg
 from psycopg import sql
 from pydantic import BaseModel, ConfigDict
 
+from querymind.config import Settings
 from querymind.llm.embeddings import DIMENSIONS, EmbeddingProvider
 from querymind.semantic.documents import SCHEMA_KINDS, SchemaDoc
 
 INDEX_SCHEMA = "querymind"
 INDEX_TABLE = "schema_docs"
+# A saved database's index (5.10b), in the app's own schema (data/setup_app_db.py).
+APP_SCHEMA = "querymind_app"
+CONNECTION_INDEX_TABLE = "connection_schema_docs"
+
+
+class SavedDatabaseIndex(NamedTuple):
+    """Where a saved database's index lives (5.10b): its rows in the app database."""
+
+    connection_id: UUID
+    connect: Callable[[Settings], psycopg.Connection]  # the app database (db.connect_app)
 
 
 class SchemaIndexError(Exception):
@@ -229,8 +252,8 @@ WITH q AS (
     WHERE word <> ALL(%(schema_words)s)
 )
 SELECT id, kind, table_name, ts_rank(words, q.query) AS score
-FROM {}, q
-WHERE words @@ q.query AND kind = ANY(%(kinds)s)
+FROM {table}, q
+WHERE words @@ q.query AND kind = ANY(%(kinds)s){scope}
 ORDER BY score DESC, id
 LIMIT %(limit)s
 """
@@ -243,22 +266,71 @@ def keyword_search(
     limit: int,
     kinds: Sequence[str] = SCHEMA_KINDS,
     table: str = INDEX_TABLE,
+    connection_id: UUID | None = None,
 ) -> list[IndexHit]:
     """The `limit` documents sharing the most (and most important) words with the question.
 
     No embedding call: this works when the embedding API is down, and it catches exact words
     ("category", a column name) that vector search can rank too low. A question of only
     stopwords ("How many are there?") matches nothing and returns [].
+
+    `connection_id` (5.10b): search that saved database's rows in the app database instead of
+    the demo index (`table` is then not used). Only its rows: never another workspace's.
     """
-    query = sql.SQL(_KEYWORD_QUERY).format(sql.Identifier(INDEX_SCHEMA, table))
+    if connection_id is None:
+        source, scope = sql.Identifier(INDEX_SCHEMA, table), sql.SQL("")
+    else:
+        source = sql.Identifier(APP_SCHEMA, CONNECTION_INDEX_TABLE)
+        scope = sql.SQL(" AND connection_id = %(connection_id)s")
+    query = sql.SQL(_KEYWORD_QUERY).format(table=source, scope=scope)
     params = {
         "question": question,
         "limit": limit,
         "schema_words": list(SCHEMA_WORDS),
         "kinds": list(kinds),
+        "connection_id": connection_id,
     }
     rows = conn.execute(query, params)
     return [IndexHit(id=i, kind=k, table=t, score=float(s)) for i, k, t, s in rows]
+
+
+def sync_connection_documents(
+    conn: psycopg.Connection, connection_id: UUID, docs: Sequence[SchemaDoc]
+) -> tuple[int, int]:
+    """Bring one saved database's index in line with `docs` (5.10b): write what is new or
+    changed, delete what is gone. Returns (written, deleted).
+
+    Free to run on every first question: no embedding, and an unchanged schema writes nothing.
+    Every statement is filtered by `connection_id`: syncing one database never touches another's
+    rows (an unscoped "delete what's gone" would wipe every other workspace's index).
+    """
+    rows = sql.Identifier(APP_SCHEMA, CONNECTION_INDEX_TABLE)
+    stored: dict[str, str] = dict(
+        conn.execute(
+            sql.SQL("SELECT id, hash FROM {} WHERE connection_id = %s").format(rows),
+            (connection_id,),
+        ).fetchall()
+    )
+    changed = [doc for doc in docs if stored.get(doc.id) != doc.hash]
+    if changed:
+        with conn.cursor() as cur:
+            cur.executemany(
+                sql.SQL(
+                    """INSERT INTO {} (connection_id, id, kind, name, table_name, text, hash)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (connection_id, id) DO UPDATE SET kind = EXCLUDED.kind,
+                        name = EXCLUDED.name, table_name = EXCLUDED.table_name,
+                        text = EXCLUDED.text, hash = EXCLUDED.hash"""
+                ).format(rows),
+                [(connection_id, d.id, d.kind, d.name, d.table, d.text, d.hash) for d in changed],
+            )
+    gone = sorted(set(stored) - {doc.id for doc in docs})
+    if gone:
+        conn.execute(
+            sql.SQL("DELETE FROM {} WHERE connection_id = %s AND id = ANY(%s)").format(rows),
+            (connection_id, gone),
+        )
+    return len(changed), len(gone)
 
 
 def to_vector(vector: Sequence[float]) -> str:

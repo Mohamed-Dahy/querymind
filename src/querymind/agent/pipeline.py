@@ -21,7 +21,8 @@ Limit: anyone with an id can continue its conversation (Phase 5 ties conversatio
 Schema retrieval (3.3): on a big schema the LLM sees only the tables a question needs. It's
 decided once, at the first question: SCHEMA_RETRIEVAL, the number of tables, an embedding
 provider, and a usable index (scripts/build_index.py). In `auto`, anything missing means the
-whole schema plus a warning; in `on`, it's an error.
+whole schema plus a warning; in `on`, it's an error. A saved database (5.10b) has its own
+index in the app database: synced at the first question (no LLM call), searched by keyword.
 
 Every question writes one structured "ask" log line with the outcome, every SQL attempt and
 which tables the LLM was shown (CLAUDE.md §8.7; the real audit table arrives in Phase 5).
@@ -56,7 +57,7 @@ from querymind.agent.schemas import (
 from querymind.agent.state import CHECKPOINT_TYPES, AgentContext, AgentState, new_turn, require
 from querymind.config import ConfigError, Settings
 from querymind.db.connection import connect_readonly
-from querymind.db.errors import QueryExecutionError, QueryTimeoutError
+from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult, execute_query
 from querymind.db.schema import read_schema
 from querymind.llm import LLMProvider
@@ -64,9 +65,15 @@ from querymind.llm.embeddings import EmbeddingProvider
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.dictionary import DataDictionary, layer_from_dictionary
-from querymind.semantic.documents import index_documents
+from querymind.semantic.documents import build_documents, index_documents
 from querymind.semantic.examples import load_all_examples
-from querymind.semantic.index import INDEX_TABLE, SchemaIndexError, index_status
+from querymind.semantic.index import (
+    INDEX_TABLE,
+    SavedDatabaseIndex,
+    SchemaIndexError,
+    index_status,
+    sync_connection_documents,
+)
 from querymind.semantic.loader import check_against, load_semantic_layers
 from querymind.semantic.models import SemanticLayer, answer_sources
 from querymind.semantic.retrieval import SchemaCatalog, SchemaRetriever
@@ -92,6 +99,7 @@ class Pipeline:
         history_loader: Callable[[str], list[Turn]] | None = None,
         source: AnswerSource | None = None,
         dictionary: DataDictionary | None = None,
+        saved_index: SavedDatabaseIndex | None = None,
     ) -> None:
         """`connect` must open a *read-only* connection; it's a parameter so tests can swap it.
 
@@ -102,12 +110,17 @@ class Pipeline:
         `source` names the database in every answer when no semantic layer does (5.11: a
         workspace's own database, which has no YAML layers). `dictionary` (5.10: drafted at
         onboarding) becomes that database's semantic layer, built against the schema read at the
-        first question, so a dropped table or column is simply left out.
+        first question, so a dropped table or column is simply left out. `saved_index` (5.10b): that
+        database's schema index lives in the app database and is searched by keyword only.
 
         Raises:
-            ConfigError: SCHEMA_RETRIEVAL=on without an embedding provider (GOOGLE_API_KEY).
+            ConfigError: SCHEMA_RETRIEVAL=on without an embedding provider (GOOGLE_API_KEY), or a
+                saved index with a RETRIEVAL_MODE other than keyword.
         """
-        if settings.schema_retrieval == "on" and embeddings is None:
+        if saved_index is not None:
+            if settings.retrieval_mode != "keyword":
+                raise ConfigError("A saved database's schema index is searched by keyword only.")
+        elif settings.schema_retrieval == "on" and embeddings is None:
             raise ConfigError("SCHEMA_RETRIEVAL=on needs embeddings: set GOOGLE_API_KEY")
         self._llm = llm
         self._settings = settings
@@ -117,6 +130,7 @@ class Pipeline:
         self._history_loader = history_loader
         self._source = source
         self._dictionary = dictionary
+        self._saved_index = saved_index
         # The serializer may only rebuild our own state classes from a saved checkpoint.
         serde = JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
         self._checkpointer = InMemorySaver(serde=serde)
@@ -428,6 +442,8 @@ class Pipeline:
         tables = len(catalog.schema.tables)
         if mode == "off" or (mode == "auto" and tables <= settings.retrieval_min_tables):
             return None
+        if self._saved_index is not None:
+            return self._saved_database_retriever(catalog, self._saved_index)
         if self._embeddings is None:  # only in auto: `on` was refused in __init__
             logger.warning(
                 "schema retrieval skipped: no embeddings (set GOOGLE_API_KEY)",
@@ -452,6 +468,46 @@ class Pipeline:
             index_table=self._index_table,
             llm=self._llm,  # only used by RETRIEVAL_MODE=hybrid_rerank
             documents={d.table: d.text for d in docs if d.kind == "table"},
+        )
+
+    def _saved_database_retriever(
+        self, catalog: SchemaCatalog, index: SavedDatabaseIndex
+    ) -> SchemaRetriever | None:
+        """A saved database's retriever (5.10b): keyword search over its documents in the app
+        database. Synced first: hashes compared, nothing embedded, an unchanged schema writes
+        nothing. A new dictionary version rebuilds the pipeline (registry), so its first question
+        indexes the new descriptions with no separate trigger.
+
+        Raises:
+            SchemaIndexError: SCHEMA_RETRIEVAL=on, but the index can't be synced.
+        """
+        # The dictionary is already in the catalog's layer (_schema_info), so no dictionaries here.
+        docs = build_documents(catalog.schema, catalog.layers, {})
+        try:
+            with index.connect(self._settings) as conn:
+                written, deleted = sync_connection_documents(conn, index.connection_id, docs)
+        except (psycopg.Error, DatabaseUnavailableError) as exc:
+            if self._settings.schema_retrieval == "on":
+                raise SchemaIndexError(f"Schema retrieval can't run: {exc}") from exc
+            logger.warning(
+                "schema index sync failed, sending the whole schema", extra={"error": str(exc)}
+            )
+            return None
+        if written or deleted:
+            logger.info(
+                "schema index synced",
+                extra={
+                    "connection_id": str(index.connection_id),
+                    "written": written,
+                    "deleted": deleted,
+                },
+            )
+        return SchemaRetriever(
+            catalog=catalog,
+            embeddings=None,
+            connect=index.connect,  # the app database: the user's holds no index of ours
+            settings=self._settings,
+            connection_id=index.connection_id,
         )
 
     def _keep_or_forget(self, thread_id: str, *, keep: bool) -> None:

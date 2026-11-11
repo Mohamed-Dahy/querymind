@@ -7,7 +7,8 @@ APP_DB_PASSWORD in .env):
 Safe to re-run: no table or row is dropped, and the role's password and privileges are reset every
 time. Since 5.1 it also holds the accounts (users, workspaces, memberships, refresh tokens), and
 conversations belong to a user. Since 5.7 it holds users' encrypted secrets, since 5.8 each
-workspace's LLM choice, since 5.9 its own databases. Conversations saved before 5.1 have no owner;
+workspace's LLM choice, since 5.9 its own databases, since 5.10 their data dictionaries and
+schema indexes. Conversations saved before 5.1 have no owner;
 give them to your account with
     uv run python data/setup_app_db.py --owner you@example.com
 
@@ -243,6 +244,31 @@ TABLES = (
         started_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
     )
+    """,
+    # --- A saved database's schema index (5.10b): what keyword search reads to pick the tables a
+    # question needs. One document per table (its name, description, columns), synced from the
+    # schema and the dictionary at the pipeline's first question. Keyword search only (no
+    # embeddings), so no pgvector here. Same `words` column as the demo's index (3.4).
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.connection_schema_docs (
+        connection_id uuid NOT NULL
+            REFERENCES {SCHEMA}.connections (id) ON DELETE CASCADE,
+        id text NOT NULL,
+        kind text NOT NULL,
+        name text NOT NULL,
+        table_name text NOT NULL,
+        text text NOT NULL,
+        hash text NOT NULL,
+        words tsvector GENERATED ALWAYS AS (
+            setweight(to_tsvector('english', name), 'A')
+            || setweight(to_tsvector('english', text), 'B')
+        ) STORED,
+        PRIMARY KEY (connection_id, id)
+    )
+    """,
+    f"""
+    CREATE INDEX IF NOT EXISTS connection_schema_docs_words
+        ON {SCHEMA}.connection_schema_docs USING gin (words)
     """,
     # 5.11: a conversation belongs to one database: NULL = the demo, else a workspace's own.
     # Deleting a saved database deletes its conversations (they can't go on without it).

@@ -112,6 +112,8 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 - **Onboarding a new database.** Saving a database starts a background job that reads its tables and drafts a
   data dictionary (what each table and column means) with the workspace's own LLM; admins review and correct it.
   It becomes that database's semantic layer, so "customers" stops being a guess between two similar tables.
+  On a big database (over 15 tables) only the tables a question needs are sent, found by keyword search over
+  those descriptions, kept in our own database (the user's stays read-only).
 - **Saved keys, encrypted.** The LLM keys and database passwords users will save (bring your own key) are encrypted
   at rest, bound to their row (a copy moved to another account won't open), rotatable to a new key, and never
   logged or sent back: an LLM key shows only its last 4 characters. Log lines also hide anything shaped like a key.

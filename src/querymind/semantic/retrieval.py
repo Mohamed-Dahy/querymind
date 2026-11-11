@@ -24,16 +24,20 @@ Retrieval decides *relevance*, never *permission*: the validator still allows ev
 role can read. A repair sees a wider text (the chosen tables plus their direct neighbours in the
 join graph), so a query that failed because a table was missed has a way back.
 
+A saved database (5.10b) is searched by keyword only, in the app database (`connection_id`
+scopes the search to its rows), while its SQL runs on the user's own database.
+
 It never leaves the LLM without a schema. If the embedding call fails, keyword search carries
-on alone (`info.reason` says so); if the search itself fails or finds nothing, the full schema
-is sent instead (`info.mode == "fallback"`). Evals count both, so neither can pass for a
-retrieval success. A failed rerank keeps the fused order.
+on alone (`info.reason` says so); if the search itself fails (or the app database is down) or
+finds nothing, the full schema is sent instead (`info.mode == "fallback"`). Evals count both,
+so neither can pass for a retrieval success. A failed rerank keeps the fused order.
 """
 
 import logging
 from collections import deque
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from typing import Literal, NamedTuple
+from uuid import UUID
 
 import psycopg
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,6 +46,7 @@ from querymind.agent.prompts.rerank import SYSTEM_PROMPT as RERANK_SYSTEM
 from querymind.agent.prompts.rerank import build_user_prompt as rerank_prompt
 from querymind.agent.schemas import FewShotExample, Turn
 from querymind.config import Settings
+from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.schema import SchemaInfo, estimate_tokens
 from querymind.llm.base import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
@@ -230,25 +235,34 @@ class SchemaRetriever:
         self,
         *,
         catalog: SchemaCatalog,
-        embeddings: EmbeddingProvider,
+        embeddings: EmbeddingProvider | None,
         connect: Callable[[Settings], psycopg.Connection],
         settings: Settings,
         index_table: str = INDEX_TABLE,
         llm: LLMProvider | None = None,
         documents: Mapping[str, str] | None = None,
+        connection_id: UUID | None = None,
     ) -> None:
         """`llm` and `documents` (table → its document text) are for `hybrid_rerank` only.
 
+        `connect` opens the database *holding the index*: the demo's, or the app database for a
+        saved database (5.10b), whose rows `connection_id` picks. `embeddings` may be None only
+        with RETRIEVAL_MODE=keyword.
+
         Raises:
-            ValueError: RETRIEVAL_MODE=hybrid_rerank without an `llm`.
+            ValueError: RETRIEVAL_MODE=hybrid_rerank without an `llm`, or a mode that embeds
+                without `embeddings`.
         """
         if settings.retrieval_mode == "hybrid_rerank" and llm is None:
             raise ValueError("RETRIEVAL_MODE=hybrid_rerank needs an LLM for the rerank call")
+        if settings.retrieval_mode != "keyword" and embeddings is None:
+            raise ValueError(f"RETRIEVAL_MODE={settings.retrieval_mode} needs embeddings")
         self.catalog = catalog
         self._embeddings = embeddings
-        self._connect = connect  # read-only: the index is only searched here
+        self._connect = connect  # only the index is searched here, never the data
         self._settings = settings
         self._index_table = index_table
+        self._connection_id = connection_id
         self._llm = llm
         self._documents = dict(documents or {})
 
@@ -271,7 +285,7 @@ class SchemaRetriever:
             ranking = self._rank(question, llm)
             for other in also:
                 ranking = _fused(ranking, self._rank(other, llm))
-        except psycopg.Error as exc:
+        except (psycopg.Error, DatabaseUnavailableError) as exc:
             logger.warning(
                 "schema retrieval failed, sending the full schema", extra={"error": str(exc)}
             )
@@ -330,7 +344,7 @@ class SchemaRetriever:
         mode = self._settings.retrieval_mode
         vector: list[float] | None = None
         note = ""
-        if mode != "keyword":
+        if mode != "keyword" and self._embeddings is not None:
             try:
                 vector = self._embeddings.embed_query(question)
             except LLMProviderError as exc:
@@ -380,7 +394,14 @@ class SchemaRetriever:
         if vector is not None and not words:
             return by_meaning
         by_words = as_names(
-            keyword_search(conn, question, limit=SEARCH_DEPTH, kinds=kinds, table=self._index_table)
+            keyword_search(
+                conn,
+                question,
+                limit=SEARCH_DEPTH,
+                kinds=kinds,
+                table=self._index_table,
+                connection_id=self._connection_id,
+            )
         )
         return by_words if vector is None else fuse([by_meaning, by_words])
 

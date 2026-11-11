@@ -25,10 +25,12 @@ from pydantic import BaseModel, SecretStr
 from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AnswerSource, Turn
 from querymind.config import Settings
+from querymind.db.connection import connect_app
 from querymind.db.remote import connect_remote
 from querymind.llm import LLMProvider, LLMProviderError
 from querymind.secrets.errors import SecretUnreadableError
 from querymind.semantic.dictionary import DataDictionary
+from querymind.semantic.index import SavedDatabaseIndex
 from querymind.store.connections import ConnectionRecord, ConnectionStore
 from querymind.store.errors import ConnectionUnreadableError, StoreUnavailableError
 from querymind.store.onboarding import OnboardingStore
@@ -55,9 +57,17 @@ class NoOwnLLM(LLMProvider):
 
 
 def database_settings(settings: Settings) -> Settings:
-    """The settings of a user database's pipeline: no YAML semantic layers (they describe the demo)
-    and no schema retrieval (its index is built by onboarding, 5.10). The whole schema is sent."""
-    return settings.model_copy(update={"semantic_layer_paths": [], "schema_retrieval": "off"})
+    """The settings of a user database's pipeline: no YAML semantic layers (they describe the demo),
+    and schema retrieval by keyword only (5.10b): above RETRIEVAL_MIN_TABLES only the tables a
+    question needs are sent. Keyword: no embedding call on the workspace's key, any provider; it
+    also rules out hybrid_rerank, which a server's RETRIEVAL_MODE would otherwise turn on here."""
+    return settings.model_copy(
+        update={
+            "semantic_layer_paths": [],
+            "schema_retrieval": "auto",
+            "retrieval_mode": "keyword",
+        }
+    )
 
 
 type BuildPipeline = Callable[[ConnectionRecord, SecretStr, DataDictionary | None], Pipeline]
@@ -165,4 +175,5 @@ class PipelineRegistry:
                 description=f"Your database {record.dbname} on {record.host}.",
             ),
             dictionary=dictionary,
+            saved_index=SavedDatabaseIndex(record.id, connect_app),  # 5.10b: in our app database
         )
