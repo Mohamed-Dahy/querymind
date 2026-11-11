@@ -16,6 +16,7 @@ import {
 import { AUTH_URL } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
 import { mockSession, mockUser } from '@/mocks/session'
+import { collectGarbage } from '@/test/gc'
 
 const ORIGIN = window.location.origin
 
@@ -119,7 +120,6 @@ describe('authFetch', () => {
   it('a Stop still reaches the request after a garbage collection', async () => {
     // Seen in CI (Node 22.23): stream.test.ts's Stop test hung. Node links a copied Request's signal
     // to the original's only weakly, so once the original was collected, a Stop never arrived.
-    const gc = await exposeGc()
     let sent: Request | undefined
     vi.stubGlobal('fetch', async (request: Request) => {
       sent = request
@@ -135,30 +135,12 @@ describe('authFetch', () => {
         signal: AbortSignal.any([caller.signal]),
       }),
     )
-    for (let round = 0; round < 5; round++) {
-      gc()
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    await collectGarbage()
     caller.abort()
 
     expect(sent?.signal.aborted).toBe(true)
   })
 })
-
-/** Node's garbage collector, callable from a test (V8 flag set at run time, read in a fresh context). */
-async function exposeGc(): Promise<() => void> {
-  // Specifiers in variables: the app's types don't include Node's, and these run only under Vitest.
-  const v8Module = 'node:v8'
-  const vmModule = 'node:vm'
-  const v8 = (await import(/* @vite-ignore */ v8Module)) as {
-    setFlagsFromString: (flags: string) => void
-  }
-  const vm = (await import(/* @vite-ignore */ vmModule)) as {
-    runInNewContext: (code: string) => unknown
-  }
-  v8.setFlagsFromString('--expose-gc')
-  return vm.runInNewContext('gc') as () => void
-}
 
 describe('refreshSession', () => {
   beforeEach(() => resetAuth())

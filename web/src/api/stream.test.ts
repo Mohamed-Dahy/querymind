@@ -5,6 +5,7 @@ import { conversationReducer, type Conversation } from '@/canvas/state'
 import { answer, repair, repairStream } from '@/mocks/fixtures'
 import { ASK_URL, STREAM_URL } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
+import { collectGarbage } from '@/test/gc'
 
 import { ApiError } from './client'
 import {
@@ -54,11 +55,20 @@ function serve(response: () => Response) {
 }
 
 /** A body that stays open, sends what `feed` gets, and fails when the request is aborted. */
+// The requests the fake server is still answering. A real network layer holds an open request until
+// it ends; without this, nothing held one here, and a garbage collection in mid-test took the request,
+// its Stop wiring and the waiting reader with it: Stop went nowhere (CI only, 2026-11-11).
+const serving = new Set<Request>()
+
 function openStream(request: Request, feed?: (send: (text: string) => void) => void): Response {
   let closed = false
+  serving.add(request)
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      request.signal.addEventListener('abort', () => controller.error(request.signal.reason))
+      request.signal.addEventListener('abort', () => {
+        serving.delete(request)
+        controller.error(request.signal.reason)
+      })
       feed?.((text) => {
         // Nothing more can be sent once the reader has gone; a real server's send would fail too.
         if (!closed && !request.signal.aborted) controller.enqueue(encoder.encode(text))
@@ -66,6 +76,7 @@ function openStream(request: Request, feed?: (send: (text: string) => void) => v
     },
     cancel() {
       closed = true
+      serving.delete(request)
     },
   })
   return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
@@ -289,6 +300,7 @@ describe('stopping and timeouts', () => {
     const asked = askStream({ question: 'q' }, { signal: controller.signal, onEvent: () => {} })
     const failure = asked.catch((e: unknown) => e)
     await vi.waitFor(() => expect(urls).toHaveLength(1))
+    await collectGarbage()
     controller.abort()
 
     expect(await failure).not.toBeInstanceOf(ApiError)
