@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getHealth } from './client'
 import {
@@ -115,7 +115,50 @@ describe('authFetch', () => {
     expect(response.status).toBe(401) // invalid_login: a wrong password, not an old token
     expect(refreshes).toBe(0)
   })
+
+  it('a Stop still reaches the request after a garbage collection', async () => {
+    // Seen in CI (Node 22.23): stream.test.ts's Stop test hung. Node links a copied Request's signal
+    // to the original's only weakly, so once the original was collected, a Stop never arrived.
+    const gc = await exposeGc()
+    let sent: Request | undefined
+    vi.stubGlobal('fetch', async (request: Request) => {
+      sent = request
+      return new Response('{}')
+    })
+    const caller = new AbortController()
+
+    // The original is made here and not kept: only authFetch's copy is still around afterwards.
+    await authFetch(
+      new Request(`${ORIGIN}/api/ask`, {
+        method: 'POST',
+        body: '{}',
+        signal: AbortSignal.any([caller.signal]),
+      }),
+    )
+    for (let round = 0; round < 5; round++) {
+      gc()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    caller.abort()
+
+    expect(sent?.signal.aborted).toBe(true)
+  })
 })
+
+/** Node's garbage collector, callable from a test (V8 flag set at run time, read in a fresh context). */
+async function exposeGc(): Promise<() => void> {
+  // Specifiers in variables: the app's types don't include Node's, and these run only under Vitest.
+  const v8Module = 'node:v8'
+  const vmModule = 'node:vm'
+  const v8 = (await import(/* @vite-ignore */ v8Module)) as {
+    setFlagsFromString: (flags: string) => void
+  }
+  const vm = (await import(/* @vite-ignore */ vmModule)) as {
+    runInNewContext: (code: string) => unknown
+  }
+  v8.setFlagsFromString('--expose-gc')
+  return vm.runInNewContext('gc') as () => void
+}
 
 describe('refreshSession', () => {
   beforeEach(() => resetAuth())

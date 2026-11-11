@@ -106,9 +106,18 @@ export function refreshSession(): Promise<Session | null> {
   return refreshing
 }
 
+/**
+ * Each copy's original, kept alive as long as the copy is. A copy's signal follows the original's
+ * (so Stop still works), but Node links the two only weakly: once the original was garbage-collected,
+ * a Stop never reached the copy and a stream hung (seen in CI, Node 22.23). The WeakMap holds the
+ * original only while the copy exists, so nothing outlives the request.
+ */
+const originals = new WeakMap<Request, Request>()
+
 /** A fresh copy of the request with the current access token. */
 function withToken(request: Request, body: ArrayBuffer | undefined): Request {
   const copy = new Request(request, body === undefined ? {} : { body }) // keeps its signal (Stop)
+  originals.set(copy, request)
   if (session) copy.headers.set('Authorization', `Bearer ${session.accessToken}`)
   return copy
 }
