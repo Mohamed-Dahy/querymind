@@ -45,6 +45,8 @@ Action = Literal[
     "connection_tested",
     "connection_refused",
     "connection_deleted",
+    "onboarding_started",
+    "dictionary_edited",
 ]
 
 _COLUMNS = """

@@ -23,8 +23,11 @@ from collections.abc import Collection, Sequence
 from decimal import Decimal
 
 import psycopg
+from psycopg import errors as pg_errors
 from psycopg import sql
 from pydantic import BaseModel, ConfigDict
+
+from querymind.db.errors import NoReadableTablesError, QueryTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -365,3 +368,30 @@ def _format_value(value: SampleValue) -> str:
     if len(value) > MAX_SAMPLE_CHARS:
         value = value[: MAX_SAMPLE_CHARS - 3] + "..."
     return "'" + value.replace("'", "''") + "'"
+
+
+# Reading the schema (tables, keys, a few sample rows each) on a database we don't know (5.11).
+SCHEMA_READ_TIMEOUT = "30s"
+
+
+def read_schema(conn: psycopg.Connection) -> SchemaInfo:
+    """The schema, read in one transaction with a time limit: a user's database may be huge or slow.
+
+    Raises:
+        QueryTimeoutError: reading took longer than SCHEMA_READ_TIMEOUT.
+        NoReadableTablesError: the login can read no table (nothing to send the LLM).
+    """
+    try:
+        with conn.transaction():
+            conn.execute(
+                sql.SQL("SET LOCAL statement_timeout = {}").format(sql.Literal(SCHEMA_READ_TIMEOUT))
+            )
+            schema = introspect_schema(conn)
+    except pg_errors.QueryCanceled as exc:
+        raise QueryTimeoutError("Reading the database's tables took too long.") from exc
+    if not schema.table_names:
+        raise NoReadableTablesError(
+            "This login can read no tables in schema public. Grant it SELECT on the tables to ask "
+            "about."
+        )
+    return schema

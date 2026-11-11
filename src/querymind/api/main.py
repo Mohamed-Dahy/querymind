@@ -38,6 +38,7 @@ from querymind.api.evals import router as evals_router
 from querymind.api.explorer import ExplorerData, create_explorer
 from querymind.api.explorer import router as explorer_router
 from querymind.api.llm_keys import router as llm_keys_router
+from querymind.api.onboarding import router as onboarding_router
 from querymind.api.ratelimit import RateLimits
 from querymind.api.routes import router
 from querymind.api.saved_questions import router as saved_questions_router
@@ -48,11 +49,13 @@ from querymind.llm import create_embedding_provider, create_llm_provider
 from querymind.llm.workspace import WorkspaceLLMs
 from querymind.logging_setup import configure_logging
 from querymind.secrets.store import LocalSecretStore
+from querymind.semantic.onboarding import Onboarder
 from querymind.store.accounts import AccountStore
 from querymind.store.audit import AuditStore
 from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, create_store, load_history
 from querymind.store.llm_keys import LLMKeyStore
+from querymind.store.onboarding import OnboardingStore
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +74,8 @@ def create_app(
     workspace_llms: WorkspaceLLMs | None = None,
     connections: ConnectionStore | None = None,
     pipelines: PipelineRegistry | None = None,
+    onboarding: OnboardingStore | None = None,
+    onboarder: Onboarder | None = None,
     allow_private_databases: bool = False,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
@@ -94,6 +99,8 @@ def create_app(
             app.state.workspace_llms = workspace_llms
             app.state.connections = connections
             app.state.pipelines = pipelines
+            app.state.onboarding = onboarding
+            app.state.onboarder = onboarder
             app.state.allow_private_databases = allow_private_databases
         else:
             configure_logging()
@@ -129,6 +136,11 @@ def create_app(
                     partial(load_history, app.state.store) if app.state.store else None
                 ),
             )
+            # 5.10: onboarding runs and dictionaries. Runs cut short by a restart: failed.
+            app.state.onboarding = OnboardingStore(settings)
+            interrupted = app.state.onboarding.mark_interrupted()
+            if interrupted:
+                logger.warning("onboarding runs interrupted", extra={"count": interrupted})
             # 5.11: the demo pipeline above, and one per saved database, built on first use.
             app.state.pipelines = PipelineRegistry(
                 app.state.pipeline,
@@ -138,6 +150,16 @@ def create_app(
                 history_loader=(
                     partial(load_history, app.state.store) if app.state.store else None
                 ),
+                dictionaries=app.state.onboarding,
+            )
+            app.state.onboarder = Onboarder(
+                app.state.onboarding,
+                app.state.connections,
+                app.state.workspace_llms,
+                allow_private=settings.allow_private_databases,
+                max_tables=settings.onboarding_max_tables,
+                describe_error=lambda exc: error_response(exc)[1].message,
+                on_ready=app.state.pipelines.forget,  # the next question uses the new dictionary
             )
             logger.info(
                 "api started",
@@ -148,6 +170,8 @@ def create_app(
                 },
             )
         yield
+        if pipeline is None:  # only what the app made itself: stop the onboarding threads
+            app.state.onboarder.shutdown()
 
     app = FastAPI(
         title="QueryMind",
@@ -160,6 +184,7 @@ def create_app(
     app.include_router(admin_router)
     app.include_router(llm_keys_router)
     app.include_router(connections_router)
+    app.include_router(onboarding_router)
     app.include_router(conversations_router)
     app.include_router(saved_questions_router)
     app.include_router(explorer_router)

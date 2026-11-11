@@ -35,3 +35,15 @@ class ConversationOtherDatabaseError(StoreError):
 
 class ConnectionUnreadableError(StoreError):
     """A saved database's password can't be decrypted: save the database again. Safe to show."""
+
+
+class OnboardingRunningError(StoreError):
+    """A database's onboarding is already queued or running. Safe to show."""
+
+
+class DictionaryNotFoundError(StoreError):
+    """The database has no data dictionary yet (never onboarded). Safe to show."""
+
+
+class DictionaryEditError(StoreError):
+    """An edit names a table or column the dictionary doesn't have. Safe to show."""

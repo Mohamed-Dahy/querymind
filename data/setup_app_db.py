@@ -45,6 +45,8 @@ AUDIT_ACTIONS = (
     "connection_tested",
     "connection_refused",
     "connection_deleted",
+    "onboarding_started",
+    "dictionary_edited",
 )
 _ACTIONS_SQL = ", ".join(f"'{action}'" for action in AUDIT_ACTIONS)
 APP_STATEMENT_TIMEOUT = "5s"  # these are small queries: anything slower is a bug
@@ -220,6 +222,26 @@ TABLES = (
         checked_at timestamptz NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
         UNIQUE (workspace_id, name)
+    )
+    """,
+    # --- Onboarding a saved database (5.10): its drafted data dictionary and the run's state. ---
+    # `dictionary_version` changes only when the content does (a finished run, an admin's edit), so
+    # the pipeline isn't rebuilt on every progress update.
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.connection_dictionaries (
+        connection_id uuid PRIMARY KEY
+            REFERENCES {SCHEMA}.connections (id) ON DELETE CASCADE,
+        status text NOT NULL
+            CHECK (status IN ('queued', 'reading', 'drafting', 'ready', 'failed')),
+        tables_total integer NOT NULL DEFAULT 0,
+        tables_drafted integer NOT NULL DEFAULT 0,
+        tables_skipped integer NOT NULL DEFAULT 0,
+        error text,
+        generated_by text NOT NULL DEFAULT '',
+        dictionary jsonb NOT NULL DEFAULT '{{}}',
+        dictionary_version integer NOT NULL DEFAULT 0,
+        started_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
     )
     """,
     # 5.11: a conversation belongs to one database: NULL = the demo, else a workspace's own.

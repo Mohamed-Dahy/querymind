@@ -24,10 +24,13 @@ from querymind.api.deps import (
     AdminUser,
     CurrentUser,
     get_audit,
+    get_connections,
     get_pipelines,
+    get_workspace_llms,
     limit_connection_checks,
 )
 from querymind.api.errors import error_response
+from querymind.api.onboarding import get_onboarder, start_if_possible
 from querymind.api.schemas import ErrorResponse
 from querymind.auth.tokens import AuthUser
 from querymind.db.errors import RemoteDatabaseError
@@ -39,9 +42,10 @@ from querymind.db.remote import (
     check_read_only,
     connect_remote,
 )
+from querymind.llm.workspace import WorkspaceLLMs
+from querymind.semantic.onboarding import Onboarder
 from querymind.store.audit import Action, AuditEntry, AuditStore
 from querymind.store.connections import ConnectionRecord, ConnectionStore
-from querymind.store.errors import StoreUnavailableError
 
 router = APIRouter(prefix="/connections", tags=["databases"])
 
@@ -113,18 +117,6 @@ class ConnectionInfo(BaseModel):
         )
 
 
-def get_connections(request: Request) -> ConnectionStore:
-    """The workspaces' databases, created at startup.
-
-    Raises:
-        StoreUnavailableError: the app was started without them (HTTP 503).
-    """
-    store: ConnectionStore | None = request.app.state.connections
-    if store is None:
-        raise StoreUnavailableError("Saved databases aren't available on this server.")
-    return store
-
-
 def allow_private(request: Request) -> bool:
     """ALLOW_PRIVATE_DATABASES (development and tests only): never settable through the API."""
     return bool(getattr(request.app.state, "allow_private_databases", False))
@@ -161,6 +153,8 @@ def save_connection(
     store: Connections,
     audit: Audit,
     private: AllowPrivate,
+    onboarder: Annotated[Onboarder | None, Depends(get_onboarder)],
+    llms: Annotated[WorkspaceLLMs | None, Depends(get_workspace_llms)],
 ) -> ConnectionInfo:
     """Add a database: QueryMind connects, checks the login can only read, then saves it.
 
@@ -176,6 +170,8 @@ def save_connection(
         raise
     record = store.save(user.workspace_id, request.name, spec, request.password)
     _write(audit, user, "connection_saved", None, spec, started)
+    # 5.10: onboard it at once (in the background) when the workspace has its own LLM key.
+    start_if_possible(onboarder, llms, user, record.id, audit)
     return ConnectionInfo.of(record)
 
 

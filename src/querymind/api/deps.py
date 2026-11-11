@@ -21,6 +21,7 @@ from querymind.llm import LLMProvider
 from querymind.llm.workspace import WorkspaceLLMs
 from querymind.store.accounts import AccountStore
 from querymind.store.audit import AuditStore
+from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import AccountsUnavailableError, StoreUnavailableError
 from querymind.store.llm_keys import LLMKeyStore
@@ -190,6 +191,18 @@ def limit_connection_checks(
     """Room for one more database check (5.9): each one connects out to a typed address."""
     if limits is not None:
         limits.check_connection_check(user.user_id)
+
+
+def get_connections(request: Request) -> ConnectionStore:
+    """The workspaces' databases, created at startup.
+
+    Raises:
+        StoreUnavailableError: the app was started without them (HTTP 503).
+    """
+    store: ConnectionStore | None = request.app.state.connections
+    if store is None:
+        raise StoreUnavailableError("Saved databases aren't available on this server.")
+    return store
 
 
 def get_llm_keys(request: Request) -> LLMKeyStore:

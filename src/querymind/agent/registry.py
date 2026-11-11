@@ -28,8 +28,10 @@ from querymind.config import Settings
 from querymind.db.remote import connect_remote
 from querymind.llm import LLMProvider, LLMProviderError
 from querymind.secrets.errors import SecretUnreadableError
+from querymind.semantic.dictionary import DataDictionary
 from querymind.store.connections import ConnectionRecord, ConnectionStore
 from querymind.store.errors import ConnectionUnreadableError, StoreUnavailableError
+from querymind.store.onboarding import OnboardingStore
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +60,7 @@ def database_settings(settings: Settings) -> Settings:
     return settings.model_copy(update={"semantic_layer_paths": [], "schema_retrieval": "off"})
 
 
-type BuildPipeline = Callable[[ConnectionRecord, SecretStr], Pipeline]
+type BuildPipeline = Callable[[ConnectionRecord, SecretStr, DataDictionary | None], Pipeline]
 
 
 class OwnKeyRequiredError(Exception):
@@ -78,15 +80,17 @@ class PipelineRegistry:
         allow_private: bool = False,
         history_loader: Callable[[str], list[Turn]] | None = None,
         build: BuildPipeline | None = None,
+        dictionaries: OnboardingStore | None = None,
     ) -> None:
         self.demo = demo
         self._connections = connections
         self._settings = database_settings(settings)
         self._allow_private = allow_private
         self._history_loader = history_loader
+        self._dictionaries = dictionaries
         self._build: BuildPipeline = build or self._new_pipeline
-        # connection id → (the secret id it was built with, the pipeline)
-        self._cache: OrderedDict[UUID, tuple[UUID, Pipeline]] = OrderedDict()
+        # connection id → (what it was built with: secret id, dictionary version; the pipeline)
+        self._cache: OrderedDict[UUID, tuple[tuple[UUID, int], Pipeline]] = OrderedDict()
         self._lock = threading.Lock()
 
     def for_database(self, workspace_id: UUID, connection_id: UUID | None) -> Pipeline:
@@ -102,11 +106,15 @@ class PipelineRegistry:
         if self._connections is None:
             raise StoreUnavailableError("Saved databases aren't available on this server.")
         record = self._connections.get(workspace_id, connection_id)  # 404 for another workspace's
+        # 5.10: its onboarded dictionary, if any. A new version (a finished run, an edit) rebuilds.
+        found = self._dictionaries.dictionary_for(connection_id) if self._dictionaries else None
+        dictionary, version = found if found is not None else (None, 0)
+        built_with = (record.secret_id, version)
         # Built under the lock: two pipelines for one database would mean two memories and two sets
         # of run locks for the same conversation. Building is cheap: the schema is read later.
         with self._lock:
             cached = self._cache.get(connection_id)
-            if cached is not None and cached[0] == record.secret_id:
+            if cached is not None and cached[0] == built_with:
                 self._cache.move_to_end(connection_id)
                 return cached[1]
             try:
@@ -115,8 +123,8 @@ class PipelineRegistry:
                 raise ConnectionUnreadableError(
                     "This database's saved password can't be read: delete it and add it again."
                 ) from None
-            pipeline = self._build(record, password)
-            self._cache[connection_id] = (record.secret_id, pipeline)
+            pipeline = self._build(record, password, dictionary)
+            self._cache[connection_id] = (built_with, pipeline)
             while len(self._cache) > MAX_PIPELINES:
                 self._cache.popitem(last=False)
         logger.info("database pipeline ready", extra={"connection_id": str(connection_id)})
@@ -138,7 +146,9 @@ class PipelineRegistry:
         with self._lock:
             self._cache.pop(connection_id, None)
 
-    def _new_pipeline(self, record: ConnectionRecord, password: SecretStr) -> Pipeline:
+    def _new_pipeline(
+        self, record: ConnectionRecord, password: SecretStr, dictionary: DataDictionary | None
+    ) -> Pipeline:
         spec = record.spec()
 
         def connect(_settings: Settings) -> psycopg.Connection:
@@ -154,4 +164,5 @@ class PipelineRegistry:
                 database=record.name,
                 description=f"Your database {record.dbname} on {record.host}.",
             ),
+            dictionary=dictionary,
         )

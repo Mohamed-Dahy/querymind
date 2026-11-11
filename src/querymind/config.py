@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     # Development and tests only: lets a saved connection point at a private address (the Docker
     # database on 127.0.0.1) and skip TLS. Never on a shared server: it turns off the SSRF guard.
     allow_private_databases: bool = False
+    # Onboarding (5.10): at most this many tables are described per run, one LLM call each on the
+    # workspace's own key. Tables beyond it still work, without a description.
+    onboarding_max_tables: int = Field(default=100, ge=1, le=1000)
 
     # --- LLM (Bedrock is added in Phase 6) ---
     llm_provider: Literal["groq", "gemini"]

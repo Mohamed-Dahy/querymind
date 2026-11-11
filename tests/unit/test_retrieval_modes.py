@@ -52,7 +52,7 @@ def settings(**overrides: Any) -> Settings:
 @pytest.fixture
 def stubs(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """No DB: fixed schema, stubbed executor, a usable index whose search finds `shippers`."""
-    monkeypatch.setattr(pipeline_module, "introspect_schema", lambda conn: SCHEMA)
+    monkeypatch.setattr(pipeline_module, "read_schema", lambda conn: SCHEMA)
     monkeypatch.setattr(graph_module, "execute_query", lambda conn, query, **_: RESULT)
     status = MagicMock(return_value=IndexStatus(usable=True))
     monkeypatch.setattr(pipeline_module, "index_status", status)

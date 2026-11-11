@@ -129,6 +129,18 @@
     "status": 409,
     "message": "Questions on your own database run on your own LLM key: an admin can save one in Settings."
   },
+  "onboarding_running": {
+    "status": 409,
+    "message": "This database is being onboarded right now. Try again when it has finished."
+  },
+  "dictionary_not_found": {
+    "status": 404,
+    "message": "This database has no data dictionary yet: onboard it."
+  },
+  "dictionary_invalid": {
+    "status": 422,
+    "message": "The dictionary has no table 'orderz'."
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."

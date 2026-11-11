@@ -46,6 +46,9 @@ from querymind.store.errors import (
     ConnectionUnreadableError,
     ConversationNotFoundError,
     ConversationOtherDatabaseError,
+    DictionaryEditError,
+    DictionaryNotFoundError,
+    OnboardingRunningError,
     StoreUnavailableError,
     TurnNotFoundError,
 )
@@ -89,6 +92,10 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     ConnectionUnreadableError: (409, "connection_unreadable"),
     ConversationOtherDatabaseError: (409, "conversation_other_database"),
     OwnKeyRequiredError: (409, "llm_key_required"),
+    # Onboarding (5.10).
+    OnboardingRunningError: (409, "onboarding_running"),
+    DictionaryNotFoundError: (404, "dictionary_not_found"),
+    DictionaryEditError: (422, "dictionary_invalid"),
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

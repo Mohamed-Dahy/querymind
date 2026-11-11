@@ -121,7 +121,9 @@ class Setup:
             )
         )
 
-    def _build(self, record: ConnectionRecord, password: SecretStr) -> FakeDatabasePipeline:
+    def _build(
+        self, record: ConnectionRecord, password: SecretStr, dictionary: object = None
+    ) -> FakeDatabasePipeline:
         pipeline = FakeDatabasePipeline(record.name)
         self.built[record.id] = pipeline
         return pipeline

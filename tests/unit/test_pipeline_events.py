@@ -64,7 +64,7 @@ PRIVATE_DETAIL = "PRIVATE-DETAIL relation at line 7"
 def executor(monkeypatch: pytest.MonkeyPatch) -> StubExecutor:
     stub = StubExecutor()
     monkeypatch.setattr(graph_module, "execute_query", stub)
-    monkeypatch.setattr(pipeline_module, "introspect_schema", lambda conn: SCHEMA)
+    monkeypatch.setattr(pipeline_module, "read_schema", lambda conn: SCHEMA)
     return stub
 
 

@@ -16,7 +16,7 @@ GOOD = "SELECT company_name, revenue FROM customers"
 def executor(monkeypatch: pytest.MonkeyPatch) -> StubExecutor:
     stub = StubExecutor()
     monkeypatch.setattr(pipeline_module, "execute_query", stub)
-    monkeypatch.setattr(pipeline_module, "introspect_schema", lambda conn: SCHEMA)
+    monkeypatch.setattr(pipeline_module, "read_schema", lambda conn: SCHEMA)
     return stub
 
 

@@ -7,12 +7,14 @@ and a person reviews it.
 
 Drafts are saved with `reviewed: false`. A person reads them, fixes what's wrong and sets
 `reviewed: true`; a reviewed table is never overwritten by a new draft. The descriptions feed
-schema retrieval (3.3), so they are not added to the full-schema prompt.
+schema retrieval (3.3), so they are not added to the full-schema prompt. A user's own database
+(5.10) has no hand-written layer: its dictionary *becomes* the layer (`layer_from_dictionary`).
 
 The LLM sees the table's columns, keys and 3 sample rows, but never the values of PII columns
 (they are replaced by <hidden>): personal data shouldn't leave just to describe a column.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -23,7 +25,7 @@ from querymind.agent.prompts.data_dictionary import SYSTEM_PROMPT, build_user_pr
 from querymind.db.schema import SchemaInfo, Table, describe_schema
 from querymind.llm import LLMProvider
 from querymind.semantic.loader import SemanticLayerError
-from querymind.semantic.models import SemanticLayer
+from querymind.semantic.models import NAME, ColumnInfo, SemanticLayer, TableInfo
 
 HIDDEN = "<hidden>"
 
@@ -146,3 +148,38 @@ HEADER = """\
 def save_dictionary(path: Path, dictionary: DataDictionary) -> None:
     body = yaml.safe_dump(dictionary.model_dump(), sort_keys=False, allow_unicode=True, width=100)
     path.write_text(HEADER + "\n" + body, encoding="utf-8")
+
+
+def layer_from_dictionary(
+    database: str, description: str, dictionary: DataDictionary, schema: SchemaInfo
+) -> tuple[SemanticLayer, list[str]]:
+    """A user database's dictionary as its semantic layer (5.10): the descriptions then reach the
+    prompt, retrieval documents and `sources` like a hand-written layer's.
+
+    Built against the schema *as it is now*: a table or column the user has since dropped is left
+    out (a dictionary drafted last week must not break every question). Names that aren't plain
+    lowercase SQL names can't be described in a layer; they are returned, to be reported.
+    """
+    columns_now = {table.name: {column.name for column in table.columns} for table in schema.tables}
+    tables: dict[str, TableInfo] = {}
+    skipped: list[str] = []
+    for name, entry in dictionary.tables.items():
+        if name not in columns_now:
+            continue  # gone from the database
+        if not re.fullmatch(NAME, name):
+            skipped.append(name)
+            continue
+        described = {
+            column: ColumnInfo(description=text)
+            for column, text in entry.columns.items()
+            if text and column in columns_now[name] and re.fullmatch(NAME, column)
+        }
+        skipped += [
+            f"{name}.{column}"
+            for column in entry.columns
+            if column in columns_now[name] and not re.fullmatch(NAME, column)
+        ]
+        if entry.description or described:
+            tables[name] = TableInfo(description=entry.description, columns=described)
+    layer = SemanticLayer(database=database, version=1, description=description, tables=tables)
+    return layer, skipped
