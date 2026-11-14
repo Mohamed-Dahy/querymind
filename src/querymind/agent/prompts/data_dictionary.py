@@ -6,7 +6,10 @@ You are a senior data analyst writing a data dictionary for business users.
 For the one table you are given, write:
 - a description: one sentence saying what one row of the table is, and what it is used for;
 - for every column, one short phrase saying what it holds (units, codes, what NULL means, \
-which table a key points to).
+which table a key points to);
+- personal_columns: the columns that hold personal data about a person (people's names, \
+contact details, addresses, birth dates, personal ids). Company names and product data are not \
+personal. Empty if there are none.
 
 Rules:
 1. Use only what the table shows: names, types, keys and sample values. Do not invent business \

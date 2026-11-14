@@ -121,6 +121,7 @@ export function rerunStored(id: string, n: number): RerunResult | undefined {
     rows: turn.rows,
     row_count: turn.rows.length,
     truncated: false,
+    masked_columns: turn.reply.masked_columns,
     ran_at: new Date().toISOString(),
   }
 }

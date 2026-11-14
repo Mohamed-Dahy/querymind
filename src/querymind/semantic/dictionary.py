@@ -11,7 +11,12 @@ schema retrieval (3.3), so they are not added to the full-schema prompt. A user'
 (5.10) has no hand-written layer: its dictionary *becomes* the layer (`layer_from_dictionary`).
 
 The LLM sees the table's columns, keys and 3 sample rows, but never the values of PII columns
-(they are replaced by <hidden>): personal data shouldn't leave just to describe a column.
+(they are replaced by <hidden>): personal data shouldn't leave just to describe a column. A PII
+column is one the layer flags, or one whose name says so (`likely_pii`: email, home_phone...).
+
+PII flags (5.4): the LLM also lists the table's personal columns; each table's `pii` is that list
+plus the name guesses, for an admin to correct. `pii: null` (a table drafted before 5.4) means not
+flagged yet: the name guesses apply (`personal_columns`).
 """
 
 import re
@@ -24,11 +29,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from querymind.agent.prompts.data_dictionary import SYSTEM_PROMPT, build_user_prompt
 from querymind.db.schema import SchemaInfo, Table, describe_schema
 from querymind.llm import LLMProvider
+from querymind.safety.pii import hide_samples, likely_pii
 from querymind.semantic.loader import SemanticLayerError
 from querymind.semantic.models import NAME, ColumnInfo, SemanticLayer, TableInfo
-
-HIDDEN = "<hidden>"
-
 
 # --- What the LLM returns (a list, not a dict: structured output needs fixed field names) -----
 
@@ -41,6 +44,11 @@ class ColumnDraft(BaseModel):
 class TableDraft(BaseModel):
     description: str = Field(description="One sentence: what one row is, and what it's used for")
     columns: list[ColumnDraft]
+    personal_columns: list[str] = Field(
+        default=[],
+        description="The columns holding personal data about a person (names, contact details, "
+        "addresses, birth dates, ids); empty if none",
+    )
 
 
 # --- What is saved -----------------------------------------------------------------------------
@@ -52,6 +60,9 @@ class DictionaryTable(BaseModel):
     reviewed: bool = False  # a person checked it; set by hand in the YAML
     description: str = ""
     columns: dict[str, str] = {}
+    # 5.4: the columns holding personal data, masked for every role but admin. None = not
+    # flagged yet (drafted before 5.4): the column names are guessed from instead.
+    pii: list[str] | None = None
 
 
 class DataDictionary(BaseModel):
@@ -68,18 +79,28 @@ def dictionary_path(layer_path: Path) -> Path:
 
 
 def masked(table: Table, layer: SemanticLayer) -> Table:
-    """The table with the sample values of its PII columns replaced by <hidden>."""
-    pii = {column for name, column in layer.pii_columns if name == table.name}
+    """The table with the sample values of its PII columns (flagged, or named like it) hidden."""
+    pii = {(name, column) for name, column in layer.pii_columns if name == table.name}
+    pii |= {(table.name, c.name) for c in table.columns if likely_pii(c.name)}
     if not pii or not table.sample_rows:
         return table
-    rows = tuple(
-        tuple(
-            HIDDEN if column.name in pii else value
-            for column, value in zip(table.columns, row, strict=True)
-        )
-        for row in table.sample_rows
-    )
-    return table.model_copy(update={"sample_rows": rows})
+    return hide_samples(SchemaInfo(tables=(table,)), pii).tables[0]
+
+
+def personal_columns(
+    dictionary: DataDictionary | None, schema: SchemaInfo
+) -> frozenset[tuple[str, str]]:
+    """A saved database's personal columns (5.4): each table's reviewed or drafted flags, or the
+    name guesses for a table not flagged yet (no dictionary, a new table, drafted before 5.4)."""
+    entries = dictionary.tables if dictionary else {}
+    found: set[tuple[str, str]] = set()
+    for table in schema.tables:
+        entry = entries.get(table.name)
+        flagged = entry.pii if entry is not None else None
+        for column in table.columns:
+            if column.name in flagged if flagged is not None else likely_pii(column.name):
+                found.add((table.name, column.name))
+    return frozenset(found)
 
 
 def draft_table(llm: LLMProvider, table: Table, layer: SemanticLayer) -> TableDraft:
@@ -111,9 +132,12 @@ def merge_drafts(
         if name in tables and tables[name].reviewed:
             continue
         described = {c.name: c.description.strip() for c in draft.columns}
+        flagged = set(draft.personal_columns)
         tables[name] = DictionaryTable(
             description=draft.description.strip(),
             columns={column: described.get(column, "") for column in columns[name]},
+            # The LLM's flags plus the name guesses: a missed email is worse than one too many.
+            pii=[c for c in columns[name] if c in flagged or likely_pii(c)],
         )
     return DataDictionary(database=database, generated_by=generated_by, tables=tables)
 

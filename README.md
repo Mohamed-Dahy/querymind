@@ -25,7 +25,7 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > two businesses (25 tables), it sends the LLM only the tables a question needs, about 40% of the schema, and
 > finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Every
 > number is measured, including on the public **BIRD** benchmark: see [How accurate is it?](#how-accurate-is-it).
-> Next: security and multi-user (PII masking, roles, per-user permissions).
+> Next: security and multi-user (row-level security, workspace members).
 
 ---
 
@@ -120,7 +120,12 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
 - **Saved keys, encrypted.** The LLM keys and database passwords users will save (bring your own key) are encrypted
   at rest, bound to their row (a copy moved to another account won't open), rotatable to a new key, and never
   logged or sent back: an LLM key shows only its last 4 characters. Log lines also hide anything shaped like a key.
-- *Coming later:* PII masking, per-role table permissions and row-level security.
+- **PII masking.** Personal data (names, contact details, addresses) is shown as `***` to every role but admin, in
+  answers, summaries, saved conversations and re-runs. Masking alone could be beaten by asking yes/no questions
+  (`WHERE contact_name = '…'`), so generated SQL may only show, count or group by a personal column: filtering,
+  sorting or computing with one is refused. Which columns are personal comes from the semantic layer, or from a
+  saved database's reviewed data dictionary.
+- *Coming later:* row-level security.
 
 ## How accurate is it?
 

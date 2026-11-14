@@ -103,6 +103,7 @@ class RecordingPipeline:
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> AgentReply:
         self.llms.append(llm)
         return RESULT
@@ -114,6 +115,7 @@ class RecordingPipeline:
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> Generator[AgentEvent | Finished]:
         self.llms.append(llm)
         yield Finished(RESULT)

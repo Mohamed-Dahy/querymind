@@ -57,6 +57,7 @@ class FakePipeline:
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> AgentReply:
         self.questions.append(question)
         self.conversation_ids.append(conversation_id)
@@ -90,6 +91,7 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         "rows": [[91]],
         "row_count": 1,
         "truncated": False,
+        "masked_columns": [],
         "warnings": [],
         "confidence": "high",
         "confidence_reasons": [],

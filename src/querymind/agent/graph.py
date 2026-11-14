@@ -36,6 +36,10 @@ then ends before any SQL, and `Pipeline.ask` returns a ClarificationRequest or a
 If every try fails and no result exists, the run ends and `Pipeline.ask` raises the last
 error. LLM errors and an unreachable database end the run at once (the caller retries those).
 
+PII masking (5.4): with a `pii_guard` in the context, `run_sql` also checks how the query uses
+personal columns (a misuse is a fixable failure, like unsafe SQL) and masks them in the result
+right after it runs, so no personal value is ever in the state, the summary or the reply.
+
 Live trace (U2.1): `Pipeline.stream` reports each node starting and finishing. Validating and
 running stay one node, so the only hint from inside it is a signal that the query passed.
 
@@ -66,6 +70,7 @@ from querymind.db.executor import execute_query
 from querymind.db.schema import estimate_tokens
 from querymind.llm import LLMError
 from querymind.safety.errors import UnsafeSqlError
+from querymind.safety.pii import NO_MASK
 from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.retrieval import SchemaSelection
 
@@ -170,7 +175,8 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
     """Validate the draft, then run it read-only. Both in one node, on purpose.
 
     The validated query never leaves this function, so nothing can run SQL that skipped the
-    validator (§8.2). Unsafe SQL is rejected before a connection is even opened.
+    validator (§8.2). Unsafe SQL is rejected before a connection is even opened, and so is a
+    query that misuses personal data, for a user whose personal data is masked (5.4).
 
     A fixable failure is returned as a new attempt (with the SQL that was really tried: the
     validated one if it got that far) instead of raised, so the graph can route to a repair.
@@ -182,11 +188,15 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
     try:
         query = validate_sql(sql, allowed_tables=state["table_names"], max_rows=settings.max_rows)
         sql = query.sql
+        guard = runtime.context.pii_guard
+        mask = guard.plan(query) if guard is not None else NO_MASK
         runtime.stream_writer(
             VALIDATED_SIGNAL
         )  # only reaches Pipeline.stream; nothing else reads it
         with runtime.context.connect(settings) as conn:
-            result = execute_query(conn, query, timeout_seconds=settings.query_timeout_seconds)
+            result = mask.apply(
+                execute_query(conn, query, timeout_seconds=settings.query_timeout_seconds)
+            )
     except FIXABLE_ERRORS as exc:
         attempt = failed_attempt(sql, exc)
         logger.info(

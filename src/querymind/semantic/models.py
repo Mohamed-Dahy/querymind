@@ -31,7 +31,7 @@ class _Model(BaseModel):
 class ColumnInfo(_Model):
     description: str = ""
     synonyms: tuple[str, ...] = ()  # other words for this column, e.g. "carrier" for ship_via
-    # Personal data. Declared here; masked in results from Phase 5.4.
+    # Personal data: masked in results for every role but admin (5.4, safety/pii.py).
     pii: bool = False
 
 

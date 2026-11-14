@@ -24,6 +24,7 @@ from querymind.api.deps import (
     get_pipelines,
     get_store,
     limit_reruns,
+    masks_pii,
     owner_of,
 )
 from querymind.api.schemas import (
@@ -170,6 +171,7 @@ def rerun_turn(
             sql,
             conversation_id=str(conversation_id),
             allowed_tables=allowed_tables(access, user, database),  # 5.2
+            mask_pii=masks_pii(user),  # 5.4
         )
     except Exception as exc:
         line = audit_trail.for_error(
@@ -205,5 +207,6 @@ def rerun_turn(
         rows=result.rows,
         row_count=result.row_count,
         truncated=result.truncated,
+        masked_columns=result.masked_columns,
         ran_at=datetime.now(UTC),
     )

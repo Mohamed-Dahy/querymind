@@ -96,10 +96,18 @@ export function conversationReducer(state: Conversation, action: ConversationAct
     case 'rerun':
       return updateCell(state, action.cellId, 'done', (cell) => {
         if (cell.saved === undefined || cell.reply?.kind !== 'answer') return cell
-        const { columns, rows, row_count, truncated, ran_at: freshAt } = action.result
+        const {
+          columns,
+          rows,
+          row_count,
+          truncated,
+          masked_columns,
+          ran_at: freshAt,
+        } = action.result
         return {
           ...cell,
-          reply: { ...cell.reply, columns, rows, row_count, truncated },
+          // masked_columns too (5.4): the fresh rows say which of their columns are masked.
+          reply: { ...cell.reply, columns, rows, row_count, truncated, masked_columns },
           saved: { ...cell.saved, freshAt },
         }
       })

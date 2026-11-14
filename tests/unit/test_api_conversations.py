@@ -141,6 +141,7 @@ class FakePipeline:
         *,
         conversation_id: str | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> QueryResult:
         self.reruns.append((question, sql, conversation_id))
         if self.error is not None:

@@ -38,6 +38,8 @@ class QueryResult(BaseModel):
     row_count: int  # rows returned here (at most max_rows)
     truncated: bool  # True if more rows existed and were cut off
     duration_ms: int
+    # Positions in `columns` whose values are personal data, masked for this user (5.4).
+    masked_columns: list[int] = []
 
 
 def execute_query(

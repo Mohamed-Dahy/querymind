@@ -27,6 +27,7 @@ const ANSWER: AskResponse = {
   rows: [[91]],
   row_count: 1,
   truncated: false,
+  masked_columns: [],
   warnings: [],
   confidence: 'high',
   confidence_reasons: [],

@@ -7,7 +7,8 @@ A query that runs isn't always a right query. These checks catch the common sign
 one, without knowing the answer:
 
 - `empty`: no rows. Often a filter value spelled differently from the data ('germany').
-- `duplicate_rows`: identical rows. Usually a join that matched more rows than intended.
+- `duplicate_rows`: identical rows. Usually a join that matched more rows than intended. Not
+  checked when personal data is masked (5.4): two different names both show as ***.
 - `negative_total`: a negative number in a total-like column (revenue, quantity, price...).
 - `absurd_magnitude`: a number of a trillion or more: far beyond any value in this kind of
   database, typically sums multiplied by a bad join.
@@ -51,7 +52,7 @@ def check_result(result: QueryResult) -> list[SanityWarning]:
             )
         ]
     warnings = []
-    if duplicates := _duplicate_rows(result.rows):
+    if not result.masked_columns and (duplicates := _duplicate_rows(result.rows)):
         warnings.append(
             SanityWarning(
                 code="duplicate_rows",

@@ -94,13 +94,15 @@ class OnboardingInfo(BaseModel):
 
 
 class TableEdit(BaseModel):
-    """One table's reviewed description."""
+    """One table's reviewed description, and (5.4) which of its columns are personal data."""
 
     model_config = ConfigDict(extra="forbid")
 
     description: str = Field(default="", max_length=500)
     columns: dict[str, Annotated[str, Field(max_length=300)]] = {}
     reviewed: bool = False
+    # The table's personal columns, masked for every role but admin. None = keep what it has.
+    pii: list[str] | None = Field(default=None, max_length=2000)
 
 
 class DictionaryEdit(BaseModel):
@@ -240,8 +242,8 @@ def edit_dictionary(
     pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
     audit: Audit,
 ) -> DataDictionary:
-    """Correct descriptions and mark tables reviewed (a reviewed table is never redrafted).
-    Tables left out of the request keep what they had."""
+    """Correct descriptions and PII flags (5.4), and mark tables reviewed (a reviewed table is
+    never redrafted). Tables left out of the request keep what they had."""
     record = onboarding.get(user.workspace_id, connection_id)
     if record is None or record.dictionary_version == 0:
         raise DictionaryNotFoundError("This database has no data dictionary yet: onboard it.")
@@ -264,9 +266,10 @@ def apply_edit(dictionary: DataDictionary, edit: DictionaryEdit) -> DataDictiona
         current = tables.get(name)
         if current is None:
             raise DictionaryEditError(f"The dictionary has no table {name!r}.")
-        unknown = sorted(set(change.columns) - set(current.columns))
+        unknown = sorted((set(change.columns) | set(change.pii or ())) - set(current.columns))
         if unknown:
             raise DictionaryEditError(f"Table {name!r} has no column {unknown[0]!r}.")
+        pii = current.pii if change.pii is None else change.pii
         tables[name] = DictionaryTable(
             reviewed=change.reviewed,
             description=change.description.strip(),
@@ -274,6 +277,8 @@ def apply_edit(dictionary: DataDictionary, edit: DictionaryEdit) -> DataDictiona
                 column: change.columns.get(column, text).strip()
                 for column, text in current.columns.items()
             },
+            # In table order, once each (5.4).
+            pii=None if pii is None else [c for c in current.columns if c in set(pii)],
         )
     return dictionary.model_copy(update={"tables": tables})
 

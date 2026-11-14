@@ -35,6 +35,7 @@ class FakePipeline:
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> AgentReply:
         if self.error is not None:
             raise self.error
@@ -47,6 +48,7 @@ class FakePipeline:
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> Generator[AgentEvent | Finished]:
         yield STEP
         yield SQL

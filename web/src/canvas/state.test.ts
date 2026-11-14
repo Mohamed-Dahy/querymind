@@ -240,6 +240,7 @@ describe('saved conversations', () => {
         rows: [[1], [2], [3]],
         row_count: 3,
         truncated: false,
+        masked_columns: [],
         ran_at: '2026-11-03T09:00:00Z',
       },
     })
@@ -264,7 +265,14 @@ describe('saved conversations', () => {
     const next = conversationReducer(state, {
       type: 'rerun',
       cellId: 'c1',
-      result: { columns: [], rows: [], row_count: 0, truncated: false, ran_at: 'x' },
+      result: {
+        columns: [],
+        rows: [],
+        row_count: 0,
+        truncated: false,
+        masked_columns: [],
+        ran_at: 'x',
+      },
     })
 
     expect(next.cells[0]?.reply).toEqual(answer)

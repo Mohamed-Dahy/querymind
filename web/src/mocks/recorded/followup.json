@@ -46,6 +46,7 @@
   ],
   "row_count": 8,
   "truncated": false,
+  "masked_columns": [],
   "warnings": [],
   "confidence": "high",
   "confidence_reasons": [],

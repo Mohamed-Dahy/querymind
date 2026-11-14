@@ -4,7 +4,9 @@
     text = schema_prompt_text(schema, layers, tables={"track", "genre"})  # retrieved (3.3)
 
 Only what helps write SQL goes in: metric definitions, other names for tables and columns,
-column notes and preferred joins. PII flags are left out (they are for masking, Phase 5.4).
+column notes and preferred joins. PII flags are left out, except for a user whose results are
+masked (5.4): `personal=` then adds a "Personal data" block saying which columns can only be
+selected as they are, counted or grouped by (safety/pii.py refuses anything else).
 `tables=` keeps only those tables and the definitions about them (schema retrieval, 3.3).
 """
 
@@ -14,19 +16,45 @@ from querymind.db.schema import SchemaInfo, describe_schema
 from querymind.semantic.models import Metric, SemanticLayer
 
 HEADER = "When the question uses one of these terms, use exactly this definition:"
+PERSONAL_HEADER = (
+    "Personal data (masked for this user). These columns may only be selected as they are (the "
+    "user sees *** instead of the value), counted with count(...), or used as they are in GROUP "
+    "BY. Never filter, sort, join on, or apply a function or calculation to them: a query that "
+    "does is refused. If the question can only be answered that way (e.g. it names a person or "
+    'filters on one of these columns), set "refusal" to one sentence saying that this column '
+    "is personal data hidden from this user. Their sample values are shown as <hidden>."
+)
 
 
 def schema_prompt_text(
-    schema: SchemaInfo, layers: Sequence[SemanticLayer], tables: Collection[str] | None = None
+    schema: SchemaInfo,
+    layers: Sequence[SemanticLayer],
+    tables: Collection[str] | None = None,
+    *,
+    personal: Collection[tuple[str, str]] = (),
 ) -> str:
     """The schema description, followed by each layer's business definitions.
 
     With `tables`, only those tables (in the schema's order) and the definitions about them.
+    `personal`: the (table, column) pairs masked for this user, listed in a block of their own.
     """
     if tables is not None:
         schema = SchemaInfo(tables=tuple(t for t in schema.tables if t.name in tables))
     blocks = [block for layer in layers if (block := describe_semantics(layer, tables))]
+    if block := _personal_block(schema, personal):
+        blocks.append(block)
     return "\n\n".join([describe_schema(schema), *blocks])
+
+
+def _personal_block(schema: SchemaInfo, personal: Collection[tuple[str, str]]) -> str:
+    """One line per shown table with masked columns, in the schema's order."""
+    masked = set(personal)
+    lines = [
+        f"- {table.name}: {', '.join(names)}"
+        for table in schema.tables
+        if (names := [c.name for c in table.columns if (table.name, c.name) in masked])
+    ]
+    return f"{PERSONAL_HEADER}\n" + "\n".join(lines) if lines else ""
 
 
 def describe_semantics(layer: SemanticLayer, tables: Collection[str] | None = None) -> str:

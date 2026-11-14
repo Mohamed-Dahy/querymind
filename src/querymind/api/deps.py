@@ -32,7 +32,8 @@ from querymind.store.table_access import TableAccessStore
 class AnswersQuestions(Protocol):
     """Anything with `ask(question, conversation_id=..., llm=..., allowed_tables=...)`: the real
     Pipeline, or a test fake. `llm`: the workspace's own provider (5.8), None = the pipeline's.
-    `allowed_tables`: the tables this user may use (5.2), None = every table."""
+    `allowed_tables`: the tables this user may use (5.2), None = every table. `mask_pii`: this
+    user's personal data is masked (5.4)."""
 
     def ask(
         self,
@@ -41,6 +42,7 @@ class AnswersQuestions(Protocol):
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> AgentReply: ...
 
 
@@ -54,6 +56,7 @@ class StreamsAnswers(Protocol):
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> Generator[AgentEvent | Finished]: ...
 
 
@@ -69,6 +72,7 @@ class ManagesConversations(Protocol):
         *,
         conversation_id: str | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> QueryResult: ...
 
 
@@ -241,6 +245,11 @@ def allowed_tables(
     if access is None:
         return None
     return access.allowed(user.workspace_id, connection_id, user.role)
+
+
+def masks_pii(user: AuthUser) -> bool:
+    """Is this user's personal data masked (5.4)? For every role but admin, on every database."""
+    return user.role != "admin"
 
 
 def get_llm_keys(request: Request) -> LLMKeyStore:

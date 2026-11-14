@@ -39,6 +39,7 @@ def summarize(llm: LLMProvider, *, question: str, result: QueryResult) -> Answer
         shown=shown,
         total=result.row_count,
         truncated=result.truncated,
+        masked=bool(result.masked_columns),  # 5.4: "*** is hidden, don't guess"
     )
     try:
         text = clean_text(llm.generate_text(prompt, system=SYSTEM_PROMPT))

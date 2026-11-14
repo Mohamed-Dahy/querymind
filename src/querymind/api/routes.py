@@ -27,6 +27,7 @@ from querymind.api.deps import (
     get_streaming_pipeline,
     get_workspace_llms,
     limit_questions,
+    masks_pii,
     owner_of,
 )
 from querymind.api.errors import error_response
@@ -199,6 +200,7 @@ def ask(
             conversation_id=str(conversation_id),
             llm=llm,
             allowed_tables=allowed_tables(access, user, database),  # 5.2
+            mask_pii=masks_pii(user),  # 5.4
         )
     except Exception as exc:
         # Every question gets its audit line (5.5), however it ended. Then the usual error reply.
@@ -278,6 +280,7 @@ def ask_stream(
             conversation_id=str(conversation_id),
             llm=llm,
             allowed_tables=allowed_tables(access, user, database),  # 5.2
+            mask_pii=masks_pii(user),  # 5.4
         )
         runs.append(run)
         trace: list[AgentEvent] = []

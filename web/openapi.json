@@ -351,6 +351,15 @@
             "title": "Kind",
             "type": "string"
           },
+          "masked_columns": {
+            "default": [],
+            "description": "Positions in `columns` holding personal data, masked for you (shown as ***)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Masked Columns",
+            "type": "array"
+          },
           "question": {
             "title": "Question",
             "type": "string"
@@ -1279,6 +1288,20 @@
             "default": "",
             "title": "Description",
             "type": "string"
+          },
+          "pii": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pii"
           },
           "reviewed": {
             "default": false,
@@ -2698,6 +2721,15 @@
             "title": "Columns",
             "type": "array"
           },
+          "masked_columns": {
+            "default": [],
+            "description": "Positions in `columns` holding personal data, masked for you (shown as ***)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Masked Columns",
+            "type": "array"
+          },
           "ran_at": {
             "description": "When these rows were read",
             "format": "date-time",
@@ -3421,7 +3453,7 @@
       },
       "TableEdit": {
         "additionalProperties": false,
-        "description": "One table's reviewed description.",
+        "description": "One table's reviewed description, and (5.4) which of its columns are personal data.",
         "properties": {
           "columns": {
             "additionalProperties": {
@@ -3437,6 +3469,21 @@
             "maxLength": 500,
             "title": "Description",
             "type": "string"
+          },
+          "pii": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 2000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pii"
           },
           "reviewed": {
             "default": false,
@@ -4800,7 +4847,7 @@
         ]
       },
       "put": {
-        "description": "Correct descriptions and mark tables reviewed (a reviewed table is never redrafted).\nTables left out of the request keep what they had.",
+        "description": "Correct descriptions and PII flags (5.4), and mark tables reviewed (a reviewed table is\nnever redrafted). Tables left out of the request keep what they had.",
         "operationId": "edit_dictionary_connections__connection_id__dictionary_put",
         "parameters": [
           {

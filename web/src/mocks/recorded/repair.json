@@ -98,6 +98,7 @@
   ],
   "row_count": 21,
   "truncated": false,
+  "masked_columns": [],
   "warnings": [],
   "confidence": "medium",
   "confidence_reasons": [

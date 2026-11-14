@@ -171,7 +171,7 @@ def test_views_are_cached_by_the_tables_really_visible(executor: StubExecutor) -
     second = pipeline._view(ORDERS_ONLY)
 
     assert first is second
-    assert pipeline._view(frozenset({"orders", "customers"})) == pipeline._schema_info()
+    assert pipeline._view(frozenset({"orders", "customers"})) == (*pipeline._schema_info(), None)
 
 
 def test_retrieval_never_brings_back_a_hidden_table(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -181,7 +181,7 @@ def test_retrieval_never_brings_back_a_hidden_table(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(retrieval_module, "keyword_search", lambda *a, **k: hits)
     allowed = frozenset(n for n in pipeline._schema_info()[0].schema.table_names if n != "salaries")
 
-    _, retriever = pipeline._view(allowed)
+    _, retriever, _ = pipeline._view(allowed)
     assert retriever is not None
     selection = retriever.select("Total salaries per department")
 
@@ -195,7 +195,7 @@ def test_retrieval_never_brings_back_a_hidden_table(monkeypatch: pytest.MonkeyPa
 def test_a_few_visible_tables_are_sent_whole(monkeypatch: pytest.MonkeyPatch) -> None:
     pipeline, _, _ = saved_pipeline(monkeypatch)  # 40 tables: retrieval is on for everyone
 
-    catalog, retriever = pipeline._view(frozenset({"invoices", "customers"}))
+    catalog, retriever, _ = pipeline._view(frozenset({"invoices", "customers"}))
 
     assert retriever is None  # 2 tables: no search, no recall risk
     assert set(catalog.schema.table_names) == {"invoices", "customers"}
@@ -242,6 +242,7 @@ class Recorder:
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> AgentReply:
         self.allowed.append(allowed_tables)
         return RESULT
@@ -253,6 +254,7 @@ class Recorder:
         conversation_id: str | None = None,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> Generator[AgentEvent | Finished]:
         self.allowed.append(allowed_tables)
         yield Finished(RESULT)

@@ -54,6 +54,7 @@ from querymind.llm.embeddings import EmbeddingProvider
 from querymind.llm.errors import LLMError, LLMProviderError
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.permissions import visible_examples, visible_layers, visible_schema
+from querymind.safety.pii import PiiGuard, hide_samples
 from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.documents import EXAMPLE_KINDS, SCHEMA_KINDS
 from querymind.semantic.index import INDEX_TABLE, IndexHit, keyword_search, search
@@ -149,11 +150,14 @@ class SchemaCatalog:
         schema: SchemaInfo,
         layers: Sequence[SemanticLayer],
         examples: Sequence[FewShotExample] = (),
+        *,
+        personal: Collection[tuple[str, str]] = (),
     ) -> None:
         self.schema = schema
         self.layers = list(layers)
         self._all_examples = list(examples)
-        self.full_text = schema_prompt_text(schema, self.layers)
+        self.personal = frozenset(personal)  # masked for this view's user (5.4); in its texts
+        self.full_text = schema_prompt_text(schema, self.layers, personal=self.personal)
         # Each example's tables, found once by the validator. An example reading a table this
         # role can't see is left out: the LLM is never shown SQL it couldn't run itself.
         self.examples: dict[str, tuple[FewShotExample, frozenset[str]]] = {}
@@ -189,9 +193,24 @@ class SchemaCatalog:
             visible_examples(self._all_examples, allowed),  # quietly: no warning per hidden one
         )
 
+    def masked(self, guard: PiiGuard) -> "SchemaCatalog":
+        """The same catalog for a user whose personal data is masked (5.4): sample values of
+        personal columns hidden, the "Personal data" block in every text, and only the business
+        terms and examples the guard would let run (never teach the LLM a query it would refuse)."""
+        layers = []
+        for layer in self.layers:
+            metrics = {name: m for name, m in layer.metrics.items() if guard.allows(m.query)}
+            layers.append(layer.model_copy(update={"metrics": metrics}))
+        return SchemaCatalog(
+            hide_samples(self.schema, guard.pii),
+            layers,
+            [example for example in self._all_examples if guard.allows(example.sql)],
+            personal=guard.pii,
+        )
+
     def text(self, tables: Collection[str]) -> str:
         """Schema + definitions for these tables only, in the schema's own order."""
-        return schema_prompt_text(self.schema, self.layers, tables=tables)
+        return schema_prompt_text(self.schema, self.layers, tables=tables, personal=self.personal)
 
     def metric_needs(self, tables: Sequence[str]) -> list[str]:
         """Tables the metrics shown with `tables` read, that aren't in `tables` yet."""

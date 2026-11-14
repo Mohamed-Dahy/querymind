@@ -40,6 +40,7 @@ from querymind.agent.schemas import (
 from querymind.config import Settings
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProvider
+from querymind.safety.pii import PiiGuard
 from querymind.semantic.retrieval import SchemaRetriever, SchemaSelection
 
 MAX_HISTORY_TURNS = 5  # earlier turns the LLM sees; older ones are forgotten
@@ -143,3 +144,5 @@ class AgentContext:
     connect: Callable[[Settings], psycopg.Connection]  # must open a *read-only* connection
     summarize_answer: bool = True  # False: templated answer, no second LLM call (evals)
     retriever: SchemaRetriever | None = None  # None: the LLM sees the whole schema (3.3)
+    # 5.4: this user's personal data is masked: every query is checked, its result masked.
+    pii_guard: PiiGuard | None = None

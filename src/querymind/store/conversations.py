@@ -6,8 +6,10 @@
 
 What is saved is the API's reply, without its result rows: they may hold personal data, so they are
 removed here and the database refuses them too (a CHECK in data/setup_app_db.py). A re-run fetches
-fresh rows instead. The answer text and the SQL are kept, and can still quote values until PII
-masking arrives (5.4).
+fresh rows instead. The answer text and the SQL are kept. For a user whose personal data is
+masked (5.4) the answer was written from masked rows, and the SQL can't filter on a personal
+column, so neither quotes a personal value; a re-run is masked again. An admin's turns, kept
+unmasked, stay theirs: conversations are per user.
 
 Every query has its parameters passed separately, so nothing a user typed can become SQL.
 

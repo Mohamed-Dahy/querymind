@@ -25,11 +25,26 @@ Question: {question}
 {note}"""
 
 
+MASKED_NOTE = (
+    "Values shown as *** are personal data hidden from this user: never guess them. If the "
+    "question asks for them, say they are hidden."
+)
+
+
 def build_user_prompt(
-    *, question: str, result_json: str, shown: int, total: int, truncated: bool
+    *,
+    question: str,
+    result_json: str,
+    shown: int,
+    total: int,
+    truncated: bool,
+    masked: bool = False,
 ) -> str:
-    """Fill the template. `result_json` holds the columns and the rows sent to the LLM."""
+    """Fill the template. `result_json` holds the columns and the rows sent to the LLM.
+    `masked`: some columns are masked personal data (5.4)."""
     note = result_note(shown=shown, total=total, truncated=truncated)
+    if masked:
+        note += "\n" + MASKED_NOTE
     return USER_TEMPLATE.format(question=question, result=result_json, note=note)
 
 

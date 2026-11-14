@@ -6,8 +6,8 @@ import pytest
 
 from querymind.db.schema import Column, SchemaInfo, Table
 from querymind.llm.fake import FakeLLMProvider
+from querymind.safety.pii import HIDDEN
 from querymind.semantic.dictionary import (
-    HIDDEN,
     ColumnDraft,
     DataDictionary,
     DictionaryTable,
@@ -17,6 +17,7 @@ from querymind.semantic.dictionary import (
     load_dictionary,
     masked,
     merge_drafts,
+    personal_columns,
     save_dictionary,
 )
 from querymind.semantic.loader import SemanticLayerError, load_semantic_layer
@@ -63,7 +64,21 @@ def test_pii_values_never_reach_the_llm() -> None:
 
 def test_masking_leaves_tables_without_pii_alone() -> None:
     plain = SemanticLayer(database="music", version=1)
-    assert masked(CUSTOMER, plain) is CUSTOMER
+    genre = Table(
+        name="genre",
+        columns=(
+            Column(name="genre_id", data_type="integer"),
+            Column(name="name", data_type="text"),
+        ),
+        sample_rows=((1, "Rock"),),
+    )
+    assert masked(genre, plain) is genre
+
+
+def test_a_column_named_like_personal_data_is_hidden_without_a_flag() -> None:
+    # A saved database has no layer yet when onboarding drafts it (5.4): the name is enough.
+    plain = SemanticLayer(database="music", version=1)
+    assert masked(CUSTOMER, plain).sample_rows == ((1, "Brazil", HIDDEN), (2, "Germany", HIDDEN))
 
 
 def test_a_draft_keeps_only_real_columns_in_table_order() -> None:
@@ -75,8 +90,41 @@ def test_a_draft_keeps_only_real_columns_in_table_order() -> None:
         reviewed=False,
         description="People who buy music.",
         columns={"customer_id": "Unique id.", "country": "", "email": "Contact email."},
+        pii=["email"],  # not flagged by the LLM, but named like personal data
     )
     assert merged.generated_by == "fake"
+
+
+def test_a_draft_flags_the_llms_personal_columns_and_the_name_guesses() -> None:
+    draft = DRAFT.model_copy(update={"personal_columns": ["country", "invented"]})
+    merged = merge_drafts(
+        None, {"customer": draft}, database="music", schema=SCHEMA, generated_by="fake"
+    )
+    assert merged.tables["customer"].pii == ["country", "email"]  # real columns, table order
+
+
+def test_personal_columns_use_the_flags_or_else_the_names() -> None:
+    orders = Table(
+        name="orders",
+        columns=(
+            Column(name="order_id", data_type="int"),
+            Column(name="ship_address", data_type="text"),
+        ),
+    )
+    schema = SchemaInfo(tables=(CUSTOMER, orders))
+    reviewed = DataDictionary(
+        database="music",
+        tables={"customer": DictionaryTable(pii=["country"]), "orders": DictionaryTable()},
+    )
+
+    assert personal_columns(None, schema) == {("customer", "email"), ("orders", "ship_address")}
+    # customer: an admin's flags win (email unflagged); orders: drafted before 5.4, so guessed.
+    assert personal_columns(reviewed, schema) == {
+        ("customer", "country"),
+        ("orders", "ship_address"),
+    }
+    cleared = reviewed.model_copy(update={"tables": {"customer": DictionaryTable(pii=[])}})
+    assert ("customer", "email") not in personal_columns(cleared, schema)
 
 
 def test_a_reviewed_table_is_never_overwritten() -> None:

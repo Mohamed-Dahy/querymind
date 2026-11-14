@@ -29,6 +29,13 @@ use come with each call (`allowed_tables`, None = all). The run then sees a rest
 catalog (safety/permissions.py): the prompt, retrieval, examples and the validator's allowlist only
 know those tables. Views are cached per set of visible tables.
 
+PII masking (5.4): `mask_pii=True` (every role but admin) masks personal data. The view then also
+hides personal sample values and names the masked columns in the prompt, and the run checks each
+query with a PiiGuard (safety/pii.py): personal columns may only be selected as they are, counted
+or grouped by, and are masked in the result before the summary or the reply sees it. The personal
+columns: the YAML layers' flags (the demo), or a saved database's dictionary flags and name
+guesses (`personal_columns`).
+
 Every question writes one structured "ask" log line with the outcome, every SQL attempt and
 which tables the LLM was shown (CLAUDE.md §8.7; the real audit table arrives in Phase 5).
 """
@@ -69,8 +76,9 @@ from querymind.llm import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.permissions import NoPermittedTablesError
+from querymind.safety.pii import NO_MASK, PiiGuard
 from querymind.safety.sql_validator import validate_sql
-from querymind.semantic.dictionary import DataDictionary, layer_from_dictionary
+from querymind.semantic.dictionary import DataDictionary, layer_from_dictionary, personal_columns
 from querymind.semantic.documents import build_documents, index_documents
 from querymind.semantic.examples import load_all_examples
 from querymind.semantic.index import (
@@ -89,7 +97,11 @@ audit_logger = logging.getLogger("querymind.audit")
 
 MAX_CONVERSATIONS = 100  # saved conversations; the least recently used is forgotten first
 RUN_LOCKS = 64  # see Pipeline._one_run_at_a_time
-MAX_VIEWS = 16  # restricted catalogs kept (5.2): one per distinct set of visible tables
+MAX_VIEWS = 16  # restricted or masked catalogs kept: one per (visible tables, masked)
+
+# A user's view of the database: the catalog, its retriever (None: the whole text), and the guard
+# of a user whose personal data is masked (5.4; None: not masked).
+type View = tuple[SchemaCatalog, SchemaRetriever | None, PiiGuard | None]
 
 
 class Pipeline:
@@ -148,11 +160,10 @@ class Pipeline:
         )
         self._examples = load_all_examples(settings.semantic_layer_paths)  # few-shot (3.5)
         self._schema: tuple[SchemaCatalog, SchemaRetriever | None] | None = None
+        self._personal: frozenset[tuple[str, str]] = frozenset()  # 5.4, set with the schema
         self._schema_lock = threading.Lock()  # the API may call ask() from several threads
-        # 5.2: visible tables -> (restricted catalog, its retriever); least recently used first.
-        self._views: OrderedDict[frozenset[str], tuple[SchemaCatalog, SchemaRetriever | None]] = (
-            OrderedDict()
-        )
+        # (visible tables, masked) -> that view; least recently used first (5.2, 5.4).
+        self._views: OrderedDict[tuple[frozenset[str], bool], View] = OrderedDict()
         self._views_lock = threading.Lock()
         self._conversations: OrderedDict[str, None] = OrderedDict()  # least recent first
         self._conversations_lock = threading.Lock()
@@ -166,6 +177,7 @@ class Pipeline:
         summarize_answer: bool = True,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> AgentReply:
         """Answer one question, or ask back when it's ambiguous, or refuse a change request.
 
@@ -181,6 +193,9 @@ class Pipeline:
         `allowed_tables` (5.2): the only tables this user may use; None = every table. The LLM is
         shown only those, and the validator refuses SQL on any other.
 
+        `mask_pii` (5.4): this user's personal data is masked (every role but admin). A query
+        that filters, sorts or computes with a personal column is refused (and repaired).
+
         Raises:
             ValueError: the question is empty.
             NoPermittedTablesError: `allowed_tables` leaves no table of this database.
@@ -195,6 +210,7 @@ class Pipeline:
             summarize_answer=summarize_answer,
             llm=llm,
             allowed_tables=allowed_tables,
+            mask_pii=mask_pii,
         )
         with closing(run) as events:
             for event in events:
@@ -210,6 +226,7 @@ class Pipeline:
         summarize_answer: bool = True,
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> Generator[AgentEvent | Finished]:
         """The same run as `ask()`, reporting as it goes. The last item is `Finished(reply)`.
 
@@ -226,7 +243,8 @@ class Pipeline:
             try:
                 if conversation_id is not None:
                     self._restore_history(conversation_id)
-                catalog, retriever = self._view(allowed_tables)  # 5.2: only what this user may see
+                # 5.2: only what this user may see; 5.4: personal data masked if it must be.
+                catalog, retriever, guard = self._view(allowed_tables, mask_pii)
                 start = new_turn(
                     question=question,
                     schema_text=catalog.full_text,  # retrieve_schema narrows it when it can
@@ -238,6 +256,7 @@ class Pipeline:
                     connect=self._connect,
                     summarize_answer=summarize_answer,
                     retriever=retriever,
+                    pii_guard=guard,
                 )
                 trace = TraceBuilder(total_tables=len(catalog.schema.table_names))
                 # Three views of the same run. "values": the whole state after each node; keeping
@@ -297,12 +316,15 @@ class Pipeline:
         *,
         conversation_id: str | None = None,
         allowed_tables: frozenset[str] | None = None,
+        mask_pii: bool = False,
     ) -> QueryResult:
         """Run a saved answer's SQL again for fresh rows, with no LLM call.
 
         The SQL comes from storage, so it isn't trusted: it goes through the validator again, with
         today's tables and row limit, and runs as the read-only role. Audited like any question.
         `allowed_tables` (5.2): as for `ask`, so a saved answer can't reach a table hidden since.
+        `mask_pii` (5.4): as for `ask`: the fresh rows are masked, and saved SQL is checked like
+        new SQL (it may date from before this user's personal data was masked).
 
         Raises:
             UnsafeSqlError / QueryExecutionError / QueryTimeoutError / DatabaseUnavailableError:
@@ -311,15 +333,16 @@ class Pipeline:
         started = time.perf_counter()
         state: AgentState = {"question": question}
         try:
-            catalog, _ = self._view(allowed_tables)
+            catalog, _, guard = self._view(allowed_tables, mask_pii)
             query = validate_sql(
                 sql,
                 allowed_tables=catalog.schema.table_names,
                 max_rows=self._settings.max_rows,
             )
+            mask = guard.plan(query) if guard is not None else NO_MASK
             with self._connect(self._settings) as conn:
-                result = execute_query(
-                    conn, query, timeout_seconds=self._settings.query_timeout_seconds
+                result = mask.apply(
+                    execute_query(conn, query, timeout_seconds=self._settings.query_timeout_seconds)
                 )
         except Exception as exc:
             if isinstance(exc, FIXABLE_ERRORS):
@@ -457,6 +480,11 @@ class Pipeline:
                         logger.info("names not described", extra={"names": skipped[:20]})
                 for layer in self._semantic_layers:
                     check_against(layer, schema)  # every name it uses must exist (3.1)
+                self._personal = (
+                    personal_columns(self._dictionary, schema)  # a saved database (5.4)
+                    if self._source is not None
+                    else frozenset(p for layer in self._semantic_layers for p in layer.pii_columns)
+                )
                 catalog = SchemaCatalog(schema, self._semantic_layers, self._examples)
                 self._schema = (catalog, self._make_retriever(catalog))
             return self._schema
@@ -466,8 +494,9 @@ class Pipeline:
         catalog, _ = self._schema_info()
         return sorted(catalog.schema.table_names)
 
-    def _view(self, allowed: frozenset[str] | None) -> tuple[SchemaCatalog, SchemaRetriever | None]:
-        """The catalog and retriever as a user allowed `allowed` sees them (None = everything).
+    def _view(self, allowed: frozenset[str] | None, mask_pii: bool = False) -> View:
+        """The database as one user sees it: only `allowed` tables (None = every table, 5.2), and
+        with personal data masked if `mask_pii` (5.4).
 
         Cached by the tables really visible (`allowed` ∩ the schema), so names in a rule that no
         longer exist don't make a new view.
@@ -476,29 +505,35 @@ class Pipeline:
             NoPermittedTablesError: no table of this database is allowed.
         """
         catalog, retriever = self._schema_info()
-        if allowed is None:
-            return catalog, retriever
-        visible = frozenset(allowed & catalog.schema.table_names)
-        if visible == catalog.schema.table_names:
-            return catalog, retriever
+        everything = catalog.schema.table_names
+        visible = everything if allowed is None else frozenset(allowed & everything)
+        whole = visible == everything
+        if whole and not mask_pii:
+            return catalog, retriever, None
         if not visible:
             raise NoPermittedTablesError(
                 "You can't use any table of this database. Ask an admin of your workspace "
                 "for access."
             )
+        key = (visible, mask_pii)
         with self._views_lock:
-            cached = self._views.get(visible)
+            cached = self._views.get(key)
             if cached is not None:
-                self._views.move_to_end(visible)
+                self._views.move_to_end(key)
                 return cached
-            restricted = catalog.restricted(visible)
+            seen = catalog if whole else catalog.restricted(visible)
+            guard = PiiGuard(seen.schema, self._personal) if mask_pii else None
+            if guard is not None:
+                seen = seen.masked(guard)
             settings = self._settings
             # A few visible tables are sent whole, as for a small database: no recall risk.
             searches = retriever is not None and (
-                settings.schema_retrieval == "on" or len(visible) > settings.retrieval_min_tables
+                whole
+                or settings.schema_retrieval == "on"
+                or len(visible) > settings.retrieval_min_tables
             )
-            view = (restricted, retriever.narrowed(restricted) if retriever and searches else None)
-            self._views[visible] = view
+            view = (seen, retriever.narrowed(seen) if retriever and searches else None, guard)
+            self._views[key] = view
             while len(self._views) > MAX_VIEWS:
                 self._views.popitem(last=False)
             return view

@@ -281,8 +281,8 @@ export interface paths {
         get: operations["get_dictionary_connections__connection_id__dictionary_get"];
         /**
          * Edit Dictionary
-         * @description Correct descriptions and mark tables reviewed (a reviewed table is never redrafted).
-         *     Tables left out of the request keep what they had.
+         * @description Correct descriptions and PII flags (5.4), and mark tables reviewed (a reviewed table is
+         *     never redrafted). Tables left out of the request keep what they had.
          */
         put: operations["edit_dictionary_connections__connection_id__dictionary_put"];
         post?: never;
@@ -763,6 +763,12 @@ export interface components {
              * @enum {string}
              */
             kind: "answer";
+            /**
+             * Masked Columns
+             * @description Positions in `columns` holding personal data, masked for you (shown as ***)
+             * @default []
+             */
+            masked_columns: number[];
             /** Question */
             question: string;
             /** Row Count */
@@ -1169,6 +1175,8 @@ export interface components {
              * @default
              */
             description: string;
+            /** Pii */
+            pii?: string[] | null;
             /**
              * Reviewed
              * @default false
@@ -1769,6 +1777,12 @@ export interface components {
             /** Columns */
             columns: string[];
             /**
+             * Masked Columns
+             * @description Positions in `columns` holding personal data, masked for you (shown as ***)
+             * @default []
+             */
+            masked_columns: number[];
+            /**
              * Ran At
              * Format: date-time
              * @description When these rows were read
@@ -2084,7 +2098,7 @@ export interface components {
         };
         /**
          * TableEdit
-         * @description One table's reviewed description.
+         * @description One table's reviewed description, and (5.4) which of its columns are personal data.
          */
         TableEdit: {
             /**
@@ -2099,6 +2113,8 @@ export interface components {
              * @default
              */
             description: string;
+            /** Pii */
+            pii?: string[] | null;
             /**
              * Reviewed
              * @default false
