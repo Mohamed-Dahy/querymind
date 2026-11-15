@@ -60,6 +60,7 @@ class ScriptedPipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.conversation_ids[question] = conversation_id
         yield StepEvent(node="retrieve_schema", status="started")

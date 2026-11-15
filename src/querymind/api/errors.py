@@ -39,6 +39,7 @@ from querymind.llm import (
 from querymind.llm.key_check import KeyCheckError
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.permissions import NoPermittedTablesError
+from querymind.safety.row_scope import RowScopeInvalidError
 from querymind.secrets.errors import SecretUnreadableError
 from querymind.store.errors import (
     AccountsUnavailableError,
@@ -49,6 +50,7 @@ from querymind.store.errors import (
     ConversationOtherDatabaseError,
     DictionaryEditError,
     DictionaryNotFoundError,
+    MemberNotFoundError,
     OnboardingRunningError,
     StoreUnavailableError,
     TableAccessInvalidError,
@@ -100,6 +102,8 @@ ERROR_MAP: dict[type[Exception], tuple[int, str]] = {
     DictionaryEditError: (422, "dictionary_invalid"),
     NoPermittedTablesError: (403, "no_tables_permitted"),  # 5.2: a role with no table here
     TableAccessInvalidError: (422, "table_access_invalid"),  # 5.2: an admin named a missing table
+    RowScopeInvalidError: (422, "row_scope_invalid"),  # 5.3: an empty tag, a comma, an admin's
+    MemberNotFoundError: (404, "member_not_found"),  # 5.3: not a member of this workspace
 }
 
 # LLM errors carry the vendor's raw reply (status codes, JSON bodies), so the client gets a

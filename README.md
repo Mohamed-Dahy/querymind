@@ -25,7 +25,7 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > two businesses (25 tables), it sends the LLM only the tables a question needs, about 40% of the schema, and
 > finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Every
 > number is measured, including on the public **BIRD** benchmark: see [How accurate is it?](#how-accurate-is-it).
-> Next: security and multi-user (row-level security, workspace members).
+> Next: security and multi-user (workspace members).
 
 ---
 
@@ -125,7 +125,38 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
   (`WHERE contact_name = '…'`), so generated SQL may only show, count or group by a personal column: filtering,
   sorting or computing with one is refused. Which columns are personal comes from the semantic layer, or from a
   saved database's reviewed data dictionary.
-- *Coming later:* row-level security.
+- **Row-level security.** A regional manager sees only their region's orders, whatever SQL the LLM writes:
+  Postgres policies on `orders` and `order_details` filter every query by a per-query session setting
+  (`querymind.scope`) that the app sets from the user's membership, and that the LLM's SQL can't change. Not set
+  means no row at all. On a user's own database, their own policies can read the same setting (see below).
+
+<details>
+<summary>Row-level security on your own database</summary>
+
+QueryMind creates nothing on your database, but it sets `querymind.scope` for every query it runs there: `*` means
+every row (admins, and members with no scope), otherwise the member's tags joined by commas (`Eastern,Western`).
+QueryMind's own reads of your schema and its sample rows run without it set, so your policy decides what those see.
+A minimal policy (a policy that doesn't accept `*` shows admins nothing):
+
+```sql
+ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+CREATE POLICY querymind_scope ON sales FOR SELECT USING (
+  current_setting('querymind.scope', true) = '*'
+  OR region = ANY (string_to_array(current_setting('querymind.scope', true), ','))
+);
+```
+
+Things that switch it off:
+- **The table's owner skips RLS** unless the table has `FORCE ROW LEVEL SECURITY`. QueryMind's login must be a
+  separate read-only login (QueryMind refuses a login that can write).
+- **A login with `BYPASSRLS`** skips it too (QueryMind refuses such a login).
+- **A view skips it** unless created `WITH (security_invoker = true)`.
+- **A subquery in a policy runs with QueryMind's login.** The login then needs SELECT on the tables the subquery
+  reads. Alternatively, put the lookup in a `SECURITY DEFINER` function with a fixed `search_path`, as the demo does
+  (`data/seed_northwind.py`).
+
+</details>
+- *Coming later:* workspace members (inviting analysts and viewers).
 
 ## How accurate is it?
 

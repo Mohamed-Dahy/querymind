@@ -24,6 +24,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/members/{user_id}/row-scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Row Scope
+         * @description A member's role and the rows they may see. Admins only.
+         */
+        get: operations["get_row_scope_admin_members__user_id__row_scope_get"];
+        /**
+         * Put Row Scope
+         * @description Set which rows a member may see (null = every row). Admins only; audited.
+         */
+        put: operations["put_row_scope_admin_members__user_id__row_scope_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ask": {
         parameters: {
             query?: never;
@@ -187,7 +211,8 @@ export interface paths {
         };
         /**
          * Get Catalog
-         * @description Every table you may use, with its columns, keys, business and approximate row count.
+         * @description Every table you may use, with its columns, keys, business and approximate row count (not
+         *     for a table whose rows depend on who asks, if you see only some of them, 5.3).
          */
         get: operations["get_catalog_catalog_get"];
         put?: never;
@@ -845,7 +870,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed";
+            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed" | "row_scope_changed";
             /**
              * At
              * Format: date-time
@@ -1845,6 +1870,35 @@ export interface components {
             type: "rewrite";
         };
         /**
+         * RowScopeInfo
+         * @description A member's role and the rows they may see.
+         */
+        RowScopeInfo: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "analyst" | "viewer";
+            /**
+             * Row Scope
+             * @description The tags of the rows they see; null = every row
+             */
+            row_scope: string[] | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * RowScopeUpdate
+         * @description A member's new scope: a list of tags, or null for every row.
+         */
+        RowScopeUpdate: {
+            /** Row Scope */
+            row_scope?: string[] | null;
+        };
+        /**
          * SaveConnectionRequest
          * @description What an admin sends to add a database.
          */
@@ -2234,7 +2288,7 @@ export interface operations {
     audit_log_admin_audit_get: {
         parameters: {
             query?: {
-                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed") | null;
+                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed" | "row_scope_changed") | null;
                 outcome?: string | null;
                 email?: string | null;
                 /** @description Find in questions and SQL */
@@ -2286,6 +2340,144 @@ export interface operations {
                 };
             };
             /** @description The audit log isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_row_scope_admin_members__user_id__row_scope_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowScopeInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not a member of this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Row permissions aren't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_row_scope_admin_members__user_id__row_scope_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowScopeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowScopeInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not a member of this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A scope that can't be set */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Row permissions aren't available */
             503: {
                 headers: {
                     [name: string]: unknown;

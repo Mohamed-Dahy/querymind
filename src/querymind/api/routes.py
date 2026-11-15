@@ -17,6 +17,7 @@ from querymind.api import audit_trail
 from querymind.api.deps import (
     AnswersQuestions,
     CurrentUser,
+    RowScopes,
     StreamsAnswers,
     TableAccess,
     allowed_tables,
@@ -29,6 +30,7 @@ from querymind.api.deps import (
     limit_questions,
     masks_pii,
     owner_of,
+    row_scope_of,
 )
 from querymind.api.errors import error_response
 from querymind.api.schemas import (
@@ -174,6 +176,7 @@ def ask(
     llms: Annotated[WorkspaceLLMs | None, Depends(get_workspace_llms)],
     pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
     access: TableAccess,
+    scopes: RowScopes,
 ) -> AskResponse | ClarificationResponse | RefusalResponse:
     """Answer a question about the data: the answer, the SQL that ran, and the rows.
 
@@ -201,6 +204,7 @@ def ask(
             llm=llm,
             allowed_tables=allowed_tables(access, user, database),  # 5.2
             mask_pii=masks_pii(user),  # 5.4
+            row_scope=row_scope_of(scopes, user),  # 5.3
         )
     except Exception as exc:
         # Every question gets its audit line (5.5), however it ended. Then the usual error reply.
@@ -253,6 +257,7 @@ def ask_stream(
     llms: Annotated[WorkspaceLLMs | None, Depends(get_workspace_llms)],
     pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
     access: TableAccess,
+    scopes: RowScopes,
 ) -> Generator[StreamEvent]:
     """The same as `POST /ask`, reporting each step as it happens (Server-Sent Events).
 
@@ -281,6 +286,7 @@ def ask_stream(
             llm=llm,
             allowed_tables=allowed_tables(access, user, database),  # 5.2
             mask_pii=masks_pii(user),  # 5.4
+            row_scope=row_scope_of(scopes, user),  # 5.3
         )
         runs.append(run)
         trace: list[AgentEvent] = []

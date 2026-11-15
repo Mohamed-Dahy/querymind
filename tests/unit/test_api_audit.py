@@ -152,6 +152,7 @@ def test_a_stopped_stream_is_written_as_cancelled() -> None:
         None,
         None,
         None,  # table access: none (every table)
+        None,  # row scopes: none (every row)
     )
 
     next(events)  # the first step arrived, then the client went away

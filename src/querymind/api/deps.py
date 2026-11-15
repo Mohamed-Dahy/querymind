@@ -20,12 +20,14 @@ from querymind.auth.tokens import AuthUser, TokenService
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProvider
 from querymind.llm.workspace import WorkspaceLLMs
+from querymind.safety.row_scope import RowScope
 from querymind.store.accounts import AccountStore
 from querymind.store.audit import AuditStore
 from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import AccountsUnavailableError, StoreUnavailableError
 from querymind.store.llm_keys import LLMKeyStore
+from querymind.store.row_scope import RowScopeStore
 from querymind.store.table_access import TableAccessStore
 
 
@@ -33,7 +35,8 @@ class AnswersQuestions(Protocol):
     """Anything with `ask(question, conversation_id=..., llm=..., allowed_tables=...)`: the real
     Pipeline, or a test fake. `llm`: the workspace's own provider (5.8), None = the pipeline's.
     `allowed_tables`: the tables this user may use (5.2), None = every table. `mask_pii`: this
-    user's personal data is masked (5.4)."""
+    user's personal data is masked (5.4). `row_scope`: the rows this user may see (5.3), None =
+    every row."""
 
     def ask(
         self,
@@ -43,6 +46,7 @@ class AnswersQuestions(Protocol):
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: RowScope = None,
     ) -> AgentReply: ...
 
 
@@ -57,6 +61,7 @@ class StreamsAnswers(Protocol):
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: RowScope = None,
     ) -> Generator[AgentEvent | Finished]: ...
 
 
@@ -73,6 +78,7 @@ class ManagesConversations(Protocol):
         conversation_id: str | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: RowScope = None,
     ) -> QueryResult: ...
 
 
@@ -245,6 +251,24 @@ def allowed_tables(
     if access is None:
         return None
     return access.allowed(user.workspace_id, connection_id, user.role)
+
+
+def get_row_scopes(request: Request) -> RowScopeStore | None:
+    """Each member's rows (5.3), created at startup. None only in a test app built without it:
+    then every row. A real server always has it, and a lookup that fails raises."""
+    scopes: RowScopeStore | None = getattr(request.app.state, "row_scopes", None)
+    return scopes
+
+
+RowScopes = Annotated[RowScopeStore | None, Depends(get_row_scopes)]
+
+
+def row_scope_of(scopes: RowScopeStore | None, user: AuthUser) -> RowScope:
+    """The rows this user may see (None = every row), read fresh for each question so an admin's
+    change applies at once. Fails closed: a store that can't be read raises (503)."""
+    if scopes is None:
+        return None
+    return scopes.scope(user.workspace_id, user.user_id, user.role)
 
 
 def masks_pii(user: AuthUser) -> bool:

@@ -49,6 +49,7 @@ AUDIT_ACTIONS = (
     "onboarding_started",
     "dictionary_edited",
     "table_access_changed",
+    "row_scope_changed",
 )
 _ACTIONS_SQL = ", ".join(f"'{action}'" for action in AUDIT_ACTIONS)
 APP_STATEMENT_TIMEOUT = "5s"  # these are small queries: anything slower is a bug
@@ -293,6 +294,13 @@ TABLES = (
     """,
     # Which database a question ran on (no foreign key: the line outlives the database).
     f"ALTER TABLE {SCHEMA}.audit_log ADD COLUMN IF NOT EXISTS connection_id uuid",
+    # 5.3: the rows a member may see (row-level security): tags such as the demo's sales regions.
+    # NULL = every row. Never an empty list: that would be "no row", which an admin can't mean.
+    f"""
+    ALTER TABLE {SCHEMA}.memberships
+        ADD COLUMN IF NOT EXISTS row_scope text[]
+            CHECK (row_scope IS NULL OR cardinality(row_scope) > 0)
+    """,
     # What the history list sorts by: one user's conversations.
     f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",
     f"""

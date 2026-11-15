@@ -524,7 +524,8 @@
               "connection_deleted",
               "onboarding_started",
               "dictionary_edited",
-              "table_access_changed"
+              "table_access_changed",
+              "row_scope_changed"
             ],
             "title": "Action",
             "type": "string"
@@ -2868,6 +2869,70 @@
         "title": "RewriteEvent",
         "type": "object"
       },
+      "RowScopeInfo": {
+        "description": "A member's role and the rows they may see.",
+        "properties": {
+          "role": {
+            "enum": [
+              "admin",
+              "analyst",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_scope": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tags of the rows they see; null = every row",
+            "title": "Row Scope"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "role",
+          "row_scope"
+        ],
+        "title": "RowScopeInfo",
+        "type": "object"
+      },
+      "RowScopeUpdate": {
+        "additionalProperties": false,
+        "description": "A member's new scope: a list of tags, or null for every row.",
+        "properties": {
+          "row_scope": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Scope"
+          }
+        },
+        "title": "RowScopeUpdate",
+        "type": "object"
+      },
       "SaveConnectionRequest": {
         "additionalProperties": false,
         "description": "What an admin sends to add a database.",
@@ -3747,7 +3812,8 @@
                     "connection_deleted",
                     "onboarding_started",
                     "dictionary_edited",
-                    "table_access_changed"
+                    "table_access_changed",
+                    "row_scope_changed"
                   ],
                   "type": "string"
                 },
@@ -3901,6 +3967,192 @@
           }
         ],
         "summary": "Audit Log",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/members/{user_id}/row-scope": {
+      "get": {
+        "description": "A member's role and the rows they may see. Admins only.",
+        "operationId": "get_row_scope_admin_members__user_id__row_scope_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowScopeInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not a member of this workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Row permissions aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Row Scope",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "description": "Set which rows a member may see (null = every row). Admins only; audited.",
+        "operationId": "put_row_scope_admin_members__user_id__row_scope_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowScopeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowScopeInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not a member of this workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A scope that can't be set"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Row permissions aren't available"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Row Scope",
         "tags": [
           "admin"
         ]
@@ -4424,7 +4676,7 @@
     },
     "/catalog": {
       "get": {
-        "description": "Every table you may use, with its columns, keys, business and approximate row count.",
+        "description": "Every table you may use, with its columns, keys, business and approximate row count (not\nfor a table whose rows depend on who asks, if you see only some of them, 5.3).",
         "operationId": "get_catalog_catalog_get",
         "responses": {
           "200": {

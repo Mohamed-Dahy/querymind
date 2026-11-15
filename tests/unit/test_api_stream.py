@@ -49,6 +49,7 @@ class FakeStreamingPipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> AgentReply:
         return self.reply
 
@@ -60,6 +61,7 @@ class FakeStreamingPipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.conversation_ids.append(conversation_id)
         try:
@@ -224,6 +226,7 @@ class EndlessPipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         try:
             while True:

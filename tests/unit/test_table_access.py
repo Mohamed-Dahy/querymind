@@ -243,6 +243,7 @@ class Recorder:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> AgentReply:
         self.allowed.append(allowed_tables)
         return RESULT
@@ -255,6 +256,7 @@ class Recorder:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.allowed.append(allowed_tables)
         yield Finished(RESULT)

@@ -36,6 +36,7 @@ class FakePipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> AgentReply:
         if self.error is not None:
             raise self.error
@@ -49,6 +50,7 @@ class FakePipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         yield STEP
         yield SQL
@@ -134,6 +136,7 @@ def test_the_stream_has_saved_before_it_sends_the_answer() -> None:
         None,
         None,
         None,  # table access: none (every table)
+        None,  # row scopes: none (every row)
     )
 
     for event in events:
@@ -200,6 +203,7 @@ def test_a_stopped_run_isnt_saved() -> None:
         None,
         None,
         None,  # table access: none (every table)
+        None,  # row scopes: none (every row)
     )
 
     next(events)

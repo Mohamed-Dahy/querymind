@@ -105,6 +105,8 @@ class Table(BaseModel):
     foreign_keys: tuple[ForeignKey, ...] = ()
     # Each row has one value per column, in column order. Binary columns hold None.
     sample_rows: tuple[tuple[SampleValue, ...], ...] = ()
+    # Postgres row-level security is on (5.3): which rows a query sees depends on who asks.
+    row_security: bool = False
 
 
 class SchemaInfo(BaseModel):
@@ -158,6 +160,15 @@ ORDER BY rel.relname, con.conname
 """
 
 
+# Tables with row-level security on (5.3): their rows depend on the session's `querymind.scope`.
+_ROW_SECURITY_QUERY = """
+SELECT rel.relname::text
+FROM pg_class AS rel
+JOIN pg_namespace AS ns ON ns.oid = rel.relnamespace
+WHERE ns.nspname = %(schema)s AND rel.relrowsecurity AND rel.relkind IN ('r', 'p')
+"""
+
+
 # Postgres's own estimate, so a huge table costs nothing. -1: it has never been analyzed.
 _ROW_ESTIMATES_QUERY = """
 SELECT rel.relname::text, rel.reltuples::bigint
@@ -202,6 +213,7 @@ def introspect_schema(
     """Read every table the connected role can see in `schema`, with keys and sample rows."""
     columns = _read_columns(conn, schema)
     primary_keys, foreign_keys = _read_keys(conn, schema, visible=columns.keys())
+    secured = {name for (name,) in conn.execute(_ROW_SECURITY_QUERY, {"schema": schema})}
 
     tables = []
     for name, table_columns in columns.items():
@@ -216,6 +228,7 @@ def introspect_schema(
                 primary_key=primary_key,
                 foreign_keys=tuple(foreign_keys.get(name, [])),
                 sample_rows=samples,
+                row_security=name in secured,
             )
         )
     return SchemaInfo(tables=tuple(tables))

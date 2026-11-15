@@ -39,6 +39,8 @@ export const ERROR_TITLES = {
   dictionary_invalid: "That change doesn't fit the dictionary.",
   no_tables_permitted: "You can't use any table of this database.",
   table_access_invalid: 'That database has no such table.',
+  row_scope_invalid: "That row permission can't be set.",
+  member_not_found: "That person isn't a member of this workspace.",
   api_unreachable: "The QueryMind API isn't reachable.",
   api_timeout: 'The API took too long to answer.',
   stream_interrupted: 'The connection to the API was lost.',

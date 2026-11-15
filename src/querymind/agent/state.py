@@ -41,6 +41,7 @@ from querymind.config import Settings
 from querymind.db.executor import QueryResult
 from querymind.llm import LLMProvider
 from querymind.safety.pii import PiiGuard
+from querymind.safety.row_scope import RowScope
 from querymind.semantic.retrieval import SchemaRetriever, SchemaSelection
 
 MAX_HISTORY_TURNS = 5  # earlier turns the LLM sees; older ones are forgotten
@@ -146,3 +147,5 @@ class AgentContext:
     retriever: SchemaRetriever | None = None  # None: the LLM sees the whole schema (3.3)
     # 5.4: this user's personal data is masked: every query is checked, its result masked.
     pii_guard: PiiGuard | None = None
+    # 5.3: the rows this user may see, handed to the database with every query (None = every row).
+    row_scope: RowScope = None

@@ -48,6 +48,7 @@ Action = Literal[
     "onboarding_started",
     "dictionary_edited",
     "table_access_changed",
+    "row_scope_changed",
 ]
 
 _COLUMNS = """

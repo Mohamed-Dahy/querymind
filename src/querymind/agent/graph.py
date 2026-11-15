@@ -40,6 +40,9 @@ PII masking (5.4): with a `pii_guard` in the context, `run_sql` also checks how 
 personal columns (a misuse is a fixable failure, like unsafe SQL) and masks them in the result
 right after it runs, so no personal value is ever in the state, the summary or the reply.
 
+Row-level security (5.3): `run_sql` hands the context's `row_scope` to the executor, which sets it
+for the query's transaction; the database's policies then return only that user's rows.
+
 Live trace (U2.1): `Pipeline.stream` reports each node starting and finishing. Validating and
 running stay one node, so the only hint from inside it is a signal that the query passed.
 
@@ -195,7 +198,12 @@ def _run_sql(state: AgentState, runtime: Runtime[AgentContext]) -> AgentState:
         )  # only reaches Pipeline.stream; nothing else reads it
         with runtime.context.connect(settings) as conn:
             result = mask.apply(
-                execute_query(conn, query, timeout_seconds=settings.query_timeout_seconds)
+                execute_query(
+                    conn,
+                    query,
+                    timeout_seconds=settings.query_timeout_seconds,
+                    row_scope=runtime.context.row_scope,  # 5.3: the database filters the rows
+                )
             )
     except FIXABLE_ERRORS as exc:
         attempt = failed_attempt(sql, exc)

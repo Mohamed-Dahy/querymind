@@ -17,6 +17,7 @@ from querymind.api import audit_trail
 from querymind.api.deps import (
     CurrentUser,
     ManagesConversations,
+    RowScopes,
     TableAccess,
     allowed_tables,
     get_audit,
@@ -26,6 +27,7 @@ from querymind.api.deps import (
     limit_reruns,
     masks_pii,
     owner_of,
+    row_scope_of,
 )
 from querymind.api.schemas import (
     AskReply,
@@ -145,6 +147,7 @@ def rerun_turn(
     audit: Annotated[AuditStore | None, Depends(get_audit)],
     pipelines: Annotated[PipelineRegistry | None, Depends(get_pipelines)],
     access: TableAccess,
+    scopes: RowScopes,
 ) -> RerunResponse:
     """Run a saved answer's SQL again for fresh rows. No LLM call; there is no request body.
 
@@ -172,6 +175,7 @@ def rerun_turn(
             conversation_id=str(conversation_id),
             allowed_tables=allowed_tables(access, user, database),  # 5.2
             mask_pii=masks_pii(user),  # 5.4
+            row_scope=row_scope_of(scopes, user),  # 5.3
         )
     except Exception as exc:
         line = audit_trail.for_error(

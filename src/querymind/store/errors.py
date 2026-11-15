@@ -51,3 +51,7 @@ class DictionaryEditError(StoreError):
 
 class TableAccessInvalidError(StoreError):
     """A table permission names a table this database doesn't have (5.2). Safe to show."""
+
+
+class MemberNotFoundError(StoreError):
+    """No such member in this workspace (5.3). Safe to show."""

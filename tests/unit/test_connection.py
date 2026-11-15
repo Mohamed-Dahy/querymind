@@ -34,7 +34,7 @@ def test_unreachable_database_raises_a_clean_error(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Stand-in for a stopped database. A real refused port is slow on Windows (~10 s timeout).
-    def refuse(conninfo: str) -> psycopg.Connection:
+    def refuse(conninfo: str, **options: str) -> psycopg.Connection:
         raise psycopg.OperationalError(RAW)
 
     monkeypatch.setattr(psycopg, "connect", refuse)
@@ -46,9 +46,24 @@ def test_unreachable_database_raises_a_clean_error(
     assert any(getattr(r, "detail", None) == RAW for r in caplog.records)  # ...and logged
 
 
+def test_every_session_starts_seeing_every_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 5.3: what the app reads for everyone (the schema, its samples) sees every row; each query's
+    # own scope is set by the executor in its transaction.
+    seen: dict[str, str] = {}
+
+    def record(conninfo: str, **options: str) -> psycopg.Connection:
+        seen.update(options)
+        raise psycopg.OperationalError(RAW)
+
+    monkeypatch.setattr(psycopg, "connect", record)
+    with pytest.raises(DatabaseUnavailableError):
+        connect_readonly(settings())
+    assert seen == {"options": "-c querymind.scope=*"}
+
+
 def test_other_errors_are_not_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
     # Only "couldn't connect" is translated; a bug (e.g. a bad conninfo string) stays visible.
-    def broken(conninfo: str) -> psycopg.Connection:
+    def broken(conninfo: str, **options: str) -> psycopg.Connection:
         raise psycopg.ProgrammingError("invalid connection option")
 
     monkeypatch.setattr(psycopg, "connect", broken)

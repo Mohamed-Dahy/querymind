@@ -50,6 +50,7 @@ class FakeDatabasePipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> AgentReply:
         self.asked.append((question, llm))
         return RESULT
@@ -62,6 +63,7 @@ class FakeDatabasePipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> Generator[AgentEvent | Finished]:
         self.asked.append((question, llm))
         yield Finished(RESULT)
@@ -74,6 +76,7 @@ class FakeDatabasePipeline:
         conversation_id: str | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> QueryResult:
         self.reruns.append(sql)
         return ROWS

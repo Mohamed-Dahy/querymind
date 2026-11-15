@@ -20,10 +20,12 @@ from fastapi import Path as PathParam
 from querymind.api.conversations import Store
 from querymind.api.deps import (
     CurrentUser,
+    RowScopes,
     TableAccess,
     allowed_tables,
     get_current_user,
     owner_of,
+    row_scope_of,
 )
 from querymind.api.schemas import ErrorResponse, TableQuestionList
 from querymind.config import Settings
@@ -61,6 +63,7 @@ class ExplorerData:
         self._overview = build_overview(self._layers, self._dictionaries, self._examples)
         self._read_schema = read_schema
         self._catalog: Catalog | None = None
+        self._secured: frozenset[str] = frozenset()  # tables with row-level security (5.3)
         self._lock = threading.Lock()
 
     def overview(self, allowed: frozenset[str] | None = None) -> SemanticOverview:
@@ -74,16 +77,29 @@ class ExplorerData:
             visible_examples(self._examples, allowed),
         )
 
-    def visible_catalog(self, allowed: frozenset[str] | None) -> Catalog:
-        """The catalog as a role sees it (5.2): every table, or only the allowed ones."""
+    def visible_catalog(self, allowed: frozenset[str] | None, *, scoped: bool = False) -> Catalog:
+        """The catalog as a role sees it (5.2): every table, or only the allowed ones. For a user
+        who sees only some rows (5.3), the row counts of row-secured tables are hidden: they were
+        counted for everyone, so "830 orders" would tell an Eastern manager about the others."""
         catalog = self.catalog()
-        return catalog if allowed is None else visible_catalog(catalog, allowed)
+        seen = catalog if allowed is None else visible_catalog(catalog, allowed)
+        if not scoped:
+            return seen
+        return Catalog(
+            tables=[
+                table.model_copy(update={"row_count": None})
+                if table.name in self._secured
+                else table
+                for table in seen.tables
+            ]
+        )
 
     def catalog(self) -> Catalog:
         with self._lock:
             if self._catalog is None:
                 schema, row_counts = self._read_schema()
                 self._catalog = build_catalog(schema, row_counts, self._layers)
+                self._secured = frozenset(t.name for t in schema.tables if t.row_security)
             return self._catalog
 
 
@@ -117,9 +133,13 @@ Explorer = Annotated[ExplorerData, Depends(get_explorer)]
 
 
 @router.get("/catalog", response_model=Catalog, responses=_DATABASE_ERRORS)
-def get_catalog(explorer: Explorer, user: CurrentUser, access: TableAccess) -> Catalog:
-    """Every table you may use, with its columns, keys, business and approximate row count."""
-    return explorer.visible_catalog(allowed_tables(access, user, None))
+def get_catalog(
+    explorer: Explorer, user: CurrentUser, access: TableAccess, scopes: RowScopes
+) -> Catalog:
+    """Every table you may use, with its columns, keys, business and approximate row count (not
+    for a table whose rows depend on who asks, if you see only some of them, 5.3)."""
+    scoped = row_scope_of(scopes, user) is not None
+    return explorer.visible_catalog(allowed_tables(access, user, None), scoped=scoped)
 
 
 @router.get(

@@ -8,6 +8,8 @@ Safety layers applied here, on top of the validator (CLAUDE.md §8.1 and §8.3):
   - only a `ValidatedQuery` is accepted, never a plain string;
   - the transaction is READ ONLY, even if the role's default were ever changed;
   - `SET LOCAL statement_timeout` stops long queries (and is reset when the transaction ends);
+  - `querymind.scope` is set for this transaction only: whose rows the database's row-level
+    security policies let through (5.3, safety/row_scope.py; None = every row);
   - a server-side cursor sends at most `max_rows + 1` rows over the network, whatever the SQL;
   - psycopg errors become our own QueryError types with short, user-safe messages.
 """
@@ -23,6 +25,7 @@ from psycopg import errors, sql
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from querymind.db.errors import QueryExecutionError, QueryTimeoutError
+from querymind.safety.row_scope import SCOPE_SETTING, RowScope, scope_value
 from querymind.safety.sql_validator import ValidatedQuery
 
 logger = logging.getLogger(__name__)
@@ -43,9 +46,16 @@ class QueryResult(BaseModel):
 
 
 def execute_query(
-    conn: psycopg.Connection, query: ValidatedQuery, *, timeout_seconds: int
+    conn: psycopg.Connection,
+    query: ValidatedQuery,
+    *,
+    timeout_seconds: int,
+    row_scope: RowScope = None,
 ) -> QueryResult:
     """Run `query` on `conn` (a read-only connection) and return its rows as JSON-safe values.
+
+    `row_scope` (5.3): the rows this user may see, for the database's row-level security; None =
+    every row (evals, scripts, an admin). The API always passes the user's own.
 
     Raises:
         TypeError: `query` is not a ValidatedQuery (e.g. a plain SQL string).
@@ -67,6 +77,10 @@ def execute_query(
                     sql.Literal(f"{timeout_seconds}s")
                 )
             )
+            # 5.3: whose rows. Set in *every* transaction, "every row" too, so a scope can't
+            # come from the connection's default or from an earlier query. `true` = local to
+            # this transaction; the value is a parameter, never part of the SQL text.
+            conn.execute("SELECT set_config(%s, %s, true)", (SCOPE_SETTING, scope_value(row_scope)))
             # A *named* cursor lives on the server (DECLARE ... CURSOR): rows only cross the
             # network when we fetch them, so we never receive more than max_rows + 1.
             with conn.cursor(name="querymind_result") as cursor:

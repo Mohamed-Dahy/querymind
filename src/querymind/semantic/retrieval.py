@@ -55,6 +55,7 @@ from querymind.llm.errors import LLMError, LLMProviderError
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.permissions import visible_examples, visible_layers, visible_schema
 from querymind.safety.pii import PiiGuard, hide_samples
+from querymind.safety.row_scope import without_row_samples
 from querymind.safety.sql_validator import validate_sql
 from querymind.semantic.documents import EXAMPLE_KINDS, SCHEMA_KINDS
 from querymind.semantic.index import INDEX_TABLE, IndexHit, keyword_search, search
@@ -206,6 +207,16 @@ class SchemaCatalog:
             layers,
             [example for example in self._all_examples if guard.allows(example.sql)],
             personal=guard.pii,
+        )
+
+    def scoped(self) -> "SchemaCatalog":
+        """The same catalog for a user who sees only some rows (5.3): no sample rows from tables
+        with row security, since they were read with every row."""
+        return SchemaCatalog(
+            without_row_samples(self.schema),
+            self.layers,
+            self._all_examples,
+            personal=self.personal,
         )
 
     def text(self, tables: Collection[str]) -> str:

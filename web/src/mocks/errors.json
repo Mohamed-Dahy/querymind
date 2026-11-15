@@ -149,6 +149,14 @@
     "status": 422,
     "message": "This database has no table called ordres."
   },
+  "row_scope_invalid": {
+    "status": 422,
+    "message": "Admins always see every row: their scope can't be set."
+  },
+  "member_not_found": {
+    "status": 404,
+    "message": "This workspace has no such member."
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."

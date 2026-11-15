@@ -58,6 +58,7 @@ class FakePipeline:
         llm: LLMProvider | None = None,
         allowed_tables: frozenset[str] | None = None,
         mask_pii: bool = False,
+        row_scope: tuple[str, ...] | None = None,
     ) -> AgentReply:
         self.questions.append(question)
         self.conversation_ids.append(conversation_id)

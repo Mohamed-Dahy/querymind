@@ -64,11 +64,18 @@ class StubExecutor:
     def __init__(self) -> None:
         self.queries: list[ValidatedQuery] = []
         self.replies: deque[QueryResult | Exception] = deque()
+        self.scopes: list[tuple[str, ...] | None] = []  # the row scope of each query (5.3)
 
     def __call__(
-        self, conn: psycopg.Connection, query: ValidatedQuery, *, timeout_seconds: int
+        self,
+        conn: psycopg.Connection,
+        query: ValidatedQuery,
+        *,
+        timeout_seconds: int,
+        row_scope: tuple[str, ...] | None = None,
     ) -> QueryResult:
         self.queries.append(query)
+        self.scopes.append(row_scope)
         reply = self.replies.popleft() if self.replies else RESULT
         if isinstance(reply, Exception):
             raise reply
