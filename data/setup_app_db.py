@@ -311,6 +311,12 @@ TABLES = (
     CREATE INDEX IF NOT EXISTS memberships_per_user
         ON {SCHEMA}.memberships (user_id, created_at, workspace_id)
     """,
+    # 5.8b: each question's LLM, on whose key, its tokens and list-price cost (null = unknown).
+    f"ALTER TABLE {SCHEMA}.audit_log ADD COLUMN IF NOT EXISTS llm text",
+    f"ALTER TABLE {SCHEMA}.audit_log ADD COLUMN IF NOT EXISTS own_key boolean",
+    f"ALTER TABLE {SCHEMA}.audit_log ADD COLUMN IF NOT EXISTS input_tokens integer",
+    f"ALTER TABLE {SCHEMA}.audit_log ADD COLUMN IF NOT EXISTS output_tokens integer",
+    f"ALTER TABLE {SCHEMA}.audit_log ADD COLUMN IF NOT EXISTS cost_usd numeric(12, 6)",
     # What the history list sorts by: one user's conversations.
     f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",
     f"""

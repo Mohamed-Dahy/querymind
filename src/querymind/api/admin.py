@@ -45,6 +45,11 @@ class AuditLine(BaseModel):
     duration_ms: int | None
     sql_attempts: int | None
     detail: str | None = Field(description="An error's message")
+    llm: str | None = Field(default=None, description="The question's LLM, e.g. groq / gpt-oss")
+    own_key: bool | None = Field(default=None, description="On the workspace's own key")
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = Field(default=None, description="List price; null = unknown")
 
     @classmethod
     def of(cls, record: AuditRecord) -> "AuditLine":

@@ -74,6 +74,7 @@ class GeminiProvider(LangChainProvider):
         )
         super().__init__(
             name="gemini",
+            model=model,
             chat_model=chat_model,
             provider_errors=(
                 ChatGoogleGenerativeAIError,  # LangChain's wrapper around API failures

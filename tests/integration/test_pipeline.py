@@ -223,8 +223,9 @@ def test_an_ambiguous_question_gets_a_question_back(
     with caplog.at_level(logging.INFO, logger="querymind.audit"):
         reply = pipeline.ask("Who are our best customers?")
     assert reply == ClarificationRequest(
-        question="Who are our best customers?", clarification=clarification
+        question="Who are our best customers?", clarification=clarification, usage=reply.usage
     )
+    assert reply.usage is not None and reply.usage.llm_calls == 1  # 5.8b: asking back costs too
     assert len(fake.calls) == 1  # no SQL ran, no summary
     (audit,) = [r for r in caplog.records if r.name == "querymind.audit"]
     assert audit.outcome == "clarification"  # type: ignore[attr-defined]
@@ -235,8 +236,8 @@ def test_a_change_request_is_refused_politely(settings: Settings) -> None:
     pipeline, _ = make_pipeline(
         settings, SqlDraft(sql="", explanation="", tables_used=[], refusal=refusal)
     )
-    assert pipeline.ask("Delete all orders") == Refusal(
-        question="Delete all orders", message=refusal
-    )
+    reply = pipeline.ask("Delete all orders")
+    assert reply == Refusal(question="Delete all orders", message=refusal, usage=reply.usage)
+    assert reply.usage is not None and reply.usage.llm_calls == 1
     with connect_readonly(settings) as conn:
         assert conn.execute("SELECT count(*) FROM orders").fetchone() == (830,)

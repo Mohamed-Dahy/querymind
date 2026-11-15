@@ -926,6 +926,8 @@ export interface components {
              * @description True if more rows existed than the row limit
              */
             truncated: boolean;
+            /** @description Which model answered, on whose key, its tokens and cost */
+            usage?: components["schemas"]["LLMUsage"] | null;
             /**
              * Warnings
              * @description Signs the result may be wrong (empty, duplicated rows...)
@@ -973,6 +975,11 @@ export interface components {
             /** Conversation Id */
             conversation_id: string | null;
             /**
+             * Cost Usd
+             * @description List price; null = unknown
+             */
+            cost_usd?: number | null;
+            /**
              * Detail
              * @description An error's message
              */
@@ -983,11 +990,25 @@ export interface components {
             email: string | null;
             /** Id */
             id: number;
+            /** Input Tokens */
+            input_tokens?: number | null;
+            /**
+             * Llm
+             * @description The question's LLM, e.g. groq / gpt-oss
+             */
+            llm?: string | null;
             /**
              * Outcome
              * @description answer, clarification, refusal, ok, cancelled, or an error code
              */
             outcome: string;
+            /** Output Tokens */
+            output_tokens?: number | null;
+            /**
+             * Own Key
+             * @description On the workspace's own key
+             */
+            own_key?: boolean | null;
             /** Question */
             question: string | null;
             /** Row Count */
@@ -1117,6 +1138,8 @@ export interface components {
             options: string[];
             /** Question */
             question: string;
+            /** @description Which model answered, on whose key, its tokens and cost */
+            usage?: components["schemas"]["LLMUsage"] | null;
         };
         /** ColumnMeaning */
         ColumnMeaning: {
@@ -1589,6 +1612,47 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * LLMUsage
+         * @description What one question cost on the LLM (5.8b): which model, on whose key, and its tokens.
+         */
+        LLMUsage: {
+            /**
+             * Cost Usd
+             * @description At list price, in US dollars; null = a model QueryMind has no price for
+             */
+            cost_usd: number | null;
+            /**
+             * Input Tokens
+             * @description Prompt tokens, all calls; null = not reported
+             */
+            input_tokens: number | null;
+            /**
+             * Llm Calls
+             * @description LLM calls in this run (a repair or a summary is one more)
+             */
+            llm_calls: number;
+            /**
+             * Model
+             * @description The provider's model id, e.g. openai/gpt-oss-20b
+             */
+            model: string;
+            /**
+             * Output Tokens
+             * @description Answer tokens (reasoning included), all calls; null = not reported
+             */
+            output_tokens: number | null;
+            /**
+             * Own Key
+             * @description True: the workspace's own key; false: QueryMind's demo key
+             */
+            own_key: boolean;
+            /**
+             * Provider
+             * @description The LLM provider, e.g. groq
+             */
+            provider: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -1934,6 +1998,8 @@ export interface components {
             message: string;
             /** Question */
             question: string;
+            /** @description Which model answered, on whose key, its tokens and cost */
+            usage?: components["schemas"]["LLMUsage"] | null;
         };
         /**
          * RerunResponse

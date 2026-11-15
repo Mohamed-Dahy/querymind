@@ -34,7 +34,7 @@
     "type": "step",
     "node": "retrieve_schema",
     "status": "finished",
-    "duration_ms": 423
+    "duration_ms": 393
   },
   {
     "type": "step",
@@ -45,14 +45,14 @@
   {
     "type": "sql",
     "attempt": 1,
-    "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id JOIN orders AS o ON od.order_id = o.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY c.category_name",
-    "explanation": "Calculates the total sales amount per category filtered specifically for orders placed in the year 1997."
+    "sql": "SELECT c.category_name, SUM(od.unit_price * od.quantity * (1 - od.discount)) AS total_sales FROM categories AS c JOIN products AS p ON c.category_id = p.category_id JOIN order_details AS od ON p.product_id = od.product_id JOIN orders AS o ON o.order_id = od.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY c.category_name",
+    "explanation": "This query calculates the total sales amount per product category for orders placed in the year 1997."
   },
   {
     "type": "step",
     "node": "generate_sql",
     "status": "finished",
-    "duration_ms": 1244
+    "duration_ms": 1698
   },
   {
     "type": "step",
@@ -68,7 +68,7 @@
     "type": "step",
     "node": "run_sql",
     "status": "finished",
-    "duration_ms": 44
+    "duration_ms": 257
   },
   {
     "type": "step",
@@ -84,7 +84,7 @@
     "type": "step",
     "node": "check_result",
     "status": "finished",
-    "duration_ms": 2
+    "duration_ms": 3
   },
   {
     "type": "step",
@@ -96,6 +96,6 @@
     "type": "step",
     "node": "summarize",
     "status": "finished",
-    "duration_ms": 850
+    "duration_ms": 1162
   }
 ]

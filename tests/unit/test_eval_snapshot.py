@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from evals import ablation
-from evals.models import MODELS, STUDY_SUITES, load_prices, report_path
+from evals.models import MODELS, STUDY_SUITES, report_path
 from evals.quality import AnswerCase, Judged, QualityRun, RetrievalCase, Verdict
 from evals.report import Outcome, load_report, write_reports
 from evals.snapshot import (
@@ -25,6 +25,7 @@ from evals.snapshot import (
     write_snapshot,
 )
 from querymind.api.evals import EvalsReply, with_bird_text
+from querymind.llm.prices import load_prices
 from tests.unit.test_report import outcome
 
 PLANTED = "Maria Anders planted value"

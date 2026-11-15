@@ -48,6 +48,7 @@ def for_reply(
 ) -> AuditEntry:
     """A question that got a reply: its kind is the outcome; an answer adds its SQL and size."""
     answer = reply if isinstance(reply, AskResponse) else None
+    usage = reply.usage
     return AuditEntry(
         action="ask",
         outcome=reply.kind,
@@ -62,6 +63,11 @@ def for_reply(
         workspace_id=user.workspace_id,
         email=user.email,
         connection_id=connection_id,
+        llm=f"{usage.provider} / {usage.model}" if usage else None,
+        own_key=usage.own_key if usage else None,
+        input_tokens=usage.input_tokens if usage else None,
+        output_tokens=usage.output_tokens if usage else None,
+        cost_usd=usage.cost_usd if usage else None,
     )
 
 

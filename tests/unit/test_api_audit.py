@@ -80,6 +80,9 @@ def test_an_answer_is_one_line_with_who_what_and_the_sql() -> None:
     assert line.question == "How many customers are there?"
     assert line.sql == RESULT.sql and line.row_count == 1 and line.sql_attempts == 1
     assert line.duration_ms is not None and line.duration_ms >= 0
+    # 5.8b: which model, on whose key, and what it cost (RESULT carries test_api's USAGE).
+    assert (line.llm, line.own_key) == ("groq / openai/gpt-oss-20b", False)
+    assert (line.input_tokens, line.output_tokens, line.cost_usd) == (1200, 300, 0.00018)
 
 
 def test_a_question_back_is_its_own_outcome() -> None:

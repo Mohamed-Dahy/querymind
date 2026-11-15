@@ -192,6 +192,7 @@ def test_the_shared_adapter_raises_llm_auth_error_for_a_refused_key() -> None:
     chat_model.with_structured_output.return_value = chat_model
     provider = LangChainProvider(
         name="test",
+        model="test-model",
         chat_model=chat_model,
         provider_errors=(RefusedKey,),
         is_auth_error=lambda exc: isinstance(exc, RefusedKey),

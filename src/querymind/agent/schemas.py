@@ -154,6 +154,24 @@ class AnswerSource(BaseModel):
     description: str  # what it is about, e.g. "Our online music store (tracks, albums, ...)."
 
 
+class LLMUsage(BaseModel):
+    """What one question cost on the LLM (5.8b): which model, on whose key, and its tokens."""
+
+    model_config = ConfigDict(frozen=True)
+
+    provider: str = Field(description="The LLM provider, e.g. groq")
+    model: str = Field(description="The provider's model id, e.g. openai/gpt-oss-20b")
+    own_key: bool = Field(description="True: the workspace's own key; false: QueryMind's demo key")
+    llm_calls: int = Field(description="LLM calls in this run (a repair or a summary is one more)")
+    input_tokens: int | None = Field(description="Prompt tokens, all calls; null = not reported")
+    output_tokens: int | None = Field(
+        description="Answer tokens (reasoning included), all calls; null = not reported"
+    )
+    cost_usd: float | None = Field(
+        description="At list price, in US dollars; null = a model QueryMind has no price for"
+    )
+
+
 class AskResult(BaseModel):
     """Everything one question produced: what ran, what came back, and the answer."""
 
@@ -178,6 +196,7 @@ class AskResult(BaseModel):
     )
     example_questions: tuple[str, ...] = ()  # the solved examples shown to the LLM
     duration_ms: int | None = None
+    usage: LLMUsage | None = None  # 5.8b: model, tokens, cost
 
 
 class ClarificationRequest(BaseModel):
@@ -187,6 +206,7 @@ class ClarificationRequest(BaseModel):
 
     question: str
     clarification: Clarification
+    usage: LLMUsage | None = None  # 5.8b: asking back costs LLM calls too
 
 
 class Refusal(BaseModel):
@@ -196,6 +216,7 @@ class Refusal(BaseModel):
 
     question: str
     message: str
+    usage: LLMUsage | None = None  # 5.8b
 
 
 # What Pipeline.ask can reply: an answer, a question back, or a polite no.

@@ -67,6 +67,7 @@ class GroqProvider(LangChainProvider):
         )
         super().__init__(
             name="groq",
+            model=model,
             chat_model=chat_model,
             # groq.APIError covers connection errors, timeouts, rate limits, auth, server errors.
             provider_errors=(groq.APIError,),

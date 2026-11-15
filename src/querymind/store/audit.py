@@ -58,7 +58,8 @@ Action = Literal[
 _COLUMNS = """
     id, at, action, outcome, user_id, workspace_id, email, conversation_id, connection_id, question,
     sql, tables,
-    row_count, duration_ms, sql_attempts, detail
+    row_count, duration_ms, sql_attempts, detail, llm, own_key, input_tokens, output_tokens,
+    cost_usd
 """
 
 
@@ -82,6 +83,12 @@ class AuditEntry(BaseModel):
     duration_ms: int | None = None
     sql_attempts: int | None = None
     detail: str | None = None  # an error's user-facing message, never a vendor's raw reply
+    # 5.8b, a question's LLM: "groq / openai/gpt-oss-20b", on whose key, tokens, list price.
+    llm: str | None = None
+    own_key: bool | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
 
 
 class AuditRecord(AuditEntry):
@@ -120,10 +127,11 @@ class AuditStore:
                 INSERT INTO querymind_app.audit_log
                     (action, outcome, user_id, workspace_id, email, conversation_id,
                      connection_id, question, sql, tables, row_count, duration_ms, sql_attempts,
-                     detail)
+                     detail, llm, own_key, input_tokens, output_tokens, cost_usd)
                 VALUES (%(action)s, %(outcome)s, %(user_id)s, %(workspace_id)s, %(email)s,
                         %(conversation_id)s, %(connection_id)s, %(question)s, %(sql)s, %(tables)s,
-                        %(row_count)s, %(duration_ms)s, %(sql_attempts)s, %(detail)s)
+                        %(row_count)s, %(duration_ms)s, %(sql_attempts)s, %(detail)s,
+                        %(llm)s, %(own_key)s, %(input_tokens)s, %(output_tokens)s, %(cost_usd)s)
                 """,
                 {**entry.model_dump(), "tables": list(entry.tables)},
             )

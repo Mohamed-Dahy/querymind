@@ -1,11 +1,11 @@
 {
   "kind": "answer",
   "question": "What were the total sales per month in 1997?",
-  "conversation_id": "04d5d38b-8872-4efe-99bb-e655c54e6f99",
-  "answer": "In 1997, monthly sales ranged from about 36,362.80 in June to about 71,398.43 in December. The strongest months for sales were October, with about 66,749.23, and January, with about 61,258.07.",
+  "conversation_id": "616dbc12-719b-405e-b439-163590750481",
+  "answer": "In 1997, monthly sales varied throughout the year, with the highest sales reaching about 71.4 thousand in December and the lowest dropping to about 36.4 thousand in June. Other strong months included October at about 66.7 thousand and January at about 61.3 thousand.",
   "answer_from_llm": true,
   "sql": "SELECT EXTRACT(MONTH FROM o.order_date) AS month, SUM(d.unit_price * d.quantity * (1 - d.discount)) AS total_sales FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY month ORDER BY month LIMIT 1001",
-  "explanation": "Calculates total sales revenue per month for the year 1997 using orders and order details.",
+  "explanation": "Calculates the total revenue from orders placed in each month of the year 1997.",
   "columns": [
     "month",
     "total_sales"
@@ -97,5 +97,14 @@
     "How many invoices were issued in each month of 2024? Return the month (1-12) and the count."
   ],
   "sql_attempts": 1,
-  "duration_ms": 2758
+  "duration_ms": 8443,
+  "usage": {
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "own_key": false,
+    "llm_calls": 2,
+    "input_tokens": 4126,
+    "output_tokens": 255,
+    "cost_usd": 0.001875
+  }
 }

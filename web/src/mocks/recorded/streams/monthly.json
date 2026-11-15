@@ -33,7 +33,7 @@
     "type": "step",
     "node": "retrieve_schema",
     "status": "finished",
-    "duration_ms": 358
+    "duration_ms": 1103
   },
   {
     "type": "step",
@@ -45,13 +45,13 @@
     "type": "sql",
     "attempt": 1,
     "sql": "SELECT extract(month FROM o.order_date) AS month, sum(d.unit_price * d.quantity * (1 - d.discount)) AS total_sales FROM orders AS o JOIN order_details AS d ON d.order_id = o.order_id WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01' GROUP BY month ORDER BY month",
-    "explanation": "Calculates total sales revenue per month for the year 1997 using orders and order details."
+    "explanation": "Calculates the total revenue from orders placed in each month of the year 1997."
   },
   {
     "type": "step",
     "node": "generate_sql",
     "status": "finished",
-    "duration_ms": 1171
+    "duration_ms": 6252
   },
   {
     "type": "step",
@@ -67,7 +67,7 @@
     "type": "step",
     "node": "run_sql",
     "status": "finished",
-    "duration_ms": 63
+    "duration_ms": 223
   },
   {
     "type": "step",
@@ -95,6 +95,6 @@
     "type": "step",
     "node": "summarize",
     "status": "finished",
-    "duration_ms": 1149
+    "duration_ms": 848
   }
 ]

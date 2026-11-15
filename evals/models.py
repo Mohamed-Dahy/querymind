@@ -10,7 +10,8 @@ and differs only in `--provider` / `--model`. A fair table needs more than that,
   set differ (the 3.1 lesson: `.env` once switched a run to another model);
 - scores every model on the same questions: those that *every* model in the study scored (a
   question one model lost to a rate limit is left out for all, and the count says so);
-- prices tokens at list price (evals/prices.yaml, paid tier) although we run on free tiers.
+- prices tokens at list price (src/querymind/llm/prices.yaml, paid tier) although we run on
+  free tiers.
 
 Latency is end to end on free tiers (Groq and Google run different hardware), one question at
 a time; the Groq runs are spaced out to stay under 8K tokens a minute, so no question waits
@@ -25,17 +26,13 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
-
-import yaml
-from pydantic import BaseModel, ConfigDict, Field
 
 from evals.ablation import STUDIES
 from evals.report import Outcome, SavedReport, load_report
+from querymind.llm.prices import Prices, load_prices
 
 REPORT_DIR = Path("docs/eval-reports")
-PRICES_FILE = Path(__file__).parent / "prices.yaml"
 #: The full agent, exactly as in the ablation's last arm (D), so the flash-lite row can reuse it.
 AGENT_FLAGS = STUDIES["golden"].arms[-1].flags
 #: Report meta that must be the same in every row (one agent; only the LLM changes).
@@ -86,26 +83,6 @@ MODELS = {
         ),
     )
 }
-
-
-class Price(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    input: float = Field(ge=0)  # dollars per 1M input tokens
-    output: float = Field(ge=0)  # dollars per 1M output tokens (thinking included)
-    source: str
-    note: str = ""
-
-
-class Prices(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    checked: date  # YAML reads 2026-10-25 as a date
-    models: dict[str, Price]
-
-
-def load_prices(path: Path = PRICES_FILE) -> Prices:
-    return Prices.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
 def report_path(model: Model, suite: str, report_dir: Path = REPORT_DIR) -> Path:
@@ -296,9 +273,9 @@ def report_notes(prices: Prices) -> list[str]:
     """What to know when reading the numbers. In the report, and on the evals page."""
     return [
         f"- **Cost** = list-price equivalent, paid tier, prices checked {prices.checked} "
-        "(`evals/prices.yaml`, with sources); our runs were on free tiers. It covers the SQL "
-        "path the eval runs: the user-facing summary adds one more call per answer, and the "
-        "embeddings are the same for every model.",
+        "(`src/querymind/llm/prices.yaml`, with sources); our runs were on free tiers. It covers "
+        "the SQL path the eval runs: the user-facing summary adds one more call per answer, "
+        "and the embeddings are the same for every model.",
         "- **Latency** = end to end on free tiers, one question at a time. Groq and Google run "
         "different hardware, so it compares services, not only models. p50 is the headline.",
         "- **Noise:** one run per model. Two runs of the same setup differ by about 1-2 "

@@ -66,6 +66,7 @@ from querymind.agent.schemas import (
     AnswerSource,
     AskResult,
     ClarificationRequest,
+    LLMUsage,
     Refusal,
     SqlAttempt,
     Turn,
@@ -78,6 +79,8 @@ from querymind.db.executor import QueryResult, execute_query
 from querymind.db.schema import read_schema
 from querymind.llm import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
+from querymind.llm.prices import Prices, cost_usd, known_prices
+from querymind.llm.usage import MeteredLLM, UsageMeter
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.permissions import NoPermittedTablesError
 from querymind.safety.pii import NO_MASK, PiiGuard
@@ -124,6 +127,7 @@ class Pipeline:
         source: AnswerSource | None = None,
         dictionary: DataDictionary | None = None,
         saved_index: SavedDatabaseIndex | None = None,
+        prices: Prices | None = None,
     ) -> None:
         """`connect` must open a *read-only* connection; it's a parameter so tests can swap it.
 
@@ -136,6 +140,7 @@ class Pipeline:
         onboarding) becomes that database's semantic layer, built against the schema read at the
         first question, so a dropped table or column is simply left out. `saved_index` (5.10b): that
         database's schema index lives in the app database and is searched by keyword only.
+        `prices` (5.8b) prices each run's tokens; None = the package's list (llm/prices.yaml).
 
         Raises:
             ConfigError: SCHEMA_RETRIEVAL=on without an embedding provider (GOOGLE_API_KEY), or a
@@ -155,6 +160,7 @@ class Pipeline:
         self._source = source
         self._dictionary = dictionary
         self._saved_index = saved_index
+        self._prices = prices or known_prices()
         # The serializer may only rebuild our own state classes from a saved checkpoint.
         serde = JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
         self._checkpointer = InMemorySaver(serde=serde)
@@ -246,7 +252,10 @@ class Pipeline:
         made still finishes. A stopped run is audited too, and leaves the conversation as it was.
         """
         started = time.perf_counter()
+        own_key = llm is not None  # 5.8: the workspace's own key, else the pipeline's (ours)
         llm = llm or self._llm
+        # 5.8b: this run's calls and tokens. Its own meter, so runs at the same time never mix.
+        meter = UsageMeter()
         state: AgentState = {"question": question}
         # A standalone question still needs a thread for the checkpointer: a throwaway one.
         thread_id = conversation_id or f"standalone-{uuid.uuid4()}"
@@ -265,7 +274,7 @@ class Pipeline:
                     table_names=sorted(catalog.schema.table_names),
                 )
                 context = AgentContext(
-                    llm=llm,
+                    llm=MeteredLLM(llm, meter),
                     settings=self._settings,
                     connect=self._connect,
                     summarize_answer=summarize_answer,
@@ -306,6 +315,7 @@ class Pipeline:
                     started=started,
                     conversation_id=conversation_id,
                     provider=llm.name,
+                    usage=self._usage(llm, own_key, meter),
                 )
                 raise
             except Exception as exc:
@@ -316,12 +326,16 @@ class Pipeline:
                     started=started,
                     conversation_id=conversation_id,
                     provider=llm.name,
+                    usage=self._usage(llm, own_key, meter),
                 )
                 raise
             finally:
                 self._keep_or_forget(thread_id, keep=conversation_id is not None)
+        usage = self._usage(llm, own_key, meter)
         yield Finished(
-            self._finish(question, state, reply, started, conversation_id, provider=llm.name)
+            self._finish(
+                question, state, reply, started, conversation_id, provider=llm.name, usage=usage
+            )
         )
 
     def rerun(
@@ -428,8 +442,9 @@ class Pipeline:
         conversation_id: str | None,
         *,
         provider: str,
+        usage: LLMUsage,
     ) -> AgentReply:
-        """The audit line of a run that ended normally, and its reply."""
+        """The audit line of a run that ended normally, and its reply (with what it cost)."""
         if reply is not None:
             outcome = "refusal" if isinstance(reply, Refusal) else "clarification"
             self._audit(
@@ -439,8 +454,9 @@ class Pipeline:
                 started=started,
                 conversation_id=conversation_id,
                 provider=provider,
+                usage=usage,
             )
-            return reply
+            return reply.model_copy(update={"usage": usage})
         result = require(state.get("result"), "result")
         confidence = score_confidence(
             failed_attempts=state.get("attempts", []),
@@ -456,6 +472,7 @@ class Pipeline:
             conversation_id=conversation_id,
             confidence=confidence.level,
             provider=provider,
+            usage=usage,
         )
         selection = state.get("schema_selection")
         return AskResult(
@@ -481,6 +498,22 @@ class Pipeline:
             search_question=state.get("search_question"),
             example_questions=tuple(e.question for e in state.get("examples", [])),
             duration_ms=round((time.perf_counter() - started) * 1000),
+            usage=usage,
+        )
+
+    def _usage(self, llm: LLMProvider, own_key: bool, meter: UsageMeter) -> LLMUsage:
+        """What the run cost so far: its model, whose key, its calls and tokens, and their list
+        price when the model is in the price list (else null, never a guess)."""
+        return LLMUsage(
+            provider=llm.name,
+            model=llm.model,
+            own_key=own_key,
+            llm_calls=meter.calls,
+            input_tokens=meter.input_tokens,
+            output_tokens=meter.output_tokens,
+            cost_usd=cost_usd(
+                self._prices, llm.name, llm.model, meter.input_tokens, meter.output_tokens
+            ),
         )
 
     def _schema_info(self) -> tuple[SchemaCatalog, SchemaRetriever | None]:
@@ -679,6 +712,7 @@ class Pipeline:
         conversation_id: str | None,
         confidence: str | None = None,
         provider: str | None = None,
+        usage: LLMUsage | None = None,
     ) -> None:
         failed = state.get("attempts", [])
         result = state.get("result")
@@ -706,6 +740,13 @@ class Pipeline:
                 "search_question": state.get("search_question"),  # the rewritten follow-up (3.6)
                 "confidence": confidence,
                 "provider": provider or self._llm.name,
+                # 5.8b: the model, whose key, and what the run cost (also when it failed).
+                "model": usage.model if usage else None,
+                "own_key": usage.own_key if usage else None,
+                "llm_calls": usage.llm_calls if usage else None,
+                "input_tokens": usage.input_tokens if usage else None,
+                "output_tokens": usage.output_tokens if usage else None,
+                "cost_usd": usage.cost_usd if usage else None,
                 "duration_ms": round((time.perf_counter() - started) * 1000),
             },
         )

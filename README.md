@@ -117,6 +117,9 @@ QueryMind runs SQL written by an AI, so the database is protected in layers:
   It becomes that database's semantic layer, so "customers" stops being a guess between two similar tables.
   On a big database (over 15 tables) only the tables a question needs are sent, found by keyword search over
   those descriptions, kept in our own database (the user's stays read-only).
+- **What each answer cost.** Every reply says which model answered, on whose key (the workspace's own or
+  the demo's), its LLM calls and tokens, and the list-price cost when the model's price is known (never a
+  guess); admins see the same per question in the audit log.
 - **Saved keys, encrypted.** The LLM keys and database passwords users will save (bring your own key) are encrypted
   at rest, bound to their row (a copy moved to another account won't open), rotatable to a new key, and never
   logged or sent back: an LLM key shows only its last 4 characters. Log lines also hide anything shaped like a key.

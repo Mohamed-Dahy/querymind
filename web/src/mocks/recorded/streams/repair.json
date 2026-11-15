@@ -34,7 +34,7 @@
     "type": "step",
     "node": "retrieve_schema",
     "status": "finished",
-    "duration_ms": 577
+    "duration_ms": 1101
   },
   {
     "type": "step",
@@ -74,7 +74,7 @@
     "type": "step",
     "node": "run_sql",
     "status": "finished",
-    "duration_ms": 28
+    "duration_ms": 44
   },
   {
     "type": "step",
@@ -92,7 +92,7 @@
     "type": "step",
     "node": "repair_sql",
     "status": "finished",
-    "duration_ms": 3
+    "duration_ms": 2
   },
   {
     "type": "step",
@@ -108,7 +108,7 @@
     "type": "step",
     "node": "run_sql",
     "status": "finished",
-    "duration_ms": 26
+    "duration_ms": 29
   },
   {
     "type": "step",

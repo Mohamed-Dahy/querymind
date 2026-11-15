@@ -1,11 +1,11 @@
 {
   "kind": "answer",
   "question": "How many customers are there?",
-  "conversation_id": "d70adda6-bcbd-4871-a69d-f1aeee8125a7",
+  "conversation_id": "a7e60dfa-8d24-4dba-978e-ce3d39446880",
   "answer": "There are 91 customers in total.",
   "answer_from_llm": true,
   "sql": "SELECT COUNT(*) AS customer_count FROM customers LIMIT 1001",
-  "explanation": "This query counts the total number of customers in the trading business database.",
+  "explanation": "This query counts the total number of customer companies in the Northwind database.",
   "columns": [
     "customer_count"
   ],
@@ -51,5 +51,14 @@
     "When did each customer from Germany first buy something? Return the first and last name and the date."
   ],
   "sql_attempts": 1,
-  "duration_ms": 2074
+  "duration_ms": 4385,
+  "usage": {
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "own_key": false,
+    "llm_calls": 2,
+    "input_tokens": 3501,
+    "output_tokens": 91,
+    "cost_usd": 0.001278
+  }
 }

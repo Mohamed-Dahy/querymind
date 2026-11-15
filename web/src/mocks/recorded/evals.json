@@ -564,7 +564,7 @@
  ],
  "models": {
   "notes": [
-   "Cost = list-price equivalent, paid tier, prices checked 2026-10-25 (evals/prices.yaml, with sources); our runs were on free tiers. It covers the SQL path the eval runs: the user-facing summary adds one more call per answer, and the embeddings are the same for every model.",
+   "Cost = list-price equivalent, paid tier, prices checked 2026-10-25 (src/querymind/llm/prices.yaml, with sources); our runs were on free tiers. It covers the SQL path the eval runs: the user-facing summary adds one more call per answer, and the embeddings are the same for every model.",
    "Latency = end to end on free tiers, one question at a time. Groq and Google run different hardware, so it compares services, not only models. p50 is the headline.",
    "Noise: one run per model. Two runs of the same setup differ by about 1-2 questions on 58 and about 3 on BIRD-100, so smaller gaps aren't real."
   ],

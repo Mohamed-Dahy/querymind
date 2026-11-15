@@ -22,6 +22,7 @@ from querymind.agent.schemas import (
     AskResult,
     ClarificationRequest,
     ConfidenceLevel,
+    LLMUsage,
     ShownSchema,
 )
 from querymind.store.conversations import ConversationSummary, SavedQuestion, TableQuestion
@@ -113,6 +114,9 @@ class AskResponse(BaseModel):
     )
     sql_attempts: int | None = Field(default=None, description="SQL queries tried, this one too")
     duration_ms: int | None = Field(default=None, description="How long the whole run took")
+    usage: LLMUsage | None = Field(
+        default=None, description="Which model answered, on whose key, its tokens and cost"
+    )
 
     @classmethod
     def from_result(cls, result: AskResult, *, conversation_id: UUID) -> "AskResponse":
@@ -143,6 +147,7 @@ class AskResponse(BaseModel):
             example_questions=list(result.example_questions),
             sql_attempts=result.sql_attempts,
             duration_ms=result.duration_ms,
+            usage=result.usage,
         )
 
 
@@ -154,6 +159,9 @@ class ClarificationResponse(BaseModel):
     conversation_id: UUID = Field(description="Send it with the next question to follow up")
     clarifying_question: str = Field(examples=['How would you define "best" customers?'])
     options: list[str] = Field(examples=[["by total revenue", "by number of orders"]])
+    usage: LLMUsage | None = Field(
+        default=None, description="Which model answered, on whose key, its tokens and cost"
+    )
 
     @classmethod
     def from_request(
@@ -164,6 +172,7 @@ class ClarificationResponse(BaseModel):
             conversation_id=conversation_id,
             clarifying_question=request.clarification.question,
             options=request.clarification.options,
+            usage=request.usage,
         )
 
 
@@ -174,6 +183,9 @@ class RefusalResponse(BaseModel):
     question: str
     conversation_id: UUID = Field(description="Send it with the next question to follow up")
     message: str = Field(examples=["I can only read data, not change it."])
+    usage: LLMUsage | None = Field(
+        default=None, description="Which model answered, on whose key, its tokens and cost"
+    )
 
 
 # The body of a successful POST /ask: `kind` tells which of the three it is.
@@ -191,7 +203,10 @@ def reply_from(
     if isinstance(reply, ClarificationRequest):
         return ClarificationResponse.from_request(reply, conversation_id=conversation_id)
     return RefusalResponse(
-        question=reply.question, conversation_id=conversation_id, message=reply.message
+        question=reply.question,
+        conversation_id=conversation_id,
+        message=reply.message,
+        usage=reply.usage,
     )
 
 

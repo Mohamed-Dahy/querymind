@@ -1,4 +1,5 @@
-# List prices in US dollars per 1 million tokens, paid tier (4.6). Our runs use the free tiers,
+# List prices in US dollars per 1 million tokens, paid tier (4.6; moved from evals/ in 5.8b, read
+# by llm/prices.py: the API prices every answer, evals their runs). Our runs use the free tiers,
 # so evals/models.py reports a "list-price equivalent": what the same tokens would cost on a
 # paid plan. Keys are the "provider / model" text that eval reports record as their LLM.
 #

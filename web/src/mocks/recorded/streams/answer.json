@@ -32,7 +32,7 @@
     "type": "step",
     "node": "retrieve_schema",
     "status": "finished",
-    "duration_ms": 602
+    "duration_ms": 902
   },
   {
     "type": "step",
@@ -50,7 +50,7 @@
     "type": "step",
     "node": "generate_sql",
     "status": "finished",
-    "duration_ms": 1371
+    "duration_ms": 1498
   },
   {
     "type": "step",
@@ -66,7 +66,7 @@
     "type": "step",
     "node": "run_sql",
     "status": "finished",
-    "duration_ms": 48
+    "duration_ms": 440
   },
   {
     "type": "step",
@@ -82,7 +82,7 @@
     "type": "step",
     "node": "check_result",
     "status": "finished",
-    "duration_ms": 3
+    "duration_ms": 4
   },
   {
     "type": "step",
@@ -94,6 +94,6 @@
     "type": "step",
     "node": "summarize",
     "status": "finished",
-    "duration_ms": 778
+    "duration_ms": 1133
   }
 ]

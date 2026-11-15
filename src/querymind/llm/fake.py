@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from querymind.llm.base import LLMProvider
 from querymind.llm.errors import LLMOutputError
+from querymind.llm.usage import UsageMeter
 
 type FakeResponse = str | BaseModel | Exception
 
@@ -34,9 +35,19 @@ class FakeLLMProvider(LLMProvider):
 
     name = "fake"
 
-    def __init__(self, responses: Iterable[FakeResponse] = ()) -> None:
+    def __init__(
+        self,
+        responses: Iterable[FakeResponse] = (),
+        *,
+        model: str = "fake-model",
+        usage: tuple[int, int] | None = None,
+    ) -> None:
+        """`usage`: the (input, output) tokens each call reports to a meter (5.8b); None = the
+        provider doesn't say, like a provider without token counts."""
         self._responses: deque[FakeResponse] = deque(responses)
         self.calls: list[FakeCall] = []
+        self.model = model
+        self._usage = usage
 
     def generate_text(self, prompt: str, *, system: str | None = None) -> str:
         self.calls.append(FakeCall(prompt, system, None))
@@ -58,6 +69,22 @@ class FakeLLMProvider(LLMProvider):
                 f"fake returned {type(response).__name__}, expected {schema.__name__}"
             )
         return response
+
+    def generate_text_metered(
+        self, prompt: str, *, system: str | None = None, meter: UsageMeter
+    ) -> str:
+        try:
+            return self.generate_text(prompt, system=system)
+        finally:
+            meter.add(*(self._usage or (None, None)))
+
+    def generate_structured_metered[T: BaseModel](
+        self, prompt: str, schema: type[T], *, system: str | None = None, meter: UsageMeter
+    ) -> T:
+        try:
+            return self.generate_structured(prompt, schema, system=system)
+        finally:
+            meter.add(*(self._usage or (None, None)))
 
     def _next(self) -> str | BaseModel:
         if not self._responses:

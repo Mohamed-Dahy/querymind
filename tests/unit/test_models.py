@@ -12,18 +12,16 @@ from evals.models import (
     MODELS,
     Model,
     ModelsError,
-    Price,
-    Prices,
     collect,
     command,
     common_ids,
-    load_prices,
     percentile,
     row,
     run,
     table,
 )
 from evals.report import Outcome, write_reports
+from querymind.llm.prices import Price, Prices, load_prices
 from tests.unit.test_report import outcome
 
 SETTINGS = {

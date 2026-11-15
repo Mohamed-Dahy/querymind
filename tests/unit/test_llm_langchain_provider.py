@@ -44,7 +44,9 @@ def chat_model() -> MagicMock:
 
 @pytest.fixture
 def provider(chat_model: MagicMock) -> LangChainProvider:
-    return LangChainProvider(name="test", chat_model=chat_model, provider_errors=(VendorDown,))
+    return LangChainProvider(
+        name="test", model="test-model", chat_model=chat_model, provider_errors=(VendorDown,)
+    )
 
 
 def test_generate_text_returns_the_answer(
@@ -89,6 +91,7 @@ def test_generate_structured_returns_the_schema_object(
 def test_structured_output_options_are_passed_to_langchain(chat_model: MagicMock) -> None:
     provider = LangChainProvider(
         name="test",
+        model="test-model",
         chat_model=chat_model,
         provider_errors=(VendorDown,),
         structured_output_options={"method": "json_schema", "strict": True},
@@ -134,6 +137,7 @@ def test_vendor_errors_about_the_answer_become_output_errors(chat_model: MagicMo
     # e.g. Groq's 400 "json_validate_failed": the model refused in plain text. Not an outage.
     provider = LangChainProvider(
         name="test",
+        model="test-model",
         chat_model=chat_model,
         provider_errors=(VendorDown,),
         is_output_error=lambda exc: "refused" in str(exc),
@@ -176,6 +180,7 @@ def test_token_usage_unknown_or_failed() -> None:
 def test_a_rate_limit_is_a_provider_error_that_carries_the_wait(chat_model: MagicMock) -> None:
     provider = LangChainProvider(
         name="test",
+        model="test-model",
         chat_model=chat_model,
         provider_errors=(VendorDown,),
         is_rate_limit=lambda exc: "429" in str(exc),

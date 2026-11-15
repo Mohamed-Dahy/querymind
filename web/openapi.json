@@ -441,6 +441,17 @@
             "title": "Truncated",
             "type": "boolean"
           },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LLMUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which model answered, on whose key, its tokens and cost"
+          },
           "warnings": {
             "default": [],
             "description": "Signs the result may be wrong (empty, duplicated rows...)",
@@ -563,6 +574,18 @@
             ],
             "title": "Conversation Id"
           },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "List price; null = unknown",
+            "title": "Cost Usd"
+          },
           "detail": {
             "anyOf": [
               {
@@ -601,10 +624,56 @@
             "title": "Id",
             "type": "integer"
           },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "llm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The question's LLM, e.g. groq / gpt-oss",
+            "title": "Llm"
+          },
           "outcome": {
             "description": "answer, clarification, refusal, ok, cancelled, or an error code",
             "title": "Outcome",
             "type": "string"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "own_key": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On the workspace's own key",
+            "title": "Own Key"
           },
           "question": {
             "anyOf": [
@@ -950,6 +1019,17 @@
           "question": {
             "title": "Question",
             "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LLMUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which model answered, on whose key, its tokens and cost"
           }
         },
         "required": [
@@ -2016,6 +2096,78 @@
         "title": "LLMKeyInfo",
         "type": "object"
       },
+      "LLMUsage": {
+        "description": "What one question cost on the LLM (5.8b): which model, on whose key, and its tokens.",
+        "properties": {
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "At list price, in US dollars; null = a model QueryMind has no price for",
+            "title": "Cost Usd"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Prompt tokens, all calls; null = not reported",
+            "title": "Input Tokens"
+          },
+          "llm_calls": {
+            "description": "LLM calls in this run (a repair or a summary is one more)",
+            "title": "Llm Calls",
+            "type": "integer"
+          },
+          "model": {
+            "description": "The provider's model id, e.g. openai/gpt-oss-20b",
+            "title": "Model",
+            "type": "string"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Answer tokens (reasoning included), all calls; null = not reported",
+            "title": "Output Tokens"
+          },
+          "own_key": {
+            "description": "True: the workspace's own key; false: QueryMind's demo key",
+            "title": "Own Key",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "The LLM provider, e.g. groq",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "own_key",
+          "llm_calls",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd"
+        ],
+        "title": "LLMUsage",
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -2800,6 +2952,17 @@
           "question": {
             "title": "Question",
             "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LLMUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which model answered, on whose key, its tokens and cost"
           }
         },
         "required": [

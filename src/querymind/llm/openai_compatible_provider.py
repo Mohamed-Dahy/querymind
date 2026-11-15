@@ -56,6 +56,7 @@ class OpenAICompatibleProvider(LangChainProvider):
         options = {"method": entry.structured_method} if entry.structured_method else {}
         super().__init__(
             name=entry.id,
+            model=model,
             chat_model=chat_model,
             # openai.APIError covers connection errors, timeouts, rate limits, auth, server errors.
             provider_errors=(openai.APIError,),

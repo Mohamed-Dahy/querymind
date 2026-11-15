@@ -1,6 +1,15 @@
 {
   "kind": "refusal",
   "question": "Delete all orders from 1996.",
-  "conversation_id": "420c99aa-245b-4777-b663-92105fb7c8fe",
-  "message": "I can only read data and cannot delete or modify any records."
+  "conversation_id": "bdfa853b-d13f-4a6b-a838-d32eaea19ae9",
+  "message": "I can only read data and cannot delete any records.",
+  "usage": {
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "own_key": false,
+    "llm_calls": 1,
+    "input_tokens": 3352,
+    "output_tokens": 57,
+    "cost_usd": 0.001148
+  }
 }

@@ -15,6 +15,7 @@ from querymind.agent.schemas import (
     Clarification,
     ClarificationRequest,
     Confidence,
+    LLMUsage,
     Refusal,
     SanityWarning,
 )
@@ -28,6 +29,24 @@ from querymind.safety.errors import UnsafeSqlError
 from tests.auth_helpers import signed_in
 
 HIGH = Confidence(level="high", reasons=(), points=0)
+USAGE = LLMUsage(
+    provider="groq",
+    model="openai/gpt-oss-20b",
+    own_key=False,
+    llm_calls=2,
+    input_tokens=1200,
+    output_tokens=300,
+    cost_usd=0.00018,
+)
+USAGE_JSON = {
+    "provider": "groq",
+    "model": "openai/gpt-oss-20b",
+    "own_key": False,
+    "llm_calls": 2,
+    "input_tokens": 1200,
+    "output_tokens": 300,
+    "cost_usd": 0.00018,
+}
 
 RESULT = AskResult(
     question="How many customers are there?",
@@ -38,6 +57,7 @@ RESULT = AskResult(
     ),
     answer=AnswerSummary(text="There are 91 customers.", from_llm=True),
     confidence=HIGH,
+    usage=USAGE,
 )
 
 
@@ -105,6 +125,7 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         "example_questions": [],
         "sql_attempts": 1,
         "duration_ms": None,
+        "usage": USAGE_JSON,  # 5.8b: which model, whose key, tokens, cost
     }
     assert pipeline.questions == ["How many customers are there?"]  # whitespace stripped
 
@@ -270,7 +291,9 @@ def test_a_clarifying_question_is_a_200_with_its_options() -> None:
     clarification = Clarification(
         question="Best by what?", options=["by total revenue", "by number of orders"]
     )
-    reply = ClarificationRequest(question="Best customers?", clarification=clarification)
+    reply = ClarificationRequest(
+        question="Best customers?", clarification=clarification, usage=USAGE
+    )
     with client_for(FakePipeline(reply=reply)) as client:
         response = client.post("/ask", json={"question": "Best customers?"})
     assert response.status_code == 200  # not an error: the agent is asking back
@@ -281,11 +304,12 @@ def test_a_clarifying_question_is_a_200_with_its_options() -> None:
         "question": "Best customers?",
         "clarifying_question": "Best by what?",
         "options": ["by total revenue", "by number of orders"],
+        "usage": USAGE_JSON,  # asking back cost LLM calls too
     }
 
 
 def test_a_refusal_is_a_200_with_its_message() -> None:
-    reply = Refusal(question="Delete all orders", message="I can only read data.")
+    reply = Refusal(question="Delete all orders", message="I can only read data.", usage=USAGE)
     with client_for(FakePipeline(reply=reply)) as client:
         response = client.post("/ask", json={"question": "Delete all orders"})
     assert response.status_code == 200
@@ -295,6 +319,7 @@ def test_a_refusal_is_a_200_with_its_message() -> None:
         "kind": "refusal",
         "question": "Delete all orders",
         "message": "I can only read data.",
+        "usage": USAGE_JSON,
     }
 
 

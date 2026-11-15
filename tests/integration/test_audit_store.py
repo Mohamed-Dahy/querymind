@@ -40,6 +40,12 @@ def line(owner: Owner, **fields: object) -> AuditEntry:
         "row_count": 91,
         "duration_ms": 1200,
         "sql_attempts": 1,
+        # 5.8b: the question's LLM and what it cost (numeric in the database, a float back).
+        "llm": "groq / openai/gpt-oss-20b",
+        "own_key": False,
+        "input_tokens": 1200,
+        "output_tokens": 300,
+        "cost_usd": 0.00018,
     }
     return AuditEntry.model_validate(base | fields)
 

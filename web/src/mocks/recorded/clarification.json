@@ -1,11 +1,20 @@
 {
   "kind": "clarification",
   "question": "Which products are the most popular?",
-  "conversation_id": "601016c3-36a3-4b58-8220-76b3906d81fb",
-  "clarifying_question": "How would you like to measure product popularity?",
+  "conversation_id": "77dd18f7-bb02-4149-91a7-c74cba11ca13",
+  "clarifying_question": "How would you like to measure the popularity of products?",
   "options": [
+    "by total units sold",
     "by total revenue",
-    "by units sold",
     "by number of orders"
-  ]
+  ],
+  "usage": {
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "own_key": false,
+    "llm_calls": 1,
+    "input_tokens": 3280,
+    "output_tokens": 90,
+    "cost_usd": 0.001209
+  }
 }

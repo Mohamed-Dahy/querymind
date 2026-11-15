@@ -32,7 +32,7 @@
     "type": "step",
     "node": "retrieve_schema",
     "status": "finished",
-    "duration_ms": 334
+    "duration_ms": 1013
   },
   {
     "type": "step",
@@ -44,6 +44,6 @@
     "type": "step",
     "node": "generate_sql",
     "status": "finished",
-    "duration_ms": 971
+    "duration_ms": 2058
   }
 ]

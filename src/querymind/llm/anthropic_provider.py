@@ -51,6 +51,7 @@ class AnthropicProvider(LangChainProvider):
         )
         super().__init__(
             name="anthropic",
+            model=model,
             chat_model=chat_model,
             provider_errors=(anthropic.APIError,),
             is_rate_limit=is_rate_limit,

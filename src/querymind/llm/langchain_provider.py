@@ -27,6 +27,7 @@ from querymind.llm.errors import (
     LLMProviderError,
     LLMRateLimitError,
 )
+from querymind.llm.usage import UsageMeter
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class LangChainProvider(LLMProvider):
         self,
         *,
         name: str,
+        model: str,
         chat_model: BaseChatModel,
         provider_errors: tuple[type[Exception], ...],
         structured_output_options: Mapping[str, Any] | None = None,
@@ -49,6 +51,7 @@ class LangChainProvider(LLMProvider):
         """
         Args:
             name: provider id for logs and errors, e.g. "groq".
+            model: the model id the chat model was built with (5.8b: shown and priced).
             chat_model: the configured LangChain chat model.
             provider_errors: the vendor exceptions that mean "the provider could not answer";
                 they are re-raised as `LLMProviderError`.
@@ -64,6 +67,7 @@ class LangChainProvider(LLMProvider):
                 are re-raised as `LLMAuthError` (5.8: users bring their own keys).
         """
         self.name = name
+        self.model = model
         self._chat_model = chat_model
         self._provider_errors = provider_errors
         self._structured_output_options = dict(structured_output_options or {})
@@ -73,14 +77,32 @@ class LangChainProvider(LLMProvider):
         self._is_auth_error = is_auth_error or (lambda _exc: False)
 
     def generate_text(self, prompt: str, *, system: str | None = None) -> str:
-        message = self._invoke(self._chat_model, prompt, system, kind="text")
+        return self._text(prompt, system, meter=None)
+
+    def generate_text_metered(
+        self, prompt: str, *, system: str | None = None, meter: UsageMeter
+    ) -> str:
+        return self._text(prompt, system, meter=meter)
+
+    def generate_structured[T: BaseModel](
+        self, prompt: str, schema: type[T], *, system: str | None = None
+    ) -> T:
+        return self._structured(prompt, schema, system, meter=None)
+
+    def generate_structured_metered[T: BaseModel](
+        self, prompt: str, schema: type[T], *, system: str | None = None, meter: UsageMeter
+    ) -> T:
+        return self._structured(prompt, schema, system, meter=meter)
+
+    def _text(self, prompt: str, system: str | None, *, meter: UsageMeter | None) -> str:
+        message = self._invoke(self._chat_model, prompt, system, kind="text", meter=meter)
         text = message.text if isinstance(message, BaseMessage) else ""
         if not text.strip():
             raise LLMOutputError(f"{self.name} returned an empty answer")
         return text
 
-    def generate_structured[T: BaseModel](
-        self, prompt: str, schema: type[T], *, system: str | None = None
+    def _structured[T: BaseModel](
+        self, prompt: str, schema: type[T], system: str | None, *, meter: UsageMeter | None
     ) -> T:
         # LangChain asks the model to fill `schema` (via tool calling or JSON schema)
         # and parses the reply into a Pydantic object for us. include_raw=True also hands back
@@ -89,7 +111,9 @@ class LangChainProvider(LLMProvider):
         structured_model = self._chat_model.with_structured_output(
             schema, include_raw=True, **self._structured_output_options
         )
-        reply = self._invoke(structured_model, prompt, system, kind=f"structured:{schema.__name__}")
+        reply = self._invoke(
+            structured_model, prompt, system, kind=f"structured:{schema.__name__}", meter=meter
+        )
         error = reply.get("parsing_error") if isinstance(reply, dict) else None
         if error is not None:
             raise LLMOutputError(f"{self.name} output did not match the schema: {error}") from error
@@ -107,8 +131,11 @@ class LangChainProvider(LLMProvider):
         system: str | None,
         *,
         kind: str,
+        meter: UsageMeter | None = None,
     ) -> Any:
-        """Call the model, translate vendor errors into ours, and log how long it took."""
+        """Call the model, translate vendor errors into ours, and log how long it took. Its
+        tokens go to `meter` too (5.8b), also when the call fails: a reply that didn't fit was
+        paid for."""
         messages: list[BaseMessage] = [HumanMessage(prompt)]
         if system:
             messages.insert(0, SystemMessage(system))
@@ -132,13 +159,17 @@ class LangChainProvider(LLMProvider):
         except (OutputParserException, ValidationError) as exc:
             raise LLMOutputError(f"{self.name} output did not match the schema: {exc}") from exc
         finally:
+            usage = token_usage(reply)
+            if meter is not None:
+                meter.add(usage["input_tokens"], usage["output_tokens"])
             logger.info(
                 "llm call",
                 extra={
                     "provider": self.name,
+                    "model": self.model,
                     "kind": kind,
                     "duration_ms": round((time.perf_counter() - started) * 1000),
-                    **token_usage(reply),
+                    **usage,
                 },
             )
 

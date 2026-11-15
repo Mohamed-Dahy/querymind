@@ -56,6 +56,7 @@ from querymind.api.evals import (
     RetrievalQuality,
     SpeedUp,
 )
+from querymind.llm.prices import Prices, load_prices
 
 SNAPSHOT_FILE = Path(__file__).parent / "snapshot.json"
 #: The web UI's fake API serves the same bytes, so its tests see the real numbers.
@@ -311,7 +312,7 @@ def suites_to_compare(study: str, report_dir: Path) -> tuple[str, ...]:
     return tuple(suite for suite in suites if suite in best)
 
 
-def _model_study(study: str, report_dir: Path, prices: model_study.Prices) -> ModelStudy:
+def _model_study(study: str, report_dir: Path, prices: Prices) -> ModelStudy:
     all_suites = model_study.STUDY_SUITES[study]
     suites = suites_to_compare(study, report_dir)
     runs = model_study.collect(study, report_dir, suites=suites)
@@ -334,7 +335,7 @@ def _model_study(study: str, report_dir: Path, prices: model_study.Prices) -> Mo
     )
 
 
-def _model_row(row: model_study.Row, prices: model_study.Prices) -> ModelRow:
+def _model_row(row: model_study.Row, prices: Prices) -> ModelRow:
     price = prices.models.get(row.model.llm)
     return ModelRow(
         llm=row.model.llm,
@@ -352,7 +353,7 @@ def _model_row(row: model_study.Row, prices: model_study.Prices) -> ModelRow:
 
 
 def _models(report_dir: Path) -> ModelComparison:
-    prices = model_study.load_prices()
+    prices = load_prices()
     return ModelComparison(
         prices_checked=prices.checked.isoformat(),
         notes=[
