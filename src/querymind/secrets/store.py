@@ -18,7 +18,7 @@ AWS KMS / Secrets Manager behind the same interface, and nothing else changes.
 """
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Literal, Protocol
@@ -28,7 +28,7 @@ import psycopg
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.secrets.cipher import SecretCipher
 from querymind.secrets.errors import SecretNotFoundError, SecretUnreadableError
@@ -97,7 +97,7 @@ class LocalSecretStore:
         settings: Settings,
         *,
         cipher: SecretCipher | None = None,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._cipher = cipher or SecretCipher(settings.require_secrets_keys())

@@ -19,7 +19,7 @@ Like the conversation store: one connection per call, every value passed as a pa
 """
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Literal
@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict
 from querymind.auth.errors import EmailTakenError, NotAuthenticatedError
 from querymind.auth.tokens import AuthUser, Role
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.store.errors import AccountsUnavailableError, MemberNotFoundError
 
@@ -104,7 +104,7 @@ class AccountStore:
         self,
         settings: Settings,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._connect = connect

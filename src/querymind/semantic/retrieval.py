@@ -36,7 +36,7 @@ so neither can pass for a retrieval success. A failed rerank keeps the fused ord
 import copy
 import logging
 from collections import deque
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import Literal, NamedTuple
 from uuid import UUID
 
@@ -47,6 +47,7 @@ from querymind.agent.prompts.rerank import SYSTEM_PROMPT as RERANK_SYSTEM
 from querymind.agent.prompts.rerank import build_user_prompt as rerank_prompt
 from querymind.agent.schemas import FewShotExample, Turn
 from querymind.config import Settings
+from querymind.db.connection import AppConnect
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.schema import SchemaInfo, estimate_tokens
 from querymind.llm.base import LLMProvider
@@ -278,7 +279,7 @@ class SchemaRetriever:
         *,
         catalog: SchemaCatalog,
         embeddings: EmbeddingProvider | None,
-        connect: Callable[[Settings], psycopg.Connection],
+        connect: AppConnect,
         settings: Settings,
         index_table: str = INDEX_TABLE,
         llm: LLMProvider | None = None,

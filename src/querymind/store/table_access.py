@@ -15,7 +15,7 @@ It never answers "no rule", which would mean every table.
 """
 
 import logging
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Literal
 from uuid import UUID
@@ -24,7 +24,7 @@ import psycopg
 
 from querymind.auth.tokens import Role
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.store.errors import StoreUnavailableError
 
@@ -41,7 +41,7 @@ class TableAccessStore:
         self,
         settings: Settings,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._connect = connect

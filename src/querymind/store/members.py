@@ -20,7 +20,7 @@ Like the other stores: one connection per call, every value passed as a paramete
 """
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from uuid import UUID
@@ -31,7 +31,7 @@ from pydantic import BaseModel, ConfigDict
 
 from querymind.auth.tokens import Role
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.store.errors import (
     AccountNotFoundError,
@@ -70,7 +70,7 @@ class MemberStore:
         self,
         settings: Settings,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._connect = connect

@@ -20,7 +20,7 @@ nobody until `data/setup_app_db.py --owner` gives them to someone.
 """
 
 import logging
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Literal
@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict
 from querymind.agent.schemas import Clarification, Turn
 from querymind.agent.state import MAX_HISTORY_TURNS
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.store.errors import (
     ConversationNotFoundError,
@@ -147,7 +147,7 @@ class ConversationStore:
         self,
         settings: Settings,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._connect = connect
@@ -543,6 +543,8 @@ def load_history(store: ConversationStore, conversation_id: str) -> list[Turn]:
     return [turn_from_saved(turn) for turn in turns]
 
 
-def create_store(settings: Settings) -> ConversationStore | None:
+def create_store(
+    settings: Settings, *, connect: AppConnect = connect_app
+) -> ConversationStore | None:
     """The store, or None when APP_DB_USER isn't set: history is then simply off."""
-    return ConversationStore(settings) if settings.history_enabled else None
+    return ConversationStore(settings, connect=connect) if settings.history_enabled else None

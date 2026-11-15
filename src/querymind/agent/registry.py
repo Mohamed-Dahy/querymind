@@ -25,7 +25,7 @@ from pydantic import BaseModel, SecretStr
 from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AnswerSource, Turn
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.remote import connect_remote
 from querymind.llm import LLMProvider, LLMProviderError
 from querymind.secrets.errors import SecretUnreadableError
@@ -91,6 +91,7 @@ class PipelineRegistry:
         history_loader: Callable[[str], list[Turn]] | None = None,
         build: BuildPipeline | None = None,
         dictionaries: OnboardingStore | None = None,
+        app_connect: AppConnect = connect_app,
     ) -> None:
         self.demo = demo
         self._connections = connections
@@ -98,6 +99,7 @@ class PipelineRegistry:
         self._allow_private = allow_private
         self._history_loader = history_loader
         self._dictionaries = dictionaries
+        self._app_connect = app_connect  # the app database: a saved database's index (5.10b)
         self._build: BuildPipeline = build or self._new_pipeline
         # connection id → (what it was built with: secret id, dictionary version; the pipeline)
         self._cache: OrderedDict[UUID, tuple[tuple[UUID, int], Pipeline]] = OrderedDict()
@@ -175,5 +177,5 @@ class PipelineRegistry:
                 description=f"Your database {record.dbname} on {record.host}.",
             ),
             dictionary=dictionary,
-            saved_index=SavedDatabaseIndex(record.id, connect_app),  # 5.10b: in our app database
+            saved_index=SavedDatabaseIndex(record.id, self._app_connect),  # 5.10b: app database
         )

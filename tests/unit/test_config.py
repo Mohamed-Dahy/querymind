@@ -199,6 +199,16 @@ def test_the_app_role_cant_be_the_agents_or_the_admins(
         load_settings(env_file=None)
 
 
+def test_the_app_pool_has_small_defaults_and_must_fit(valid_env: pytest.MonkeyPatch) -> None:
+    settings = load_settings(env_file=None)
+    assert (settings.app_pool_min_size, settings.app_pool_max_size) == (2, 10)
+    assert settings.app_pool_timeout_seconds == 5.0
+
+    valid_env.setenv("APP_POOL_MIN_SIZE", "11")
+    with pytest.raises(ConfigError, match="APP_POOL_MIN_SIZE"):
+        load_settings(env_file=None)
+
+
 # --- Logins (5.1) ---
 
 

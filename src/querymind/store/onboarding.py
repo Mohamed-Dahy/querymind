@@ -25,7 +25,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict
 
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.semantic.dictionary import DataDictionary
 from querymind.store.errors import (
@@ -81,7 +81,7 @@ class OnboardingStore:
         self,
         settings: Settings,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._connect = connect

@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     # history is off, and scripts, evals and CI jobs that don't need it work without it.
     app_db_user: str | None = None
     app_db_password: SecretStr | None = None
+    # The API keeps these connections open and reuses them (Step 0, ADR 017): opening one costs
+    # ~35-50 ms, and every logged-in request reads the app database (5.12). Scripts don't pool.
+    app_pool_min_size: int = Field(default=2, ge=1)
+    app_pool_max_size: int = Field(default=10, ge=1)
+    # All busy or the database down this long: the request gets a 503 (like a 5 s query).
+    app_pool_timeout_seconds: float = Field(default=5.0, gt=0)
 
     # --- Logins (5.1). The API needs both the app's role and JWT_SECRET; scripts and evals don't.
     # Signs the access tokens: anyone who has it can make a token for any user. 32+ characters.
@@ -181,11 +187,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _app_role_is_its_own(self) -> Self:
-        """Both or neither, and never a role the agent or the setup scripts use."""
+        """Both or neither, never a role the agent or the setup scripts use; a pool that fits."""
         if (self.app_db_user is None) != (self.app_db_password is None):
             raise ValueError("APP_DB_USER and APP_DB_PASSWORD must be set together")
         if self.app_db_user in (self.analyst_ro_user, self.postgres_admin_user):
             raise ValueError("APP_DB_USER must be a role of its own, not the agent's or admin's")
+        if self.app_pool_min_size > self.app_pool_max_size:
+            raise ValueError("APP_POOL_MIN_SIZE can't be larger than APP_POOL_MAX_SIZE")
         return self
 
     @model_validator(mode="after")

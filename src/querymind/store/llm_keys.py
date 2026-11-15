@@ -11,7 +11,7 @@ with every save: `WorkspaceLLMs` uses it to know when a cached provider is out o
 """
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from uuid import UUID
@@ -21,7 +21,7 @@ from psycopg.rows import class_row
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.llm.catalog import ProviderId
 from querymind.secrets.errors import SecretNotFoundError
@@ -51,7 +51,7 @@ class LLMKeyStore:
         settings: Settings,
         secrets: SecretStore,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._secrets = secrets

@@ -12,7 +12,7 @@ Several per workspace, each with a unique name. The password is a secret (5.7, k
 """
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from uuid import UUID
@@ -23,7 +23,7 @@ from psycopg.rows import class_row
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.db.remote import ConnectionSpec, SslMode
 from querymind.secrets.errors import SecretNotFoundError
@@ -76,7 +76,7 @@ class ConnectionStore:
         settings: Settings,
         secrets: SecretStore,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._secrets = secrets

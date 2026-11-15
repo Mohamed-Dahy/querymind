@@ -27,7 +27,7 @@ embedding call on the workspace's key; 3.4 measured 98.0% table recall for keywo
 hybrid). The retriever searches the app database while the SQL runs on the user's.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import NamedTuple
 from uuid import UUID
 
@@ -35,7 +35,7 @@ import psycopg
 from psycopg import sql
 from pydantic import BaseModel, ConfigDict
 
-from querymind.config import Settings
+from querymind.db.connection import AppConnect
 from querymind.llm.embeddings import DIMENSIONS, EmbeddingProvider
 from querymind.semantic.documents import SCHEMA_KINDS, SchemaDoc
 
@@ -50,7 +50,7 @@ class SavedDatabaseIndex(NamedTuple):
     """Where a saved database's index lives (5.10b): its rows in the app database."""
 
     connection_id: UUID
-    connect: Callable[[Settings], psycopg.Connection]  # the app database (db.connect_app)
+    connect: AppConnect  # the app database (db.connect_app, or the API's pool)
 
 
 class SchemaIndexError(Exception):

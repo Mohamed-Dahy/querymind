@@ -48,6 +48,7 @@ from querymind.api.schemas import ErrorResponse
 from querymind.api.table_access import router as table_access_router
 from querymind.auth.tokens import TokenService
 from querymind.config import get_settings
+from querymind.db.connection import AppPool
 from querymind.llm import create_embedding_provider, create_llm_provider
 from querymind.llm.workspace import WorkspaceLLMs
 from querymind.logging_setup import configure_logging
@@ -118,14 +119,24 @@ def create_app(
             configure_logging()
             settings = get_settings()  # raises ConfigError → the server refuses to start
             secret = settings.require_logins()  # no logins = no API (ConfigError)
-            app.state.accounts = AccountStore(settings)
+            # Step 0: one pool of app-database connections, shared by every store below.
+            pool = AppPool(
+                settings,
+                min_size=settings.app_pool_min_size,
+                max_size=settings.app_pool_max_size,
+                timeout=settings.app_pool_timeout_seconds,
+            )
+            pool.open()
+            app.state.app_pool = pool
+            app_db = pool.connect
+            app.state.accounts = AccountStore(settings, connect=app_db)
             app.state.tokens = TokenService(secret, access_minutes=settings.access_token_minutes)
             app.state.auth_cookie = CookieSettings.from_settings(settings)
-            app.state.audit = AuditStore(settings)  # needs the app's role, as logins do
+            app.state.audit = AuditStore(settings, connect=app_db)  # the app's role, as logins
             app.state.limits = RateLimits.from_settings(settings)
             # Workspaces' own LLM keys (5.8). No SECRETS_KEY = ConfigError: the server won't start.
-            secrets = LocalSecretStore(settings)
-            app.state.llm_keys = LLMKeyStore(settings, secrets)
+            secrets = LocalSecretStore(settings, connect=app_db)
+            app.state.llm_keys = LLMKeyStore(settings, secrets, connect=app_db)
             app.state.workspace_llms = WorkspaceLLMs(
                 app.state.llm_keys,
                 secrets,
@@ -133,14 +144,15 @@ def create_app(
                 timeout_seconds=settings.llm_timeout_seconds,
             )
             # Workspaces' own databases (5.9); their passwords are secrets too.
-            app.state.connections = ConnectionStore(settings, secrets)
-            app.state.table_access = TableAccessStore(settings)  # 5.2: which tables each role uses
-            app.state.row_scopes = RowScopeStore(settings)  # 5.3: which rows each member sees
-            app.state.members = MemberStore(settings)  # 5.12: who is in each workspace
+            app.state.connections = ConnectionStore(settings, secrets, connect=app_db)
+            # 5.2: which tables each role uses · 5.3: which rows each member sees · 5.12: members
+            app.state.table_access = TableAccessStore(settings, connect=app_db)
+            app.state.row_scopes = RowScopeStore(settings, connect=app_db)
+            app.state.members = MemberStore(settings, connect=app_db)
             app.state.allow_private_databases = settings.allow_private_databases
             if settings.allow_private_databases:
                 logger.warning("ALLOW_PRIVATE_DATABASES is on: development only (no SSRF guard)")
-            app.state.store = create_store(settings)
+            app.state.store = create_store(settings, connect=app_db)
             app.state.explorer = create_explorer(settings)
             app.state.evals = create_evals(settings)
             app.state.pipeline = Pipeline(
@@ -152,7 +164,7 @@ def create_app(
                 ),
             )
             # 5.10: onboarding runs and dictionaries. Runs cut short by a restart: failed.
-            app.state.onboarding = OnboardingStore(settings)
+            app.state.onboarding = OnboardingStore(settings, connect=app_db)
             interrupted = app.state.onboarding.mark_interrupted()
             if interrupted:
                 logger.warning("onboarding runs interrupted", extra={"count": interrupted})
@@ -166,6 +178,7 @@ def create_app(
                     partial(load_history, app.state.store) if app.state.store else None
                 ),
                 dictionaries=app.state.onboarding,
+                app_connect=app_db,
             )
             app.state.onboarder = Onboarder(
                 app.state.onboarding,
@@ -187,6 +200,7 @@ def create_app(
         yield
         if pipeline is None:  # only what the app made itself: stop the onboarding threads
             app.state.onboarder.shutdown()
+            app.state.app_pool.close()  # after them: they may still be writing a status
 
     app = FastAPI(
         title="QueryMind",

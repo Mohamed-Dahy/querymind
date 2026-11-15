@@ -16,7 +16,7 @@ answers "every row".
 """
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import UUID
 
@@ -24,7 +24,7 @@ import psycopg
 
 from querymind.auth.tokens import Role
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.safety.row_scope import RowScope
 from querymind.store.errors import StoreUnavailableError
@@ -39,7 +39,7 @@ class RowScopeStore:
         self,
         settings: Settings,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._connect = connect

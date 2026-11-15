@@ -13,7 +13,7 @@ What is kept: the question and the SQL (they can quote values a user typed), nev
 """
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Literal
@@ -24,7 +24,7 @@ from psycopg.rows import class_row
 from pydantic import BaseModel, ConfigDict
 
 from querymind.config import Settings
-from querymind.db.connection import connect_app
+from querymind.db.connection import AppConnect, connect_app
 from querymind.db.errors import DatabaseUnavailableError
 from querymind.store.conversations import like_pattern
 from querymind.store.errors import StoreUnavailableError
@@ -98,7 +98,7 @@ class AuditStore:
         self,
         settings: Settings,
         *,
-        connect: Callable[[Settings], psycopg.Connection] = connect_app,
+        connect: AppConnect = connect_app,
     ) -> None:
         self._settings = settings
         self._connect = connect
