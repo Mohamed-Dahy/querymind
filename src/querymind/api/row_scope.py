@@ -8,8 +8,8 @@ Northwind sales regions (Eastern, Western, Northern, Southern) of the employee w
 on a workspace's own database, whatever its policies read from `querymind.scope`. So tags aren't
 checked against one database: a tag no policy knows simply shows no row (fail closed).
 
-Admins always see every row, so an admin's scope can't be set. Until members can be added (5.12),
-the only other members are those added by hand.
+Admins always see every row, so an admin's scope can't be set. Members are added, re-roled and
+removed with api/members.py (5.12); `GET /admin/members` lists them with their scope.
 """
 
 from typing import Annotated, Any

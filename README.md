@@ -25,7 +25,7 @@ can focus on deeper work, and it always shows its SQL so every answer can be che
 > two businesses (25 tables), it sends the LLM only the tables a question needs, about 40% of the schema, and
 > finds every needed table for all 58 test questions; verified example queries bring it to 58/58 correct. Every
 > number is measured, including on the public **BIRD** benchmark: see [How accurate is it?](#how-accurate-is-it).
-> Next: security and multi-user (workspace members).
+> Next: the Phase 5 web screens (keys, databases, members, permissions).
 
 ---
 
@@ -156,7 +156,10 @@ Things that switch it off:
   (`data/seed_northwind.py`).
 
 </details>
-- *Coming later:* workspace members (inviting analysts and viewers).
+- **Workspace members.** An admin adds people who have signed up, by email, as analyst or viewer, changes
+  their role or removes them. A change applies at the person's very next request (the role is read from the
+  membership every time, not trusted from the login token), and a workspace can never lose its last admin.
+  Someone in several workspaces switches between them; removed from one, they land back in their own.
 
 ## How accurate is it?
 

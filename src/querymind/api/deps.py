@@ -27,6 +27,7 @@ from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, Owner
 from querymind.store.errors import AccountsUnavailableError, StoreUnavailableError
 from querymind.store.llm_keys import LLMKeyStore
+from querymind.store.members import MemberStore
 from querymind.store.row_scope import RowScopeStore
 from querymind.store.table_access import TableAccessStore
 
@@ -124,20 +125,34 @@ def get_tokens(request: Request) -> TokenService | None:
 
 
 def get_current_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     tokens: Annotated[TokenService | None, Depends(get_tokens)],
 ) -> AuthUser:
-    """Who is asking, from their access token. Every route except the public ones needs it.
+    """Who is asking, and with which role. Every route except the public ones needs it.
 
-    No database read: the token's signature and expiry are enough for its 15 minutes. A disabled
-    user stops at the next refresh.
+    The token says who (user and workspace); the role comes from the membership as it is **now**
+    (5.12, ADR 016): one small read per request, so an admin who demotes or removes someone takes
+    effect at that person's next request, not when their token expires. A disabled user or a
+    removed member gets a 401, and the web's refresh then takes them to their own workspace.
+
+    The accounts store is read here, after the token check, and not as a dependency: a request
+    without a valid token is always a 401, even on a server whose accounts can't be reached.
 
     Raises:
-        NotAuthenticatedError: no token, or a bad or expired one (HTTP 401).
+        NotAuthenticatedError: no token, a bad or expired one, or no membership any more (401).
+        AccountsUnavailableError: the membership can't be read (503); never "trust the token".
     """
     if credentials is None or tokens is None:
         raise NotAuthenticatedError("Please log in.")
-    return tokens.read_access(credentials.credentials)
+    claimed = tokens.read_access(credentials.credentials)
+    accounts: AccountStore | None = getattr(request.app.state, "accounts", None)
+    if accounts is None:
+        raise AccountsUnavailableError("Accounts aren't available on this server.")
+    account = accounts.account(claimed.user_id, claimed.workspace_id)
+    if account is None:
+        raise NotAuthenticatedError("Please log in.")
+    return account.auth_user()
 
 
 CurrentUser = Annotated[AuthUser, Depends(get_current_user)]
@@ -161,7 +176,7 @@ def get_accounts(request: Request) -> AccountStore:
 
 
 def require_admin(user: CurrentUser) -> AuthUser:
-    """The current user, if they are an admin of their workspace (the role in their token).
+    """The current user, if they are an admin of their workspace (their role now, 5.12).
 
     Raises:
         ForbiddenError: another role (HTTP 403).
@@ -293,6 +308,27 @@ def get_workspace_llms(request: Request) -> WorkspaceLLMs | None:
     pipeline's own LLM)."""
     llms: WorkspaceLLMs | None = request.app.state.workspace_llms
     return llms
+
+
+def limit_member_adds(
+    user: AdminUser, limits: Annotated[RateLimits | None, Depends(get_limits)]
+) -> None:
+    """Room for one more member added (5.12): each try says whether an email has an account.
+    After the admin check, so another role gets its 403 without using the limit."""
+    if limits is not None:
+        limits.check_member_add(user.user_id)
+
+
+def get_members(request: Request) -> MemberStore:
+    """The workspaces' members (5.12), created at startup.
+
+    Raises:
+        StoreUnavailableError: the app was started without them (HTTP 503).
+    """
+    members: MemberStore | None = getattr(request.app.state, "members", None)
+    if members is None:
+        raise StoreUnavailableError("Members can't be managed on this server.")
+    return members
 
 
 def limit_reruns(

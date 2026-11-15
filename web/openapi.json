@@ -525,7 +525,11 @@
               "onboarding_started",
               "dictionary_edited",
               "table_access_changed",
-              "row_scope_changed"
+              "row_scope_changed",
+              "member_added",
+              "role_changed",
+              "member_removed",
+              "workspace_switched"
             ],
             "title": "Action",
             "type": "string"
@@ -2068,6 +2072,100 @@
         "title": "Me",
         "type": "object"
       },
+      "MemberAdd": {
+        "additionalProperties": false,
+        "description": "Who to add: someone who has signed up already, and their role here.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "analyst",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "MemberAdd",
+        "type": "object"
+      },
+      "MemberInfo": {
+        "description": "A member of the workspace.",
+        "properties": {
+          "added_at": {
+            "description": "When they joined the workspace (ISO 8601)",
+            "title": "Added At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "analyst",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_scope": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tags of the rows they see (5.3); null = every row",
+            "title": "Row Scope"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "role",
+          "row_scope",
+          "added_at"
+        ],
+        "title": "MemberInfo",
+        "type": "object"
+      },
+      "MemberList": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberInfo"
+            },
+            "title": "Members",
+            "type": "array"
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "title": "MemberList",
+        "type": "object"
+      },
       "MetricMeaning": {
         "properties": {
           "description": {
@@ -2869,6 +2967,26 @@
         "title": "RewriteEvent",
         "type": "object"
       },
+      "RoleUpdate": {
+        "additionalProperties": false,
+        "description": "A member's new role.",
+        "properties": {
+          "role": {
+            "enum": [
+              "admin",
+              "analyst",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "RoleUpdate",
+        "type": "object"
+      },
       "RowScopeInfo": {
         "description": "A member's role and the rows they may see.",
         "properties": {
@@ -3410,6 +3528,20 @@
         "title": "StepEvent",
         "type": "object"
       },
+      "SwitchRequest": {
+        "properties": {
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id"
+        ],
+        "title": "SwitchRequest",
+        "type": "object"
+      },
       "TableAccessInfo": {
         "description": "A database's tables, and which of them each restrictable role may use.",
         "properties": {
@@ -3749,6 +3881,43 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WorkspaceChoice": {
+        "description": "One of your workspaces, for the switcher.",
+        "properties": {
+          "current": {
+            "description": "The workspace this login is in now",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "description": "Your role there",
+            "enum": [
+              "admin",
+              "analyst",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "current"
+        ],
+        "title": "WorkspaceChoice",
+        "type": "object"
+      },
       "WorkspaceInfo": {
         "properties": {
           "id": {
@@ -3766,6 +3935,22 @@
           "name"
         ],
         "title": "WorkspaceInfo",
+        "type": "object"
+      },
+      "WorkspaceList": {
+        "properties": {
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceChoice"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "workspaces"
+        ],
+        "title": "WorkspaceList",
         "type": "object"
       }
     },
@@ -3813,7 +3998,11 @@
                     "onboarding_started",
                     "dictionary_edited",
                     "table_access_changed",
-                    "row_scope_changed"
+                    "row_scope_changed",
+                    "member_added",
+                    "role_changed",
+                    "member_removed",
+                    "workspace_switched"
                   ],
                   "type": "string"
                 },
@@ -3967,6 +4156,367 @@
           }
         ],
         "summary": "Audit Log",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/members": {
+      "get": {
+        "description": "Every member of your workspace, with their role and rows. Admins only.",
+        "operationId": "list_members_admin_members_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Members can't be managed right now"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Members",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Add someone who has signed up to your workspace, with a role. Admins only; audited.",
+        "operationId": "add_member_admin_members_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No account has this email"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Already a member"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many tries"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Members can't be managed right now"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Member",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/members/{user_id}": {
+      "delete": {
+        "description": "Take a member out of your workspace (yourself too, if another admin stays). Audited.",
+        "operationId": "remove_member_admin_members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not a member of this workspace"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The workspace's last admin"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Members can't be managed right now"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Member",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "Give a member another role (applies at their next request). Admins only; audited.",
+        "operationId": "change_role_admin_members__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not an admin of this workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not a member of this workspace"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The workspace's last admin"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Members can't be managed right now"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change Role",
         "tags": [
           "admin"
         ]
@@ -4669,6 +5219,128 @@
           }
         },
         "summary": "Signup",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/switch": {
+      "post": {
+        "description": "Move this login to another of your workspaces (5.12): a new access token for it, and the\nrefresh cookie replaced, so a page reload stays there. Logging in again starts in your own.\n\nNeeds both the access token (who asks) and the refresh cookie (the login to move); the cookie\nmust be this user's. A workspace you aren't in is a 404, so its id says nothing about it.",
+        "operationId": "switch_auth_switch_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "qm_refresh",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Qm Refresh"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in, or no valid refresh cookie"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not a member of that workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Switch",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/workspaces": {
+      "get": {
+        "description": "Every workspace you belong to (yours first), and which one you're in (5.12).",
+        "operationId": "workspaces_auth_workspaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not logged in"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Workspaces",
         "tags": [
           "auth"
         ]

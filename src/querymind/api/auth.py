@@ -5,11 +5,16 @@
     POST /auth/refresh  (refresh cookie)   -> 200 + a new access token, and a new refresh cookie
     POST /auth/logout   (refresh cookie)   -> 204, the cookie cleared and its login revoked
     GET  /auth/me       (Bearer token)     -> who you are, in which workspace, with which role
+    GET  /auth/workspaces (Bearer token)   -> every workspace you belong to (5.12)
+    POST /auth/switch   {workspace_id}     -> 200 + a token for that workspace, and a new cookie
 
 The access token goes in the JSON body: the web app keeps it in memory and sends it as
 "Authorization: Bearer …". The refresh token only ever travels in an httpOnly cookie, scoped to
 these routes (see auth/tokens.py for why both). The cookie is SameSite=Strict: another site can't
 make the browser send it, so a forged refresh or logout from a malicious page doesn't work.
+
+The switch lives here, not under /admin: it must receive the refresh cookie, which the browser
+only sends to these paths.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -267,6 +272,88 @@ def logout(
     response.delete_cookie(
         REFRESH_COOKIE, path=cookies.path, secure=cookies.secure, httponly=True, samesite="strict"
     )
+
+
+class WorkspaceChoice(BaseModel):
+    """One of your workspaces, for the switcher."""
+
+    id: UUID
+    name: str
+    role: Role = Field(description="Your role there")
+    current: bool = Field(description="The workspace this login is in now")
+
+
+class WorkspaceList(BaseModel):
+    workspaces: list[WorkspaceChoice]
+
+
+class SwitchRequest(BaseModel):
+    workspace_id: UUID
+
+
+@router.get(
+    "/workspaces",
+    response_model=WorkspaceList,
+    responses={401: {"model": ErrorResponse, "description": "Not logged in"}},
+)
+def workspaces(user: CurrentUser, accounts: Accounts) -> WorkspaceList:
+    """Every workspace you belong to (yours first), and which one you're in (5.12)."""
+    return WorkspaceList(
+        workspaces=[
+            WorkspaceChoice(
+                id=m.workspace_id,
+                name=m.workspace_name,
+                role=m.role,
+                current=m.workspace_id == user.workspace_id,
+            )
+            for m in accounts.workspaces(user.user_id)
+        ]
+    )
+
+
+@router.post(
+    "/switch",
+    response_model=TokenResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Not logged in, or no valid refresh cookie"},
+        404: {"model": ErrorResponse, "description": "Not a member of that workspace"},
+    },
+)
+def switch(
+    body: SwitchRequest,
+    user: CurrentUser,
+    response: Response,
+    accounts: Accounts,
+    auth: Auth,
+    audit: Audit,
+    qm_refresh: Annotated[str | None, Cookie()] = None,
+) -> TokenResponse:
+    """Move this login to another of your workspaces (5.12): a new access token for it, and the
+    refresh cookie replaced, so a page reload stays there. Logging in again starts in your own.
+
+    Needs both the access token (who asks) and the refresh cookie (the login to move); the cookie
+    must be this user's. A workspace you aren't in is a 404, so its id says nothing about it."""
+    if not qm_refresh:
+        raise NotAuthenticatedError("Please log in.")
+    new = new_refresh_token()
+    account = accounts.switch(
+        hash_refresh_token(qm_refresh),
+        hash_refresh_token(new),
+        _expiry(auth[1]),
+        user_id=user.user_id,
+        workspace_id=body.workspace_id,
+    )
+    if account.workspace_id != user.workspace_id:  # switching to where you are: no line
+        line = AuditEntry(
+            action="workspace_switched",
+            outcome="ok",
+            user_id=account.user_id,
+            workspace_id=account.workspace_id,  # in the log of the workspace they entered
+            email=account.email,
+            detail=f"from workspace {user.workspace_id}",
+        )
+        audit_trail.write(audit, line)
+    return _logged_in(response, account, auth, new)
 
 
 @router.get(

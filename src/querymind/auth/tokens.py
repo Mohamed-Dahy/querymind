@@ -5,9 +5,10 @@
     tokens.read_access(token)                    # -> AuthUser, or NotAuthenticatedError
 
 **Access token** = a JWT signed with JWT_SECRET (HS256). It says who you are (user, workspace,
-role) and when it expires (15 minutes). The API checks the signature and the time on every request,
-with no database read. The web app keeps it in memory only: a script injected into the page can't
-read it from storage later, and it's gone when the tab closes.
+role) and when it expires (15 minutes). The API checks the signature and the time on every request.
+Since 5.12 the role in it is only what it was at login: the API reads the current one from the
+membership on every request (api/deps.py, ADR 016). The web app keeps it in memory only: a script
+injected into the page can't read it from storage later, and it's gone when the tab closes.
 
 **Refresh token** = a random string in an httpOnly cookie (JavaScript can't read it), valid for 14
 days. Only `/auth/refresh` reads it, to issue a new access token. It is stored only as a SHA-256

@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from querymind.api.main import create_app
 from querymind.api.ratelimit import RateLimits
 from querymind.store.accounts import Account
-from tests.auth_helpers import TEST_USER, make_tokens
+from tests.auth_helpers import TEST_USER, KnownAccounts, make_tokens
 from tests.unit.test_api import FakePipeline
 from tests.unit.test_api_auth import COOKIES, PASSWORD, FakeAccounts
 from tests.unit.test_api_conversations import ID
@@ -34,6 +34,7 @@ def limits(**changes: int) -> RateLimits:
 
 
 def client(**parts: Any) -> TestClient:
+    parts.setdefault("accounts", KnownAccounts(TEST_USER))  # BEARER's user, a member (5.12)
     app = create_app(tokens=TOKENS, auth_cookie=COOKIES, **parts)
     return TestClient(app, raise_server_exceptions=False)
 

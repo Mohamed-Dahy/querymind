@@ -3,10 +3,13 @@
     accounts = AccountStore(settings)
     account = accounts.sign_up("ana@example.com", password_hash, workspace_name="Ana's workspace")
     accounts.find_login("ana@example.com")        # -> (Account, password hash) or None
+    accounts.workspaces(user_id)                  # every workspace they belong to (5.12)
 
 A user belongs to workspaces through a membership, which carries the role (admin, analyst,
 viewer). Sign-up creates the user, their own workspace and an admin membership in one transaction.
-Workspaces own conversations now, and keys and database connections later (5.8, 5.9).
+Workspaces own conversations, LLM keys and database connections. Since 5.12 an admin adds other
+users (store/members.py); a login always starts in the user's first workspace (their own), and
+`switch` moves it to another one.
 
 Refresh tokens are kept only as hashes, in families: one family per login. Each refresh marks the
 old token used and adds a new one to the family. A used token that comes back means it was copied:
@@ -32,7 +35,7 @@ from querymind.auth.tokens import AuthUser, Role
 from querymind.config import Settings
 from querymind.db.connection import connect_app
 from querymind.db.errors import DatabaseUnavailableError
-from querymind.store.errors import AccountsUnavailableError
+from querymind.store.errors import AccountsUnavailableError, MemberNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,15 @@ REUSE_GRACE_SECONDS = 10
 _ACCOUNT_COLUMNS = """
     u.id AS user_id, u.email, w.id AS workspace_id, w.name AS workspace_name, m.role
 """
+# A user's first workspace: the one they joined first, which is the one sign-up made for them.
+_FIRST_MEMBERSHIP = """
+    JOIN LATERAL (
+        SELECT workspace_id, role FROM querymind_app.memberships
+        WHERE user_id = u.id ORDER BY created_at, workspace_id LIMIT 1
+    ) AS m ON true
+    JOIN querymind_app.workspaces AS w ON w.id = m.workspace_id
+"""
+_Outcome = Literal["ok", "unknown", "dead", "reused", "not_member"]
 
 
 class Account(BaseModel):
@@ -64,6 +76,16 @@ class Account(BaseModel):
 
 class _Login(Account):
     password_hash: str
+
+
+class Membership(BaseModel):
+    """One workspace a user belongs to, and their role there (5.12: the workspace switcher)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    workspace_id: UUID
+    workspace_name: str
+    role: Role
 
 
 class _RefreshRow(BaseModel):
@@ -141,12 +163,7 @@ class AccountStore:
         there is no such (enabled) user."""
         query = f"""
             SELECT {_ACCOUNT_COLUMNS}, u.password_hash
-            FROM querymind_app.users AS u
-            JOIN LATERAL (
-                SELECT workspace_id, role FROM querymind_app.memberships
-                WHERE user_id = u.id ORDER BY created_at, workspace_id LIMIT 1
-            ) AS m ON true
-            JOIN querymind_app.workspaces AS w ON w.id = m.workspace_id
+            FROM querymind_app.users AS u {_FIRST_MEMBERSHIP}
             WHERE u.email = %s AND NOT u.disabled
         """
         with self._transaction() as conn:
@@ -165,6 +182,25 @@ class AccountStore:
         longer a member."""
         with self._transaction() as conn:
             return self._account(conn, user_id, workspace_id)
+
+    def workspaces(self, user_id: UUID) -> list[Membership]:
+        """Every workspace this user belongs to, in the order they joined (their own first)."""
+        with self._transaction() as conn:
+            return (
+                conn.cursor(row_factory=class_row(Membership))
+                .execute(
+                    """
+                    SELECT w.id AS workspace_id, w.name AS workspace_name, m.role
+                    FROM querymind_app.memberships AS m
+                    JOIN querymind_app.workspaces AS w ON w.id = m.workspace_id
+                    JOIN querymind_app.users AS u ON u.id = m.user_id
+                    WHERE m.user_id = %s AND NOT u.disabled
+                    ORDER BY m.created_at, m.workspace_id
+                    """,
+                    (user_id,),
+                )
+                .fetchall()
+            )
 
     def set_password_hash(self, user_id: UUID, password_hash: str) -> None:
         """Replace a hash, e.g. one made with older Argon2 settings."""
@@ -190,39 +226,87 @@ class AccountStore:
     def rotate(self, token_hash: str, new_hash: str, expires_at: datetime) -> Account:
         """Use a refresh token: mark it used, add `new_hash` to its family, return the account.
 
+        The login stays in the token's workspace. Removed from it since (5.12)? Then it moves to
+        the user's first workspace, so they land back in their own instead of being logged out.
+
         Raises:
-            NotAuthenticatedError: unknown, expired or revoked token; or a used one (then the
-                whole family is revoked first, and that is committed).
+            NotAuthenticatedError: unknown, expired or revoked token; a user deleted, disabled or
+                in no workspace at all; or a used token (then the whole family is revoked first,
+                and that is committed).
         """
+        return self._use(token_hash, new_hash, expires_at, into=None)
+
+    def switch(
+        self,
+        token_hash: str,
+        new_hash: str,
+        expires_at: datetime,
+        *,
+        user_id: UUID,
+        workspace_id: UUID,
+    ) -> Account:
+        """Move a login to another of the user's workspaces (5.12): like `rotate`, but the new
+        refresh token is for `workspace_id`, so a page reload stays there. Same family: logging
+        out still ends the whole login.
+
+        Raises:
+            NotAuthenticatedError: as `rotate`, or the cookie belongs to another user.
+            MemberNotFoundError: the user isn't a member of that workspace (nothing changed).
+        """
+        return self._use(token_hash, new_hash, expires_at, into=(user_id, workspace_id))
+
+    def _use(
+        self,
+        token_hash: str,
+        new_hash: str,
+        expires_at: datetime,
+        *,
+        into: tuple[UUID, UUID] | None,
+    ) -> Account:
         with self._transaction() as conn:
-            outcome, account = self._rotate(conn, token_hash, new_hash, expires_at)
+            outcome, account = self._rotate(conn, token_hash, new_hash, expires_at, into)
         # Raised after the transaction committed, so a revoked family stays revoked.
         if outcome == "reused":
             logger.warning("refresh token reused: family revoked")
+        if outcome == "not_member":
+            raise MemberNotFoundError("You aren't a member of that workspace.")
         if account is None:
             raise NotAuthenticatedError("Please log in.")
         return account
 
     def end_session(self, token_hash: str) -> tuple[UUID, UUID, str] | None:
         """Log out: revoke the whole family. Returns whose login it was (user, workspace, email),
-        for the audit log; None for an unknown or already revoked token (logged out already)."""
+        for the audit log; None for an unknown or already revoked token (logged out already).
+
+        The workspace is this token's: after a switch (5.12), older tokens of the family name
+        another one."""
         with self._transaction() as conn:
             row = conn.execute(
                 """
-                UPDATE querymind_app.refresh_tokens AS r SET revoked_at = now()
-                FROM querymind_app.users AS u
-                WHERE r.revoked_at IS NULL AND u.id = r.user_id AND r.family_id = (
-                    SELECT family_id FROM querymind_app.refresh_tokens WHERE token_hash = %s
+                WITH this AS (
+                    SELECT family_id, user_id, workspace_id FROM querymind_app.refresh_tokens
+                    WHERE token_hash = %s
+                ), revoked AS (
+                    UPDATE querymind_app.refresh_tokens AS r SET revoked_at = now()
+                    FROM this WHERE r.family_id = this.family_id AND r.revoked_at IS NULL
+                    RETURNING r.id
                 )
-                RETURNING r.user_id, r.workspace_id, u.email
+                SELECT this.user_id, this.workspace_id, u.email
+                FROM this JOIN querymind_app.users AS u ON u.id = this.user_id
+                WHERE EXISTS (SELECT 1 FROM revoked)
                 """,
                 (token_hash,),
             ).fetchone()
         return (row[0], row[1], row[2]) if row else None
 
     def _rotate(
-        self, conn: psycopg.Connection, token_hash: str, new_hash: str, expires_at: datetime
-    ) -> tuple[Literal["ok", "unknown", "dead", "reused"], Account | None]:
+        self,
+        conn: psycopg.Connection,
+        token_hash: str,
+        new_hash: str,
+        expires_at: datetime,
+        into: tuple[UUID, UUID] | None,
+    ) -> tuple[_Outcome, Account | None]:
         # FOR UPDATE: two refreshes with one token run one after the other, never both "unused".
         row = (
             conn.cursor(row_factory=class_row(_RefreshRow))
@@ -245,8 +329,19 @@ class AccountStore:
         if row.used_at is not None and not row.recently_used:
             self._revoke_family(conn, row.family_id)
             return "reused", None
-        account = self._account(conn, row.user_id, row.workspace_id)
-        if account is None:  # deleted, disabled, or removed from the workspace since
+        if into is not None:  # a switch (5.12)
+            user_id, workspace_id = into
+            if user_id != row.user_id:  # someone else's cookie: not a login for this user
+                return "unknown", None
+            account = self._account(conn, user_id, workspace_id)
+            if account is None:
+                return "not_member", None  # nothing written: the login stays where it was
+        else:
+            # Removed from the token's workspace since (5.12): back to the user's own.
+            account = self._account(conn, row.user_id, row.workspace_id) or self._first_account(
+                conn, row.user_id
+            )
+        if account is None:  # deleted, disabled, or in no workspace at all
             self._revoke_family(conn, row.family_id)
             return "dead", None
         conn.execute(
@@ -271,6 +366,19 @@ class AccountStore:
         return (
             conn.cursor(row_factory=class_row(Account))
             .execute(query.encode(), (user_id, workspace_id))
+            .fetchone()
+        )
+
+    @staticmethod
+    def _first_account(conn: psycopg.Connection, user_id: UUID) -> Account | None:
+        query = f"""
+            SELECT {_ACCOUNT_COLUMNS}
+            FROM querymind_app.users AS u {_FIRST_MEMBERSHIP}
+            WHERE u.id = %s AND NOT u.disabled
+        """
+        return (
+            conn.cursor(row_factory=class_row(Account))
+            .execute(query.encode(), (user_id,))
             .fetchone()
         )
 

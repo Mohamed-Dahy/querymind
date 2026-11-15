@@ -6,7 +6,7 @@ Rotation and reuse detection on the real database: tests/integration/test_accoun
 
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,8 +15,8 @@ from querymind.api.auth import REFRESH_COOKIE, CookieSettings
 from querymind.api.main import create_app
 from querymind.auth.errors import EmailTakenError, NotAuthenticatedError
 from querymind.auth.passwords import hash_password
-from querymind.store.accounts import Account
-from querymind.store.errors import AccountsUnavailableError
+from querymind.store.accounts import Account, Membership
+from querymind.store.errors import AccountsUnavailableError, MemberNotFoundError
 from tests.auth_helpers import make_tokens
 
 PASSWORD = "a long enough password"
@@ -31,6 +31,7 @@ class FakeAccounts:
         self.users: dict[str, tuple[Account, str]] = {}
         self.sessions: dict[str, Account] = {}  # live refresh token hash -> account
         self.ended: list[str] = []
+        self.joined: dict[UUID, list[Account]] = {}  # other workspaces a user was added to (5.12)
 
     def _check(self) -> None:
         if self.error is not None:
@@ -54,8 +55,37 @@ class FakeAccounts:
         self._check()
         return self.users.get(email)
 
+    def _all(self, user_id: Any) -> list[Account]:
+        own = [a for a, _ in self.users.values() if a.user_id == user_id]
+        return own + self.joined.get(user_id, [])
+
     def account(self, user_id: Any, workspace_id: Any) -> Account | None:
-        return next((a for a, _ in self.users.values() if a.user_id == user_id), None)
+        return next((a for a in self._all(user_id) if a.workspace_id == workspace_id), None)
+
+    def workspaces(self, user_id: Any) -> list[Membership]:
+        return [
+            Membership(workspace_id=a.workspace_id, workspace_name=a.workspace_name, role=a.role)
+            for a in self._all(user_id)
+        ]
+
+    def switch(
+        self,
+        token_hash: str,
+        new_hash: str,
+        expires_at: datetime,
+        *,
+        user_id: Any,
+        workspace_id: Any,
+    ) -> Account:
+        account = self.sessions.get(token_hash)
+        if account is None or account.user_id != user_id:
+            raise NotAuthenticatedError("Please log in.")
+        target = self.account(user_id, workspace_id)
+        if target is None:
+            raise MemberNotFoundError("You aren't a member of that workspace.")
+        del self.sessions[token_hash]
+        self.sessions[new_hash] = target
+        return target
 
     def set_password_hash(self, user_id: Any, password_hash: str) -> None: ...
 
@@ -257,3 +287,84 @@ def test_without_logins_set_up_the_routes_say_so() -> None:
 
     assert response.status_code == 503
     assert response.json()["error"] == "accounts_unavailable"
+
+
+# --- Several workspaces (5.12): the list and the switch ---
+
+
+def joined(accounts: FakeAccounts, email: str, role: Any = "viewer") -> Account:
+    """`email`'s user, added to someone else's workspace with `role`."""
+    own = accounts.users[email][0]
+    other = own.model_copy(
+        update={"workspace_id": uuid4(), "workspace_name": "Bob's workspace", "role": role}
+    )
+    accounts.joined.setdefault(own.user_id, []).append(other)
+    return other
+
+
+def logged_in(api: TestClient, email: str = "ana@example.com") -> dict[str, str]:
+    body = api.post("/auth/login", json={"email": email, "password": PASSWORD}).json()
+    return {"Authorization": f"Bearer {body['access_token']}"}
+
+
+def test_workspaces_lists_yours_first_and_marks_the_current_one() -> None:
+    accounts = FakeAccounts()
+    signed_up(accounts)
+    bobs = joined(accounts, "ana@example.com")
+    with client(accounts) as api:
+        response = api.get("/auth/workspaces", headers=logged_in(api))
+
+    assert response.status_code == 200
+    rows = response.json()["workspaces"]
+    assert [(w["name"], w["role"], w["current"]) for w in rows] == [
+        ("Ana's workspace", "analyst", True),
+        ("Bob's workspace", "viewer", False),
+    ]
+    assert rows[1]["id"] == str(bobs.workspace_id)
+
+
+def test_switching_moves_the_login_and_a_reload_stays_there() -> None:
+    accounts = FakeAccounts()
+    signed_up(accounts)
+    bobs = joined(accounts, "ana@example.com")
+    with client(accounts) as api:
+        switched = api.post(
+            "/auth/switch", json={"workspace_id": str(bobs.workspace_id)}, headers=logged_in(api)
+        )
+        assert switched.status_code == 200
+        assert REFRESH_COOKIE in switched.headers["set-cookie"]  # the login moved too
+        body = switched.json()
+        me = api.get("/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})
+        reloaded = api.post("/auth/refresh")  # what a page reload does
+
+    assert body["user"]["workspace"]["name"] == "Bob's workspace"
+    assert body["user"]["role"] == "viewer"
+    assert me.json()["workspace"]["id"] == str(bobs.workspace_id)
+    assert reloaded.json()["user"]["workspace"]["id"] == str(bobs.workspace_id)
+
+
+def test_switching_to_a_workspace_you_arent_in_is_a_404_and_changes_nothing() -> None:
+    accounts = FakeAccounts()
+    signed_up(accounts)
+    with client(accounts) as api:
+        headers = logged_in(api)
+        response = api.post("/auth/switch", json={"workspace_id": str(uuid4())}, headers=headers)
+        still = api.post("/auth/refresh")
+
+    assert (response.status_code, response.json()["error"]) == (404, "member_not_found")
+    assert still.status_code == 200
+    assert still.json()["user"]["workspace"]["name"] == "Ana's workspace"
+
+
+def test_switching_needs_the_refresh_cookie_and_a_token() -> None:
+    accounts = FakeAccounts()
+    signed_up(accounts)
+    bobs = joined(accounts, "ana@example.com")
+    body = {"workspace_id": str(bobs.workspace_id)}
+    with client(accounts) as api:
+        headers = logged_in(api)
+        no_token = api.post("/auth/switch", json=body)
+        api.cookies.clear()
+        no_cookie = api.post("/auth/switch", json=body, headers=headers)
+
+    assert no_token.status_code == no_cookie.status_code == 401

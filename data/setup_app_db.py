@@ -8,7 +8,8 @@ Safe to re-run: no table or row is dropped, and the role's password and privileg
 time. Since 5.1 it also holds the accounts (users, workspaces, memberships, refresh tokens), and
 conversations belong to a user. Since 5.7 it holds users' encrypted secrets, since 5.8 each
 workspace's LLM choice, since 5.9 its own databases, since 5.10 their data dictionaries and
-schema indexes, since 5.2 which tables each role may use. Conversations saved before 5.1
+schema indexes, since 5.2 which tables each role may use, since 5.3 the rows each member sees.
+Since 5.12 an admin adds other users to a workspace. Conversations saved before 5.1
 have no owner; give them to your account with
     uv run python data/setup_app_db.py --owner you@example.com
 
@@ -50,6 +51,10 @@ AUDIT_ACTIONS = (
     "dictionary_edited",
     "table_access_changed",
     "row_scope_changed",
+    "member_added",
+    "role_changed",
+    "member_removed",
+    "workspace_switched",
 )
 _ACTIONS_SQL = ", ".join(f"'{action}'" for action in AUDIT_ACTIONS)
 APP_STATEMENT_TIMEOUT = "5s"  # these are small queries: anything slower is a bug
@@ -300,6 +305,11 @@ TABLES = (
     ALTER TABLE {SCHEMA}.memberships
         ADD COLUMN IF NOT EXISTS row_scope text[]
             CHECK (row_scope IS NULL OR cardinality(row_scope) > 0)
+    """,
+    # 5.12: a user's workspaces (login, the switcher), in the order they joined them.
+    f"""
+    CREATE INDEX IF NOT EXISTS memberships_per_user
+        ON {SCHEMA}.memberships (user_id, created_at, workspace_id)
     """,
     # What the history list sorts by: one user's conversations.
     f"DROP INDEX IF EXISTS {SCHEMA}.conversations_list",

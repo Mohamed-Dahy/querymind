@@ -55,3 +55,16 @@ class TableAccessInvalidError(StoreError):
 
 class MemberNotFoundError(StoreError):
     """No such member in this workspace (5.3). Safe to show."""
+
+
+class AccountNotFoundError(StoreError):
+    """No (enabled) account has this email, so it can't be added to a workspace (5.12). Safe to
+    show."""
+
+
+class AlreadyMemberError(StoreError):
+    """The account is already a member of this workspace (5.12). Safe to show."""
+
+
+class LastAdminError(StoreError):
+    """The change would leave the workspace with no admin (5.12). Safe to show."""

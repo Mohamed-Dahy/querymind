@@ -13,6 +13,7 @@ from pydantic import SecretStr
 
 from querymind.api.deps import get_current_user
 from querymind.auth.tokens import AuthUser, Role, TokenService
+from querymind.store.accounts import Account
 from querymind.store.conversations import Owner
 
 TEST_USER = AuthUser(
@@ -47,3 +48,25 @@ def user_for(owner: Owner, role: Role = "admin") -> AuthUser:
     return AuthUser(
         user_id=owner.user_id, workspace_id=owner.workspace_id, role=role, email="test@example.com"
     )
+
+
+class KnownAccounts:
+    """An account store that knows these users, each a member of their workspace with the role in
+    their AuthUser. Since 5.12 `get_current_user` reads the membership on every request, so a test
+    that sends a real token needs one. Change `members` to change a role after the token was
+    issued."""
+
+    def __init__(self, *users: AuthUser) -> None:
+        self.members = {(u.user_id, u.workspace_id): u for u in users}
+
+    def account(self, user_id: UUID, workspace_id: UUID) -> Account | None:
+        user = self.members.get((user_id, workspace_id))
+        if user is None:
+            return None
+        return Account(
+            user_id=user.user_id,
+            email=user.email,
+            workspace_id=user.workspace_id,
+            workspace_name="Test workspace",
+            role=user.role,
+        )

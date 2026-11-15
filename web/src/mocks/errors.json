@@ -157,6 +157,18 @@
     "status": 404,
     "message": "This workspace has no such member."
   },
+  "account_not_found": {
+    "status": 404,
+    "message": "No account has this email: they need to sign up first."
+  },
+  "already_member": {
+    "status": 409,
+    "message": "They are already a member of this workspace."
+  },
+  "last_admin": {
+    "status": 409,
+    "message": "A workspace needs an admin: make someone else an admin first."
+  },
   "internal_error": {
     "status": 500,
     "message": "Something went wrong. Please try again."

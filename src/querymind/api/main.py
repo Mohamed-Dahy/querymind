@@ -38,6 +38,7 @@ from querymind.api.evals import router as evals_router
 from querymind.api.explorer import ExplorerData, create_explorer
 from querymind.api.explorer import router as explorer_router
 from querymind.api.llm_keys import router as llm_keys_router
+from querymind.api.members import router as members_router
 from querymind.api.onboarding import router as onboarding_router
 from querymind.api.ratelimit import RateLimits
 from querymind.api.routes import router
@@ -57,6 +58,7 @@ from querymind.store.audit import AuditStore
 from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, create_store, load_history
 from querymind.store.llm_keys import LLMKeyStore
+from querymind.store.members import MemberStore
 from querymind.store.onboarding import OnboardingStore
 from querymind.store.row_scope import RowScopeStore
 from querymind.store.table_access import TableAccessStore
@@ -82,6 +84,7 @@ def create_app(
     onboarder: Onboarder | None = None,
     table_access: TableAccessStore | None = None,
     row_scopes: RowScopeStore | None = None,
+    members: MemberStore | None = None,
     allow_private_databases: bool = False,
 ) -> FastAPI:
     """Build the app. Pass `pipeline` (and the others) in tests; leave `pipeline` out to build the
@@ -109,6 +112,7 @@ def create_app(
             app.state.onboarder = onboarder
             app.state.table_access = table_access
             app.state.row_scopes = row_scopes
+            app.state.members = members
             app.state.allow_private_databases = allow_private_databases
         else:
             configure_logging()
@@ -132,6 +136,7 @@ def create_app(
             app.state.connections = ConnectionStore(settings, secrets)
             app.state.table_access = TableAccessStore(settings)  # 5.2: which tables each role uses
             app.state.row_scopes = RowScopeStore(settings)  # 5.3: which rows each member sees
+            app.state.members = MemberStore(settings)  # 5.12: who is in each workspace
             app.state.allow_private_databases = settings.allow_private_databases
             if settings.allow_private_databases:
                 logger.warning("ALLOW_PRIVATE_DATABASES is on: development only (no SSRF guard)")
@@ -196,6 +201,7 @@ def create_app(
     app.include_router(connections_router)
     app.include_router(onboarding_router)
     app.include_router(table_access_router)
+    app.include_router(members_router)
     app.include_router(row_scope_router)
     app.include_router(conversations_router)
     app.include_router(saved_questions_router)

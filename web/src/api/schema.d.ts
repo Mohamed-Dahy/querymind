@@ -24,6 +24,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description Every member of your workspace, with their role and rows. Admins only.
+         */
+        get: operations["list_members_admin_members_get"];
+        put?: never;
+        /**
+         * Add Member
+         * @description Add someone who has signed up to your workspace, with a role. Admins only; audited.
+         */
+        post: operations["add_member_admin_members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Member
+         * @description Take a member out of your workspace (yourself too, if another admin stays). Audited.
+         */
+        delete: operations["remove_member_admin_members__user_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Role
+         * @description Give a member another role (applies at their next request). Admins only; audited.
+         */
+        patch: operations["change_role_admin_members__user_id__patch"];
+        trace?: never;
+    };
     "/admin/members/{user_id}/row-scope": {
         parameters: {
             query?: never;
@@ -196,6 +244,50 @@ export interface paths {
          * @description Create an account and your own workspace (you are its admin), and log in.
          */
         post: operations["signup_auth_signup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch
+         * @description Move this login to another of your workspaces (5.12): a new access token for it, and the
+         *     refresh cookie replaced, so a page reload stays there. Logging in again starts in your own.
+         *
+         *     Needs both the access token (who asks) and the refresh cookie (the login to move); the cookie
+         *     must be this user's. A workspace you aren't in is a 404, so its id says nothing about it.
+         */
+        post: operations["switch_auth_switch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Workspaces
+         * @description Every workspace you belong to (yours first), and which one you're in (5.12).
+         */
+        get: operations["workspaces_auth_workspaces_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -870,7 +962,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed" | "row_scope_changed";
+            action: "ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed" | "row_scope_changed" | "member_added" | "role_changed" | "member_removed" | "workspace_switched";
             /**
              * At
              * Format: date-time
@@ -1527,6 +1619,55 @@ export interface components {
             role: "admin" | "analyst" | "viewer";
             workspace: components["schemas"]["WorkspaceInfo"];
         };
+        /**
+         * MemberAdd
+         * @description Who to add: someone who has signed up already, and their role here.
+         */
+        MemberAdd: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "analyst" | "viewer";
+        };
+        /**
+         * MemberInfo
+         * @description A member of the workspace.
+         */
+        MemberInfo: {
+            /**
+             * Added At
+             * @description When they joined the workspace (ISO 8601)
+             */
+            added_at: string;
+            /** Email */
+            email: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "analyst" | "viewer";
+            /**
+             * Row Scope
+             * @description The tags of the rows they see (5.3); null = every row
+             */
+            row_scope: string[] | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** MemberList */
+        MemberList: {
+            /** Members */
+            members: components["schemas"]["MemberInfo"][];
+        };
         /** MetricMeaning */
         MetricMeaning: {
             /** Description */
@@ -1870,6 +2011,17 @@ export interface components {
             type: "rewrite";
         };
         /**
+         * RoleUpdate
+         * @description A member's new role.
+         */
+        RoleUpdate: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "analyst" | "viewer";
+        };
+        /**
          * RowScopeInfo
          * @description A member's role and the rows they may see.
          */
@@ -2121,6 +2273,14 @@ export interface components {
              */
             type: "step";
         };
+        /** SwitchRequest */
+        SwitchRequest: {
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
         /**
          * TableAccessInfo
          * @description A database's tables, and which of them each restrictable role may use.
@@ -2266,6 +2426,30 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * WorkspaceChoice
+         * @description One of your workspaces, for the switcher.
+         */
+        WorkspaceChoice: {
+            /**
+             * Current
+             * @description The workspace this login is in now
+             */
+            current: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @description Your role there
+             * @enum {string}
+             */
+            role: "admin" | "analyst" | "viewer";
+        };
         /** WorkspaceInfo */
         WorkspaceInfo: {
             /**
@@ -2275,6 +2459,11 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+        };
+        /** WorkspaceList */
+        WorkspaceList: {
+            /** Workspaces */
+            workspaces: components["schemas"]["WorkspaceChoice"][];
         };
     };
     responses: never;
@@ -2288,7 +2477,7 @@ export interface operations {
     audit_log_admin_audit_get: {
         parameters: {
             query?: {
-                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed" | "row_scope_changed") | null;
+                action?: ("ask" | "rerun" | "signup" | "login" | "login_failed" | "logout" | "llm_key_saved" | "llm_key_deleted" | "llm_key_refused" | "connection_saved" | "connection_tested" | "connection_refused" | "connection_deleted" | "onboarding_started" | "dictionary_edited" | "table_access_changed" | "row_scope_changed" | "member_added" | "role_changed" | "member_removed" | "workspace_switched") | null;
                 outcome?: string | null;
                 email?: string | null;
                 /** @description Find in questions and SQL */
@@ -2340,6 +2529,294 @@ export interface operations {
                 };
             };
             /** @description The audit log isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_members_admin_members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberList"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Members can't be managed right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_member_admin_members_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No account has this email */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Already a member */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Too many tries */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Members can't be managed right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_member_admin_members__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not a member of this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The workspace's last admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Members can't be managed right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    change_role_admin_members__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberInfo"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an admin of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not a member of this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The workspace's last admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Members can't be managed right now */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2813,6 +3290,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    switch_auth_switch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                qm_refresh?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Not logged in, or no valid refresh cookie */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not a member of that workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    workspaces_auth_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceList"];
+                };
+            };
+            /** @description Not logged in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

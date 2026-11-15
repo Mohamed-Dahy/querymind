@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     rate_key_checks_per_hour: int = Field(default=10, ge=1)  # per user
     # Saving or re-testing a database connection (5.9) connects out to an address a user typed.
     rate_connection_checks_per_hour: int = Field(default=10, ge=1)  # per user
+    # Adding a member by email (5.12) says whether that email has an account.
+    rate_member_adds_per_hour: int = Field(default=30, ge=1)  # per admin
 
     # --- Users' own databases (5.9) ---
     # Development and tests only: lets a saved connection point at a private address (the Docker
