@@ -212,5 +212,6 @@ def rerun_turn(
         row_count=result.row_count,
         truncated=result.truncated,
         masked_columns=result.masked_columns,
+        row_scope=result.row_scope,
         ran_at=datetime.now(UTC),
     )

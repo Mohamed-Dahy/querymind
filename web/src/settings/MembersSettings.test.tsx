@@ -40,7 +40,7 @@ describe('Settings → Members', () => {
     expect(row(mockUser.email)).toHaveTextContent('(you)')
     expect(roleOf(mockUser.email)).toHaveValue('admin')
     expect(roleOf('sam@example.com')).toHaveValue('analyst')
-    expect(row('sam@example.com')).toHaveTextContent('Rows: Eastern')
+    expect(row('sam@example.com')).toHaveTextContent('Rows: Only rows tagged Eastern')
     expect(row('lee@example.com')).toHaveTextContent('Rows: All rows')
     await waitFor(() => expect(document.title).toBe('Members · Settings · QueryMind'))
   })
@@ -201,6 +201,57 @@ describe('Settings → Members', () => {
 
     expect(await within(row(mockUser.email)).findByText(/you can’t leave it/)).toBeVisible()
     expect(within(row(mockUser.email)).queryByRole('button', { name: 'Leave' })).toBeNull()
+  })
+
+  it('Edit rows: only some tags, one typed, saved and shown on the row (U7.2)', async () => {
+    const sent: unknown[] = []
+    server.events.on('request:start', async ({ request }) => {
+      if (request.method === 'PUT') sent.push(await request.clone().json())
+    })
+    const user = userEvent.setup()
+    await openTab()
+
+    await user.click(screen.getByRole('button', { name: 'Edit rows of lee@example.com' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Rows for lee@example.com' })
+    expect(within(dialog).getByRole('radio', { name: 'Every row' })).toBeChecked()
+    // The demo's regions are offered, and so is a tag already used in this workspace.
+    expect(within(dialog).getByRole('checkbox', { name: 'Eastern' })).toBeDisabled()
+
+    await user.click(within(dialog).getByRole('radio', { name: 'Only the rows tagged:' }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Western' }))
+    await user.type(within(dialog).getByLabelText('Another tag'), 'North-West{Enter}')
+    expect(within(dialog).getByRole('checkbox', { name: 'North-West' })).toBeChecked()
+    await user.click(within(dialog).getByRole('button', { name: 'Save rows' }))
+
+    expect(
+      await screen.findByText('lee@example.com sees the rows tagged North-West, Western.'),
+    ).toBeVisible()
+    expect(sent).toEqual([{ row_scope: ['Western', 'North-West'] }])
+    expect(row('lee@example.com')).toHaveTextContent('Rows: Only rows tagged North-West, Western')
+  })
+
+  it('Edit rows refuses a choice of no tag, and a tag the API would refuse', async () => {
+    const user = userEvent.setup()
+    await openTab()
+
+    await user.click(screen.getByRole('button', { name: 'Edit rows of lee@example.com' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Rows for lee@example.com' })
+    await user.click(within(dialog).getByRole('radio', { name: 'Only the rows tagged:' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save rows' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Choose at least one tag, or "Every row".',
+    )
+
+    await user.type(within(dialog).getByLabelText('Another tag'), 'East,West{Enter}')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(`A tag can't contain "," or "*".`)
+    expect(within(dialog).getByLabelText('Another tag')).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('an admin has no rows to edit: admins see every row', async () => {
+    await openTab()
+
+    expect(within(row(mockUser.email)).queryByRole('button', { name: /Edit rows/ })).toBeNull()
+    expect(within(row('sam@example.com')).getByRole('button', { name: /Edit rows/ })).toBeVisible()
   })
 
   it('another role sees no Members tab, and its URL says why, without asking the API', async () => {

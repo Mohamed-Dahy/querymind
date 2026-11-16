@@ -2,6 +2,7 @@ import { CircleAlert, KeyRound, Pencil, RotateCw, SquarePen } from 'lucide-react
 import { Link } from 'react-router'
 
 import { errorTitle } from '@/api/errors'
+import { useSession } from '@/api/session'
 import { Button } from '@/components/ui/button'
 import { useSecondsLeft } from '@/lib/useSecondsLeft'
 
@@ -32,7 +33,11 @@ export function ErrorCell({ error, busy, onRetry, onRephrase }: ErrorCellProps) 
       <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
         <p className="font-medium">{errorTitle(error.code)}</p>
-        {error.message && <p className="text-fg-muted">{error.message}</p>}
+        {error.code === 'no_tables_permitted' ? (
+          <NoTablesNote />
+        ) : (
+          error.message && <p className="text-fg-muted">{error.message}</p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
           {RETRY_WONT_HELP.includes(error.code) ? (
             <Button type="button" variant="outline" onClick={onRephrase}>
@@ -88,5 +93,21 @@ function NewConversationButton() {
       <SquarePen aria-hidden="true" />
       New conversation
     </Button>
+  )
+}
+
+/**
+ * A role with no table of this database (U7.2, PLAN 5.2): who can change that. Admins are never
+ * restricted, so this is always an analyst or a viewer: an admin of this workspace grants tables
+ * per role. Instead of the API's "your workspace", its name.
+ */
+function NoTablesNote() {
+  const workspace = useSession()?.user.workspace.name
+  return (
+    <p className="text-fg-muted">
+      Your role can&rsquo;t use any table of this database. Ask an admin of{' '}
+      {workspace ? <span className="font-medium text-fg">{workspace}</span> : 'your workspace'} for
+      access: they choose which tables each role may use.
+    </p>
   )
 }

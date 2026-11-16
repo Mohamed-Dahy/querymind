@@ -49,7 +49,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import AbstractContextManager, closing, nullcontext
 from typing import Any, cast
 
@@ -334,7 +334,14 @@ class Pipeline:
         usage = self._usage(llm, own_key, meter)
         yield Finished(
             self._finish(
-                question, state, reply, started, conversation_id, provider=llm.name, usage=usage
+                question,
+                state,
+                reply,
+                started,
+                conversation_id,
+                provider=llm.name,
+                usage=usage,
+                row_scope=row_scope,
             )
         )
 
@@ -391,6 +398,7 @@ class Pipeline:
                 conversation_id=conversation_id,
             )
             raise
+        result = self._scoped(result, row_scope, query.tables)
         state["sql"] = query.sql
         state["result"] = result
         self._audit(
@@ -443,8 +451,10 @@ class Pipeline:
         *,
         provider: str,
         usage: LLMUsage,
+        row_scope: RowScope = None,
     ) -> AgentReply:
-        """The audit line of a run that ended normally, and its reply (with what it cost)."""
+        """The audit line of a run that ended normally, and its reply (with what it cost, and the
+        rows it was limited to)."""
         if reply is not None:
             outcome = "refusal" if isinstance(reply, Refusal) else "clarification"
             self._audit(
@@ -457,7 +467,9 @@ class Pipeline:
                 usage=usage,
             )
             return reply.model_copy(update={"usage": usage})
-        result = require(state.get("result"), "result")
+        result = self._scoped(
+            require(state.get("result"), "result"), row_scope, state.get("tables_used", [])
+        )
         confidence = score_confidence(
             failed_attempts=state.get("attempts", []),
             warnings=state.get("warnings", []),
@@ -500,6 +512,20 @@ class Pipeline:
             duration_ms=round((time.perf_counter() - started) * 1000),
             usage=usage,
         )
+
+    def _scoped(
+        self, result: QueryResult, row_scope: RowScope, tables: Iterable[str]
+    ) -> QueryResult:
+        """The result, saying which row tags limited it (5.3, U7.2): the user's scope when the SQL
+        read a table with row security (its policies filtered the rows), else None. A scope on a
+        database without policies limits nothing, so the reply mustn't claim it did."""
+        if row_scope is None:
+            return result
+        catalog, _ = self._schema_info()
+        secured = {table.name for table in catalog.schema.tables if table.row_security}
+        if not secured & set(tables):
+            return result
+        return result.model_copy(update={"row_scope": sorted(row_scope)})
 
     def _usage(self, llm: LLMProvider, own_key: bool, meter: UsageMeter) -> LLMUsage:
         """What the run cost so far: its model, whose key, its calls and tokens, and their list

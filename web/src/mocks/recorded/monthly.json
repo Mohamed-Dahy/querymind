@@ -63,6 +63,7 @@
   "row_count": 12,
   "truncated": false,
   "masked_columns": [],
+  "row_scope": null,
   "warnings": [],
   "confidence": "high",
   "confidence_reasons": [],

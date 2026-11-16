@@ -17,6 +17,7 @@
   "row_count": 1,
   "truncated": false,
   "masked_columns": [],
+  "row_scope": null,
   "warnings": [],
   "confidence": "high",
   "confidence_reasons": [],

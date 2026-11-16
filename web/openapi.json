@@ -368,6 +368,21 @@
             "title": "Row Count",
             "type": "integer"
           },
+          "row_scope": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The row tags these rows were limited to (your row scope, where the database's row security applied); null = not limited",
+            "title": "Row Scope"
+          },
           "rows": {
             "items": {
               "items": {
@@ -3001,6 +3016,21 @@
           "row_count": {
             "title": "Row Count",
             "type": "integer"
+          },
+          "row_scope": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The row tags these rows were limited to (your row scope, where the database's row security applied); null = not limited",
+            "title": "Row Scope"
           },
           "rows": {
             "items": {

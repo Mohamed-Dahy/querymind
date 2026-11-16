@@ -43,6 +43,9 @@ class QueryResult(BaseModel):
     duration_ms: int
     # Positions in `columns` whose values are personal data, masked for this user (5.4).
     masked_columns: list[int] = []
+    # The row tags that limited these rows (5.3, U7.2): the user's scope, when the SQL read a table
+    # with row security. None: nothing was limited. Set by the pipeline, which knows the schema.
+    row_scope: list[str] | None = None
 
 
 def execute_query(

@@ -86,6 +86,11 @@ class AskResponse(BaseModel):
         default=[],
         description="Positions in `columns` holding personal data, masked for you (shown as ***)",
     )
+    row_scope: list[str] | None = Field(
+        default=None,
+        description="The row tags these rows were limited to (your row scope, where the database's "
+        "row security applied); null = not limited",
+    )
     warnings: list[ResultWarning] = Field(
         default=[], description="Signs the result may be wrong (empty, duplicated rows...)"
     )
@@ -132,6 +137,7 @@ class AskResponse(BaseModel):
             row_count=result.result.row_count,
             truncated=result.result.truncated,
             masked_columns=result.result.masked_columns,
+            row_scope=result.result.row_scope,
             # Only code + message: a warning's `detail` is a hint written for the LLM.
             warnings=[ResultWarning(code=w.code, message=w.message) for w in result.warnings],
             confidence=result.confidence.level,
@@ -332,6 +338,11 @@ class RerunResponse(BaseModel):
     masked_columns: list[int] = Field(
         default=[],
         description="Positions in `columns` holding personal data, masked for you (shown as ***)",
+    )
+    row_scope: list[str] | None = Field(
+        default=None,
+        description="The row tags these rows were limited to (your row scope, where the database's "
+        "row security applied); null = not limited",
     )
     ran_at: datetime = Field(description="When these rows were read")
 

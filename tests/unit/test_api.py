@@ -113,6 +113,7 @@ def test_ask_returns_answer_sql_and_rows() -> None:
         "row_count": 1,
         "truncated": False,
         "masked_columns": [],
+        "row_scope": None,  # U7.2: not limited (no scope here)
         "warnings": [],
         "confidence": "high",
         "confidence_reasons": [],

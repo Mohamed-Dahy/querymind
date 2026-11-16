@@ -892,6 +892,11 @@ export interface components {
             question: string;
             /** Row Count */
             row_count: number;
+            /**
+             * Row Scope
+             * @description The row tags these rows were limited to (your row scope, where the database's row security applied); null = not limited
+             */
+            row_scope?: string[] | null;
             /** Rows */
             rows: components["schemas"]["JsonValue"][][];
             /** @description Which tables the LLM was shown */
@@ -2024,6 +2029,11 @@ export interface components {
             ran_at: string;
             /** Row Count */
             row_count: number;
+            /**
+             * Row Scope
+             * @description The row tags these rows were limited to (your row scope, where the database's row security applied); null = not limited
+             */
+            row_scope?: string[] | null;
             /** Rows */
             rows: components["schemas"]["JsonValue"][][];
             /**

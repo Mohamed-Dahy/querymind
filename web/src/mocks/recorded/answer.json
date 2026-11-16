@@ -47,6 +47,7 @@
   "row_count": 8,
   "truncated": false,
   "masked_columns": [],
+  "row_scope": null,
   "warnings": [],
   "confidence": "high",
   "confidence_reasons": [],

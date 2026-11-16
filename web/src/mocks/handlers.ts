@@ -17,7 +17,9 @@ import type { LoginRequest, SignupRequest } from '@/api/auth'
 import type { AskReply, AskRequest } from '@/api/client'
 import type { TokenResponse } from '@/api/session'
 import type { ConversationUpdate } from '@/api/conversations'
+import type { Catalog } from '@/api/explorer'
 import type { MemberInfo, Role } from '@/api/members'
+import type { RestrictedRole } from '@/api/permissions'
 import type { DictionaryEdit } from '@/api/onboarding'
 import type { SaveConnectionRequest, SaveLLMKeyRequest } from '@/api/settings'
 import type { StreamEvent, TraceEvent } from '@/api/stream'
@@ -61,7 +63,9 @@ import {
   MEMBER_MESSAGES,
   removeMockMember,
   setMockRole,
+  setMockRowScope,
 } from './members'
+import { mockAllowed, mockTableAccess, setMockTableAccess, withMockScope } from './permissions'
 import {
   currentMockUser,
   mockLoggedOut,
@@ -179,8 +183,9 @@ function recordedFor(request: AskRequest): { reply: AskReply; events: TraceEvent
   return fitted(answer, answerStream)
 }
 
+/** The reply as the real API would send it to this user (U7.2: limited rows say which). */
 export function replyFor(request: AskRequest): AskReply {
-  return recordedFor(request).reply
+  return withMockScope(recordedFor(request).reply)
 }
 
 /**
@@ -203,7 +208,8 @@ export function streamOf(events: readonly StreamEvent[], { stuck = false } = {})
 
 /** The whole recorded stream for a question: its events, then the reply. */
 export function replyStream(request: AskRequest) {
-  const { reply, events } = recordedFor(request)
+  const { reply: recorded, events } = recordedFor(request)
+  const reply = withMockScope(recorded)
   recordTurn(reply, events, request.connection_id ?? null) // the real API saves before the final event, too
   return streamOf([...events, { type: 'final', reply }])
 }
@@ -343,13 +349,16 @@ export const handlers = [
   // A saved database's (U7.1b): `?connection_id=`; one the workspace doesn't have is a 404.
   http.get('/api/catalog', ({ request }) => {
     const database = new URL(request.url).searchParams.get('connection_id')
-    if (database === null) return HttpResponse.json(catalog)
+    if (database === null) return HttpResponse.json(onlyAllowed(catalog, null))
     const connection = findMockConnection(database)
     if (!connection) return apiError('connection_not_found')
     // Onboarded: its tables belong to the business its dictionary makes (U7.1c).
     const dictionary = mockDictionary(database)
     return HttpResponse.json(
-      savedDatabaseCatalog(dictionary && { name: connection.name, tables: dictionary.tables }),
+      onlyAllowed(
+        savedDatabaseCatalog(dictionary && { name: connection.name, tables: dictionary.tables }),
+        database,
+      ),
     )
   }),
   http.get('/api/semantic', ({ request }) => {
@@ -439,6 +448,47 @@ export const handlers = [
       ? new HttpResponse(null, { status: 204 })
       : apiError('connection_not_found')
   }),
+  // Permissions (U7.2): mocks/permissions.ts. Admins only, as the real API.
+  http.get('/api/table-access', ({ request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const database = new URL(request.url).searchParams.get('connection_id')
+    if (database !== null && !isMockConnection(database)) return apiError('connection_not_found')
+    return HttpResponse.json(mockTableAccess(database))
+  }),
+  http.put('/api/table-access', async ({ request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const body = (await request.json()) as {
+      connection_id?: string | null
+      role: RestrictedRole
+      tables: string[] | null
+    }
+    const database = body.connection_id ?? null
+    if (database !== null && !isMockConnection(database)) return apiError('connection_not_found')
+    const result = setMockTableAccess(database, body.role, body.tables)
+    return 'refused' in result
+      ? HttpResponse.json(
+          { error: 'table_access_invalid', message: result.refused },
+          { status: 422 },
+        )
+      : HttpResponse.json(result)
+  }),
+  http.put(`${MEMBERS_URL}/:id/row-scope`, async ({ params, request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const { row_scope: scope } = (await request.json()) as { row_scope: string[] | null }
+    const result = setMockRowScope(String(params['id']), scope)
+    if (result === 'member_not_found') return memberRefusal(result)
+    if ('refused' in result) {
+      return HttpResponse.json(
+        { error: 'row_scope_invalid', message: result.refused },
+        { status: 422 },
+      )
+    }
+    return HttpResponse.json({
+      user_id: result.user_id,
+      role: result.role,
+      row_scope: result.row_scope,
+    })
+  }),
   // Onboarding and the dictionary review (U7.1c): mocks/onboarding.ts.
   http.post(`${CONNECTIONS_URL}/:id/onboard`, ({ params }) => {
     if (currentMockUser().role !== 'admin') return apiError('forbidden')
@@ -494,6 +544,14 @@ const MEMBER_STATUS = {
   rate_limited: 429,
 } as const
 
+/** The catalog as this user's role may see it (U7.2): only the tables its rule allows. */
+function onlyAllowed(full: Catalog, database: string | null): Catalog {
+  const allowed = mockAllowed(database, currentMockUser().role)
+  return allowed === null
+    ? full
+    : { tables: full.tables.filter(({ name }) => allowed.includes(name)) }
+}
+
 /** A members refusal with the real API's status and words (mocks/members.ts). */
 function memberRefusal(code: keyof typeof MEMBER_STATUS) {
   const status = MEMBER_STATUS[code]
@@ -537,6 +595,10 @@ function connectionRefusal(body: SaveConnectionRequest) {
  * (`llm_key_required`). POST /ask answers with that HTTP error; the stream sends it as an event.
  */
 function ownDatabaseRefusal(body: AskRequest): MockErrorCode | null {
+  // U7.2: a role left no table of this database (an admin never is).
+  if (mockAllowed(body.connection_id ?? null, currentMockUser().role)?.length === 0) {
+    return 'no_tables_permitted'
+  }
   const database = body.connection_id
   if (database === null || database === undefined) return null
   if (!isMockConnection(database)) return 'connection_not_found'

@@ -255,6 +255,26 @@ describe('saved conversations', () => {
     })
   })
 
+  it("a re-run says which rows today's scope limited (U7.2)", () => {
+    const store = canvasReducer(EMPTY_STORE, { type: 'loaded', conversation: SAVED })
+    const next = canvasReducer(store, {
+      key: 'conv-9',
+      type: 'rerun',
+      cellId: 'saved-conv-9-1',
+      result: {
+        columns: ['a'],
+        rows: [[1]],
+        row_count: 1,
+        truncated: false,
+        masked_columns: [],
+        row_scope: ['Eastern'],
+        ran_at: '2026-11-03T09:00:00Z',
+      },
+    })
+
+    expect(conversationAt(next, 'conv-9').cells[0]?.reply).toMatchObject({ row_scope: ['Eastern'] })
+  })
+
   it('a re-run does nothing to a cell that was not saved', () => {
     const state = conversationReducer(asked(EMPTY), {
       type: 'replied',

@@ -1,4 +1,4 @@
-import { Database, KeyRound, Users, type LucideIcon } from 'lucide-react'
+import { Database, KeyRound, ShieldCheck, Users, type LucideIcon } from 'lucide-react'
 
 import type { Me } from '@/api/session'
 
@@ -36,6 +36,13 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
     Icon: Users,
     keywords: ['team', 'people', 'add member', 'role', 'admin', 'analyst', 'viewer'],
     // The members list is admins' only (the API answers 403 to the other roles).
+    adminOnly: true,
+  },
+  {
+    path: 'permissions',
+    label: 'Permissions',
+    Icon: ShieldCheck,
+    keywords: ['access', 'tables', 'rows', 'restrict', 'analyst', 'viewer', 'table access'],
     adminOnly: true,
   },
 ]

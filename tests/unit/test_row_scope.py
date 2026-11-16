@@ -22,6 +22,7 @@ from querymind.agent.pipeline import Pipeline
 from querymind.agent.schemas import AskResult, SqlDraft
 from querymind.api.explorer import ExplorerData
 from querymind.api.main import create_app
+from querymind.api.schemas import AskResponse, RerunResponse
 from querymind.auth.tokens import AuthUser, Role
 from querymind.config import Settings
 from querymind.db.executor import QueryResult, execute_query
@@ -419,3 +420,53 @@ def test_the_catalog_route_hides_them_for_a_scoped_viewer() -> None:
 def test_an_answer_still_comes_back_whole_for_an_unscoped_viewer(stub: StubExecutor) -> None:
     reply = orders_pipeline(COUNT).ask("How many orders?", summarize_answer=False)
     assert isinstance(reply, AskResult)
+
+
+# --- U7.2: the reply says which rows it was limited to -------------------------------------------
+
+PRODUCT_COUNT = SqlDraft(
+    sql="SELECT count(*) FROM products", explanation="Counts.", tables_used=["products"]
+)
+
+
+def test_a_reply_says_its_rows_were_limited_when_a_row_secured_table_was_read(
+    stub: StubExecutor,
+) -> None:
+    reply = orders_pipeline(COUNT).ask(
+        "How many orders?", row_scope=("Western", "Eastern"), summarize_answer=False
+    )
+
+    assert isinstance(reply, AskResult)
+    assert reply.result.row_scope == ["Eastern", "Western"]
+
+
+def test_a_reply_claims_no_limit_when_no_policy_filtered_it(stub: StubExecutor) -> None:
+    # products has no row security: a scoped user sees every product row, so no chip.
+    scoped = orders_pipeline(PRODUCT_COUNT).ask(
+        "How many products?", row_scope=EASTERN, summarize_answer=False
+    )
+    unscoped = orders_pipeline(COUNT).ask("How many orders?", summarize_answer=False)
+
+    assert isinstance(scoped, AskResult) and isinstance(unscoped, AskResult)
+    assert scoped.result.row_scope is None
+    assert unscoped.result.row_scope is None
+
+
+def test_a_rerun_says_its_rows_were_limited_too(stub: StubExecutor) -> None:
+    pipeline = orders_pipeline()
+
+    orders = pipeline.rerun("How many orders?", COUNT.sql, row_scope=EASTERN)
+    products = pipeline.rerun("How many products?", PRODUCT_COUNT.sql, row_scope=EASTERN)
+
+    assert orders.row_scope == ["Eastern"]
+    assert products.row_scope is None
+
+
+def test_the_api_reply_and_the_rerun_reply_carry_it() -> None:
+    limited = RESULT.model_copy(
+        update={"result": RESULT.result.model_copy(update={"row_scope": ["Eastern"]})}
+    )
+
+    assert AskResponse.from_result(limited, conversation_id=CONVERSATION).row_scope == ["Eastern"]
+    assert AskResponse.from_result(RESULT, conversation_id=CONVERSATION).row_scope is None
+    assert "row_scope" in RerunResponse.model_fields

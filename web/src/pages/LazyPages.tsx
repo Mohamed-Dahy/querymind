@@ -17,6 +17,7 @@ const KeySettings = lazy(() => import('@/settings/KeySettings'))
 const DatabasesSettings = lazy(() => import('@/settings/DatabasesSettings'))
 const DictionaryReview = lazy(() => import('@/settings/DictionaryReview'))
 const MembersSettings = lazy(() => import('@/settings/MembersSettings'))
+const PermissionsSettings = lazy(() => import('@/settings/PermissionsSettings'))
 
 /** While a page's code downloads, the page's shape shows, not an empty screen. */
 function Page({ children }: { children: ReactNode }) {
@@ -124,6 +125,14 @@ export function LazyMembersSettings() {
   return (
     <Suspense fallback={<TabSkeleton />}>
       <MembersSettings />
+    </Suspense>
+  )
+}
+
+export function LazyPermissionsSettings() {
+  return (
+    <Suspense fallback={<TabSkeleton />}>
+      <PermissionsSettings />
     </Suspense>
   )
 }

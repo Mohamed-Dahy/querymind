@@ -109,3 +109,30 @@ export function removeMockMember(userId: string): MemberInfo | Refusal {
   saveAll(all.filter((one) => one.user_id !== userId))
   return member
 }
+
+/** The real API's refusals for a scope (safety/row_scope.py, api/row_scope.py). */
+export const ROW_SCOPE_MESSAGES = {
+  admin: "Admins always see every row: their scope can't be set.",
+  empty: 'Give at least one value, or null for every row.',
+} as const
+
+/**
+ * PUT /admin/members/{id}/row-scope: tags trimmed, kept once and sorted, as the real API stores
+ * them; null = every row. An admin's can't be set.
+ */
+export function setMockRowScope(
+  userId: string,
+  scope: string[] | null,
+): MemberInfo | 'member_not_found' | { refused: string } {
+  const all = loadMockMembers()
+  const member = all.find((one) => one.user_id === userId)
+  if (!member) return 'member_not_found'
+  if (member.role === 'admin') return { refused: ROW_SCOPE_MESSAGES.admin }
+  const tags = scope === null ? null : [...new Set(scope.map((tag) => tag.trim()))].sort()
+  if (tags !== null && (tags.length === 0 || tags.includes(''))) {
+    return { refused: ROW_SCOPE_MESSAGES.empty }
+  }
+  const changed = { ...member, row_scope: tags }
+  saveAll(all.map((one) => (one.user_id === userId ? changed : one)))
+  return changed
+}

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
@@ -54,6 +54,17 @@ describe('AnswerCell', () => {
     expect(screen.getByText(/^From/)).toHaveTextContent(
       'From northwind and chinook: Our food trading business. Our online music store.',
     )
+  })
+
+  it('says when its rows were limited to your rows, and only then (U7.2)', () => {
+    renderAnswer({ row_scope: ['Eastern', 'Western'] })
+    expect(screen.getByText(/Limited to your rows:/)).toHaveTextContent(
+      'Limited to your rows: Eastern, Western',
+    )
+    cleanup()
+
+    renderAnswer({ row_scope: null })
+    expect(screen.queryByText(/Limited to your rows/)).toBeNull()
   })
 
   it('says which model answered, on whose key, and what it cost (5.8b)', () => {

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router'
 
 import { errorTitle } from '@/api/errors'
 import { errors, type MockErrorCode } from '@/mocks/fixtures'
+import { mockUser } from '@/mocks/session'
 import { renderWithQueryClient } from '@/test/render'
 
 import { CanvasProvider } from './CanvasProvider'
@@ -40,14 +41,30 @@ const REPHRASE = { name: 'Rephrase' }
 describe('ErrorCell', () => {
   const codes = Object.keys(errors) as MockErrorCode[]
 
-  it.each(codes)('%s shows its own title and the server message', (code) => {
-    const { message } = errors[code]
-    if (IN_APP.includes(code)) renderInApp({ code, message })
-    else renderCell({ code, message })
+  // no_tables_permitted says who can fix it in its own words, naming the workspace (U7.2).
+  it.each(codes.filter((code) => code !== 'no_tables_permitted'))(
+    '%s shows its own title and the server message',
+    (code) => {
+      const { message } = errors[code]
+      if (IN_APP.includes(code)) renderInApp({ code, message })
+      else renderCell({ code, message })
 
-    expect(errorTitle(code)).not.toBe('Something went wrong.')
-    expect(screen.getByText(errorTitle(code))).toBeInTheDocument()
-    expect(screen.getByText(message)).toBeInTheDocument()
+      expect(errorTitle(code)).not.toBe('Something went wrong.')
+      expect(screen.getByText(errorTitle(code))).toBeInTheDocument()
+      expect(screen.getByText(message)).toBeInTheDocument()
+    },
+  )
+
+  it('no tables for your role: says so, and names the workspace whose admins can grant them', () => {
+    renderCell({ code: 'no_tables_permitted', message: errors.no_tables_permitted.message })
+
+    expect(screen.getByText(errorTitle('no_tables_permitted'))).toBeInTheDocument()
+    const note = screen.getByText(/Your role can’t use any table of this database/)
+    expect(note).toHaveTextContent(
+      `Ask an admin of ${mockUser.workspace.name} for access: they choose which tables each role may use.`,
+    )
+    // Not the API's "your workspace" as well: the same thing said twice.
+    expect(screen.queryByText(errors.no_tables_permitted.message)).toBeNull()
   })
 
   it('your own database without your own key: a link to save one', () => {

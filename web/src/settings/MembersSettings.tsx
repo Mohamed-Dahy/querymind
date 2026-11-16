@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 
 import { ConfirmButton } from './ConfirmButton'
 import { FormError } from './FormError'
+import { RowScopeButton } from './RowScopeButton'
 
 const JOINED = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
 
@@ -97,6 +98,7 @@ export default function MembersSettings() {
                     member={member}
                     you={member.user_id === session.user.id}
                     focusAfterRemove={heading}
+                    known={[...new Set(members.data.flatMap(({ row_scope }) => row_scope ?? []))]}
                   />
                 ))}
               </ul>
@@ -113,10 +115,13 @@ function MemberRow({
   member,
   you,
   focusAfterRemove,
+  known,
 }: {
   member: MemberInfo
   you: boolean
   focusAfterRemove: RefObject<HTMLElement | null>
+  /** The row tags already used in this workspace, offered in "Edit rows" (U7.2). */
+  known: string[]
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -162,7 +167,8 @@ function MemberRow({
     else void save(role)
   }
 
-  const scope = member.row_scope === null ? 'All rows' : member.row_scope.join(', ')
+  const scope =
+    member.row_scope === null ? 'All rows' : `Only rows tagged ${member.row_scope.join(', ')}`
   return (
     <li aria-labelledby={ids.email} className="p-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -177,7 +183,9 @@ function MemberRow({
             <time dateTime={member.added_at}>{JOINED.format(new Date(member.added_at))}</time>
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Admins see every row (5.3): there is nothing to set for them. */}
+          {member.role !== 'admin' && <RowScopeButton member={member} known={known} />}
           <label htmlFor={ids.role} className="sr-only">
             Role of {member.email}
           </label>

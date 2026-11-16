@@ -17,6 +17,7 @@ import { CertaintyMeter } from './CertaintyMeter'
 import { pickChart } from './pickChart'
 import { ResultTable } from './ResultTable'
 import { SqlView } from './SqlView'
+import { RowsChip } from './RowsChip'
 import { UsageLine } from './UsageLine'
 import type { SavedInfo } from './state'
 
@@ -80,6 +81,7 @@ export function AnswerCell({
 
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <CertaintyMeter level={reply.confidence} reasons={reply.confidence_reasons} />
+        <RowsChip tags={reply.row_scope} />
         {!reply.answer_from_llm && <TemplateBadge />}
         <Button
           ref={workButton}

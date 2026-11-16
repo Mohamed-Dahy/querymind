@@ -117,12 +117,14 @@ export function conversationReducer(state: Conversation, action: ConversationAct
           row_count,
           truncated,
           masked_columns,
+          row_scope,
           ran_at: freshAt,
         } = action.result
         return {
           ...cell,
-          // masked_columns too (5.4): the fresh rows say which of their columns are masked.
-          reply: { ...cell.reply, columns, rows, row_count, truncated, masked_columns },
+          // masked_columns too (5.4): the fresh rows say which of their columns are masked; and
+          // row_scope (U7.2): today's rows are limited by today's scope.
+          reply: { ...cell.reply, columns, rows, row_count, truncated, masked_columns, row_scope },
           saved: { ...cell.saved, freshAt },
         }
       })
