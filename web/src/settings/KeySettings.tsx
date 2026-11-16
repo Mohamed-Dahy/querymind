@@ -1,10 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, Loader2, Trash2, TriangleAlert } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { useId, useRef, useState, type FormEvent, type RefObject } from 'react'
 import { toast } from 'sonner'
 
-import { ApiError } from '@/api/client'
-import { errorTitle } from '@/api/errors'
+import { asApiError, type ApiError } from '@/api/client'
 import { useSession } from '@/api/session'
 import {
   deleteLLMKey,
@@ -17,19 +16,11 @@ import {
 } from '@/api/settings'
 import { FIELD } from '@/components/field'
 import { SubmitButton } from '@/components/SubmitButton'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { LoadError } from '@/explorer/LoadError'
+
+import { ConfirmButton } from './ConfirmButton'
+import { FormError } from './FormError'
 
 // The API's limits (api/llm_keys.py), checked here first so the user hears it before sending.
 const MIN_KEY = 8
@@ -37,12 +28,6 @@ const MAX_KEY = 512
 const MAX_MODEL = 200
 
 const SAVED_DATE = new Intl.DateTimeFormat('en', { dateStyle: 'medium' })
-
-function asApiError(caught: unknown): ApiError {
-  return caught instanceof ApiError
-    ? caught
-    : new ApiError('internal_error', 'Something went wrong. Please try again.')
-}
 
 /**
  * Settings → LLM key (U7.1b): which provider and model answer this workspace's questions. Every
@@ -136,8 +121,7 @@ function CurrentKey({ info, admin, focusAfterRemove }: CurrentKeyProps) {
 
 /**
  * "Remove key", behind a confirm: it can't be undone (the key exists nowhere else, so getting it
- * back means pasting it again). The page changes only once the dialog has closed, so focus has a
- * place to land: the tab's heading.
+ * back means pasting it again). Afterwards focus goes to the tab's heading.
  */
 function RemoveKey({
   info,
@@ -147,82 +131,25 @@ function RemoveKey({
   focusAfterRemove: RefObject<HTMLElement | null>
 }) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<ApiError | null>(null)
-  const removed = useRef(false)
-  const errorId = useId()
-
-  async function remove() {
-    setBusy(true)
-    setError(null)
-    try {
-      await deleteLLMKey()
-      removed.current = true
-      setOpen(false)
-    } catch (caught) {
-      setError(asApiError(caught))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (busy) return // the delete is on its way: its answer decides
-        setOpen(next)
-        if (next) setError(null)
+    <ConfirmButton
+      label="Remove key"
+      busyLabel="Removing…"
+      title={`Remove your ${info.provider_label} key?`}
+      description={
+        <>
+          Questions go back to QueryMind&rsquo;s free demo key, and your own databases can&rsquo;t
+          be asked until a key is saved again. To use this key again, you&rsquo;ll have to paste it
+          again.
+        </>
+      }
+      onConfirm={deleteLLMKey}
+      onDone={() => {
+        queryClient.setQueryData(LLM_KEY_QUERY, null)
+        focusAfterRemove.current?.focus()
+        toast.success('Key removed. Questions use the demo key again.')
       }}
-    >
-      {/* The dialog's trigger: Cancel or Escape gives focus back to it. */}
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" className="pointer-coarse:min-h-11">
-          <Trash2 aria-hidden="true" />
-          Remove key
-        </Button>
-      </DialogTrigger>
-      <DialogContent
-        onCloseAutoFocus={(event) => {
-          if (!removed.current) return // Cancel: back to "Remove key", as usual
-          event.preventDefault()
-          queryClient.setQueryData(LLM_KEY_QUERY, null)
-          focusAfterRemove.current?.focus()
-          toast.success('Key removed. Questions use the demo key again.')
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>Remove your {info.provider_label} key?</DialogTitle>
-          <DialogDescription>
-            Questions go back to QueryMind&rsquo;s free demo key, and your own databases can&rsquo;t
-            be asked until a key is saved again. To use this key again, you&rsquo;ll have to paste
-            it again.
-          </DialogDescription>
-        </DialogHeader>
-        {error && <FormError id={errorId} error={error} />}
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={busy}>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={busy}
-            aria-busy={busy}
-            aria-describedby={error ? errorId : undefined}
-            onClick={() => void remove()}
-          >
-            {busy && (
-              <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
-            )}
-            {busy ? 'Removing…' : 'Remove key'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    />
   )
 }
 
@@ -390,22 +317,5 @@ function KeyForm({ providers, saved }: { providers: ProviderOption[]; saved: LLM
         retryAt={retryAt}
       />
     </form>
-  )
-}
-
-/** Why it failed, in our words (the title) and the API's (its fix). */
-function FormError({ id, error }: { id: string; error: ApiError }) {
-  return (
-    <div
-      id={id}
-      role="alert"
-      className="flex items-start gap-1.5 rounded-lg border border-danger px-3 py-2 text-sm"
-    >
-      <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
-      <div>
-        <p className="font-medium">{errorTitle(error.code)}</p>
-        <p className="text-fg-muted">{error.message}</p>
-      </div>
-    </div>
   )
 }

@@ -2,6 +2,8 @@ import { ShieldBan } from 'lucide-react'
 
 import type { RefusalResponse } from '@/api/client'
 
+import { UsageLine } from './UsageLine'
+
 /**
  * QueryMind won't do this. Calm on purpose: a refusal is the product working, not an error. It
  * doesn't say "no SQL ran": the LLM may refuse after a failed attempt. This sentence is always
@@ -14,6 +16,9 @@ export function RefusalCell({ reply }: { reply: RefusalResponse }) {
       <div>
         <p>{reply.message}</p>
         <p className="text-fg-muted">Nothing in the database was changed.</p>
+        <div className="mt-2">
+          <UsageLine usage={reply.usage} />
+        </div>
       </div>
     </div>
   )

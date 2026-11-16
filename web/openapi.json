@@ -5513,6 +5513,27 @@
       "get": {
         "description": "Every table you may use, with its columns, keys, business and approximate row count (not\nfor a table whose rows depend on who asks, if you see only some of them, 5.3).",
         "operationId": "get_catalog_catalog_get",
+        "parameters": [
+          {
+            "description": "One of this workspace's saved databases; left out = the demo",
+            "in": "query",
+            "name": "connection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of this workspace's saved databases; left out = the demo",
+              "title": "Connection Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5523,6 +5544,36 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such database in this workspace"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The saved database's password can't be read"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The saved database can't be reached"
           },
           "503": {
             "content": {
@@ -5548,7 +5599,7 @@
     },
     "/catalog/tables/{table}/questions": {
       "get": {
-        "description": "Your recent saved questions whose SQL read this table. No such table (or one your role may\nnot use, 5.2): an empty list, the same answer, so it can't tell which tables exist.",
+        "description": "Your recent saved questions whose SQL read this table, on this database. No such table\n(or one your role may not use, 5.2): an empty list, the same answer, so it can't tell which\ntables exist.",
         "operationId": "get_table_questions_catalog_tables__table__questions_get",
         "parameters": [
           {
@@ -5572,6 +5623,25 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "One of this workspace's saved databases; left out = the demo",
+            "in": "query",
+            "name": "connection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of this workspace's saved databases; left out = the demo",
+              "title": "Connection Id"
+            }
           }
         ],
         "responses": {
@@ -5584,6 +5654,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such database in this workspace"
           },
           "422": {
             "content": {
@@ -7234,8 +7314,29 @@
     },
     "/semantic": {
       "get": {
-        "description": "Per business: what the tables and columns mean, the terms and the preferred joins (only\nthe tables you may use).",
+        "description": "Per business: what the tables and columns mean, the terms and the preferred joins (only\nthe tables you may use). A saved database: its onboarded dictionary (none yet: no business);\nreading it needs the database itself, unlike the demo's files.",
         "operationId": "get_semantic_semantic_get",
+        "parameters": [
+          {
+            "description": "One of this workspace's saved databases; left out = the demo",
+            "in": "query",
+            "name": "connection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of this workspace's saved databases; left out = the demo",
+              "title": "Connection Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7246,6 +7347,46 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such database in this workspace"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The saved database's password can't be read"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The saved database can't be reached"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The database isn't available"
           }
         },
         "security": [

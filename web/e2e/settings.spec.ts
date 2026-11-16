@@ -93,6 +93,91 @@ test('a viewer sees which key answers, but cannot change it', async ({ page }) =
   await expect(page.getByRole('banner')).toContainText('Viewer')
 })
 
+// --- Databases (U7.1b part 2). The fake API refuses "private.example.com" (a private address)
+// and the user "writer" (a login that can change data); anything else is saved.
+
+async function addDatabase(page: Page, fields: Record<string, string>) {
+  const form = page.getByRole('form', { name: 'Add a database' })
+  for (const [label, value] of Object.entries(fields)) {
+    await form.getByLabel(label, { exact: true }).fill(value)
+  }
+  await form.getByRole('button', { name: 'Check and add' }).click()
+  return form
+}
+
+const SALES = {
+  Name: 'Sales',
+  Host: 'db.example.com',
+  Database: 'sales',
+  User: 'querymind_reader',
+  Password: 'a long password',
+}
+
+for (const theme of THEMES) {
+  test(`${theme} theme: add a database, see the recipe, then delete it`, async ({ page }) => {
+    await useTheme(page, theme)
+    await page.goto('/settings/databases')
+    await expect(page.getByText('No database yet')).toBeVisible()
+
+    await page.getByText('How to make a read-only login').click()
+    await expect(page.getByText(/GRANT SELECT ON ALL TABLES/)).toBeVisible()
+
+    const form = await addDatabase(page, SALES)
+    const row = page.getByRole('listitem', { name: 'Sales' })
+    await expect(row).toContainText('querymind_reader@db.example.com:5432/sales')
+    await expect(form.getByLabel('Password')).toHaveValue('')
+    // No key saved yet: asking about it needs one.
+    await expect(page.getByRole('link', { name: /Save one in the LLM key tab/ })).toBeVisible()
+
+    await row.getByRole('button', { name: 'Delete Sales' }).click()
+    await page
+      .getByRole('dialog', { name: 'Delete Sales?' })
+      .getByRole('button', { name: 'Delete' })
+      .click()
+    await expect(page.getByText('No database yet')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'Databases' })).toBeFocused()
+  })
+}
+
+test('a refused database says why, with its fix, and nothing is saved', async ({ page }) => {
+  await page.goto('/settings/databases')
+
+  const form = await addDatabase(page, { ...SALES, User: 'writer' })
+  await expect(form.getByRole('alert')).toContainText('That login can change data.')
+  await expect(form.getByRole('alert')).toContainText('REVOKE CREATE ON SCHEMA')
+
+  await addDatabase(page, { ...SALES, User: 'querymind_reader', Host: 'private.example.com' })
+  await expect(form.getByRole('alert')).toContainText("QueryMind can't connect to that address.")
+  await expect(page.getByText('No database yet')).toBeVisible()
+})
+
+test('a viewer sees the databases, read-only', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('querymind-mock-role', 'viewer')
+    localStorage.setItem(
+      'querymind-mock-connections',
+      JSON.stringify([
+        {
+          id: '9a7c1e2f-0000-4000-8000-000000000001',
+          name: 'Sales',
+          host: 'db.example.com',
+          port: 5432,
+          dbname: 'sales',
+          user: 'querymind_reader',
+          sslmode: 'verify-full',
+          checked_at: '2026-11-16T10:00:00Z',
+          created_at: '2026-11-16T10:00:00Z',
+        },
+      ]),
+    )
+  })
+  await page.goto('/settings/databases')
+
+  await expect(page.getByRole('listitem', { name: 'Sales' })).toBeVisible()
+  await expect(page.getByRole('form')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Delete|Test again/ })).toHaveCount(0)
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 375, height: 740 } })
 

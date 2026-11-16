@@ -412,9 +412,10 @@ class ConversationStore:
             raise ConversationNotFoundError(_NOT_FOUND)
 
     def recent_questions_using(
-        self, table: str, *, owner: Owner, limit: int
+        self, table: str, *, owner: Owner, limit: int, connection_id: UUID | None = None
     ) -> list[TableQuestion]:
-        """The newest saved questions whose SQL read `table`. Older turns have no `tables_used`.
+        """The newest saved questions whose SQL read `table` on this database (None = the demo):
+        a saved database's `customers` is not the demo's. Older turns have no `tables_used`.
 
         `?` asks whether a JSON array has that string. The table name is a parameter like any other.
         """
@@ -427,9 +428,10 @@ class ConversationStore:
                     FROM querymind_app.turns AS t
                     JOIN querymind_app.conversations AS c ON c.id = t.conversation_id
                     WHERE c.user_id = %s AND t.reply->'tables_used' ? %s
+                      AND c.connection_id IS NOT DISTINCT FROM %s
                     ORDER BY t.created_at DESC, t.conversation_id, t.n LIMIT %s
                     """,
-                    (owner.user_id, table, limit),
+                    (owner.user_id, table, connection_id, limit),
                 )
                 .fetchall()
             )

@@ -256,3 +256,14 @@ def test_a_count_that_fails_is_unknown_and_the_next_table_still_counts() -> None
 
     assert counts == {"huge": None, "genre": 25}
     assert conn.rollbacks == 1  # without it, the failed statement would also fail the next one
+
+
+def test_on_someone_elses_database_nothing_is_counted_and_unknown_stays_unknown() -> None:
+    """U7.1b: a saved database that was never analysed has no estimates; counting each of its
+    tables could take minutes on its server, so `count_missing=False` leaves them None."""
+    conn = FakeConnection({"orders": 830, "genre": -1}, {"genre": 25})
+
+    counts = read_row_counts(conn, ["orders", "genre", "new"], count_missing=False)  # type: ignore[arg-type]
+
+    assert counts == {"orders": 830, "genre": None, "new": None}
+    assert conn.counted == []

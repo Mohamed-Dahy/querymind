@@ -324,8 +324,9 @@ export interface paths {
         };
         /**
          * Get Table Questions
-         * @description Your recent saved questions whose SQL read this table. No such table (or one your role may
-         *     not use, 5.2): an empty list, the same answer, so it can't tell which tables exist.
+         * @description Your recent saved questions whose SQL read this table, on this database. No such table
+         *     (or one your role may not use, 5.2): an empty list, the same answer, so it can't tell which
+         *     tables exist.
          */
         get: operations["get_table_questions_catalog_tables__table__questions_get"];
         put?: never;
@@ -688,7 +689,8 @@ export interface paths {
         /**
          * Get Semantic
          * @description Per business: what the tables and columns mean, the terms and the preferred joins (only
-         *     the tables you may use).
+         *     the tables you may use). A saved database: its onboarded dictionary (none yet: no business);
+         *     reading it needs the database itself, unlike the demo's files.
          */
         get: operations["get_semantic_semantic_get"];
         put?: never;
@@ -3444,7 +3446,10 @@ export interface operations {
     };
     get_catalog_catalog_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description One of this workspace's saved databases; left out = the demo */
+                connection_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3458,6 +3463,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Catalog"];
+                };
+            };
+            /** @description No such database in this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The saved database's password can't be read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The saved database can't be reached */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description The database isn't available */
@@ -3475,6 +3507,8 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                /** @description One of this workspace's saved databases; left out = the demo */
+                connection_id?: string | null;
             };
             header?: never;
             path: {
@@ -3491,6 +3525,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableQuestionList"];
+                };
+            };
+            /** @description No such database in this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4733,7 +4776,10 @@ export interface operations {
     };
     get_semantic_semantic_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description One of this workspace's saved databases; left out = the demo */
+                connection_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4747,6 +4793,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SemanticOverview"];
+                };
+            };
+            /** @description No such database in this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The saved database's password can't be read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The saved database can't be reached */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The database isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

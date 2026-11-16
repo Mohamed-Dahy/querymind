@@ -17,6 +17,7 @@ import { CertaintyMeter } from './CertaintyMeter'
 import { pickChart } from './pickChart'
 import { ResultTable } from './ResultTable'
 import { SqlView } from './SqlView'
+import { UsageLine } from './UsageLine'
 import type { SavedInfo } from './state'
 
 // Recharts is big: it downloads only when a chart is first shown, not with the page.
@@ -75,6 +76,7 @@ export function AnswerCell({
     <div className="space-y-3">
       <p className="text-base">{reply.answer}</p>
       <SourceLine sources={reply.sources} />
+      <UsageLine usage={reply.usage} />
 
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <CertaintyMeter level={reply.confidence} reasons={reply.confidence_reasons} />

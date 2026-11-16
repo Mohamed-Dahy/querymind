@@ -3,7 +3,13 @@
  * mock mode keeps it. Only what the real API keeps: provider, model, the last 4 characters. A few
  * keys show each error the form must handle (as WRONG_PASSWORD does for the login page).
  */
-import type { LLMKeyInfo, ProviderOption, SaveLLMKeyRequest } from '@/api/settings'
+import type {
+  ConnectionInfo,
+  LLMKeyInfo,
+  ProviderOption,
+  SaveConnectionRequest,
+  SaveLLMKeyRequest,
+} from '@/api/settings'
 
 import { providers } from './fixtures'
 
@@ -46,4 +52,74 @@ export function deleteMockKey() {
 /** The real API's wording for a refused key (llm/key_check.py), with this provider's name. */
 export function refusedMessage(id: ProviderOption['id']): string {
   return `${provider(id).label} refused this key. Check it was copied whole and is still active.`
+}
+
+// --- Databases (U7.1b part 2) ---------------------------------------------------------------------
+
+const CONNECTIONS_KEY = 'querymind-mock-connections'
+
+/**
+ * What to type in the add form to see each refusal; anything else is saved. Each answers with the
+ * real API's status and message (errors.json, checked against the API by test_web_fixtures.py).
+ */
+export const CONNECTION_TRIGGERS = {
+  /** host → `connection_unsafe` (a private address) */
+  unsafeHost: 'private.example.com',
+  /** host → `connection_unreachable` */
+  unreachableHost: 'unreachable.example.com',
+  /** host → `connection_tls_failed` */
+  selfSignedHost: 'selfsigned.example.com',
+  /** host → `rate_limited`: too many checks, wait 30 s */
+  tooManyTriesHost: 'too-many-tries.example.com',
+  /** user → `connection_writable`, with the REVOKE that fixes it */
+  writerUser: 'writer',
+  /** password → `connection_login_failed` */
+  wrongPassword: 'wrong password',
+} as const
+
+export function loadMockConnections(): ConnectionInfo[] {
+  try {
+    return JSON.parse(localStorage.getItem(CONNECTIONS_KEY) ?? '[]') as ConnectionInfo[]
+  } catch {
+    return []
+  }
+}
+
+function saveAll(connections: ConnectionInfo[]) {
+  localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(connections))
+}
+
+/** Saved as the real API would (no password kept); null when the name is taken. */
+export function saveMockConnection(request: SaveConnectionRequest): ConnectionInfo | null {
+  const all = loadMockConnections()
+  if (all.some(({ name }) => name === request.name)) return null
+  const now = new Date().toISOString()
+  const info: ConnectionInfo = {
+    id: crypto.randomUUID(),
+    name: request.name,
+    host: request.host,
+    port: request.port,
+    dbname: request.dbname,
+    user: request.user,
+    sslmode: request.sslmode,
+    checked_at: now,
+    created_at: now,
+  }
+  saveAll([...all, info])
+  return info
+}
+
+export function testMockConnection(id: string): ConnectionInfo | null {
+  const all = loadMockConnections()
+  const found = all.find((connection) => connection.id === id)
+  if (!found) return null
+  const checked = { ...found, checked_at: new Date().toISOString() }
+  saveAll(all.map((connection) => (connection.id === id ? checked : connection)))
+  return checked
+}
+
+export function deleteMockConnection(id: string): boolean {
+  const all = loadMockConnections()
+  saveAll(all.filter((connection) => connection.id !== id))
+  return all.some((connection) => connection.id === id)
 }

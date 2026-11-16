@@ -13,14 +13,20 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from cryptography.fernet import Fernet
 from psycopg import errors
+from pydantic import SecretStr
 from setup_app_db import SCHEMA, set_up
 
 from querymind.config import Settings
 from querymind.db.connection import connect_app
+from querymind.db.remote import ConnectionSpec
 from querymind.db.schema import introspect_schema
 from querymind.safety.errors import UnsafeSqlError
 from querymind.safety.sql_validator import validate_sql
+from querymind.secrets.cipher import SecretCipher
+from querymind.secrets.store import LocalSecretStore
+from querymind.store.connections import ConnectionStore
 from querymind.store.conversations import ConversationStore, Owner, SavedQuestion, SavedTurn
 from querymind.store.errors import (
     ConversationNotFoundError,
@@ -544,6 +550,38 @@ def test_recent_questions_need_the_whole_name_and_treat_it_as_plain_text(
 
     assert store.recent_questions_using(table[:-1], limit=5, owner=owner) == []
     assert store.recent_questions_using("' OR 1=1 --", limit=5, owner=owner) == []
+
+
+def test_recent_questions_keep_to_their_own_database(
+    settings: Settings, store: ConversationStore, owner: Owner
+) -> None:
+    """U7.1b: a saved database's `customers` is not the demo's, so neither are its questions."""
+    key = SecretStr(Fernet.generate_key().decode())
+    connections = ConnectionStore(settings, LocalSecretStore(settings, cipher=SecretCipher([key])))
+    spec = ConnectionSpec(host="db.example.com", dbname="sales", user="reader")
+    sales = connections.save(owner.workspace_id, f"Sales {uuid4()}", spec, SecretStr("pw")).id
+    table = f"table_{uuid4().hex}"
+    on_demo, on_sales = uuid4(), uuid4()
+    try:
+        save_using(store, owner, on_demo, "On the demo?", [table])
+        store.save_turn(
+            on_sales,
+            question="On sales?",
+            kind="answer",
+            sql="SELECT 1",
+            reply={**REPLY, "tables_used": [table]},
+            owner=owner,
+            connection_id=sales,
+        )
+
+        demo = store.recent_questions_using(table, limit=5, owner=owner)
+        saved = store.recent_questions_using(table, limit=5, owner=owner, connection_id=sales)
+
+        assert [one.question for one in demo] == ["On the demo?"]
+        assert [one.question for one in saved] == ["On sales?"]
+    finally:
+        store.delete(on_demo, owner=owner)
+        connections.delete(owner.workspace_id, sales)  # its conversation goes with it (cascade)
 
 
 def test_a_turn_saved_before_tables_used_existed_is_simply_not_found(

@@ -14,6 +14,7 @@ const QuestionsPage = lazy(() => import('@/evals/QuestionsPage'))
 const QuestionPage = lazy(() => import('@/evals/QuestionPage'))
 const SettingsLayout = lazy(() => import('@/settings/SettingsLayout'))
 const KeySettings = lazy(() => import('@/settings/KeySettings'))
+const DatabasesSettings = lazy(() => import('@/settings/DatabasesSettings'))
 
 /** While a page's code downloads, the page's shape shows, not an empty screen. */
 function Page({ children }: { children: ReactNode }) {
@@ -97,6 +98,14 @@ export function LazyKeySettings() {
   return (
     <Suspense fallback={<TabSkeleton />}>
       <KeySettings />
+    </Suspense>
+  )
+}
+
+export function LazyDatabasesSettings() {
+  return (
+    <Suspense fallback={<TabSkeleton />}>
+      <DatabasesSettings />
     </Suspense>
   )
 }

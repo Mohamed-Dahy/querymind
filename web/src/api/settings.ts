@@ -45,6 +45,58 @@ export function deleteLLMKey(): Promise<void> {
   return call(READ_TIMEOUT_MS, undefined, (s) => api.DELETE('/llm/key', { signal: s }))
 }
 
+// --- Databases (U7.1b part 2): the workspace's own PostgreSQL databases -------------------------
+
+export type ConnectionInfo = Schemas['ConnectionInfo']
+export type SaveConnectionRequest = Schemas['SaveConnectionRequest']
+export type SslMode = ConnectionInfo['sslmode']
+
+/** The cache key of the workspace's databases. Cleared with the workspace. */
+export const CONNECTIONS_QUERY = ['connections'] as const
+
+// Saving or testing connects to the database (10 s) and checks the login can only read (10 s more
+// on a big database): wait a little longer than both.
+const CHECK_TIMEOUT_MS = 35_000
+
+export function listConnections(signal?: AbortSignal): Promise<ConnectionInfo[]> {
+  return call(READ_TIMEOUT_MS, signal, (s) => api.GET('/connections', { signal: s }))
+}
+
+/**
+ * Save one (admins): the server connects, refuses a login that can change data, then saves it.
+ * The password is sent once and never comes back. Like the key, not a react-query mutation.
+ */
+export function saveConnection(body: SaveConnectionRequest): Promise<ConnectionInfo> {
+  return call(CHECK_TIMEOUT_MS, undefined, (s) => api.POST('/connections', { body, signal: s }))
+}
+
+/** Connect and check it again (admins): grants can change after saving. */
+export function testConnection(id: string): Promise<ConnectionInfo> {
+  return call(CHECK_TIMEOUT_MS, undefined, (s) =>
+    api.POST('/connections/{connection_id}/test', {
+      params: { path: { connection_id: id } },
+      signal: s,
+    }),
+  )
+}
+
+/** Remove it, its password, and every conversation about it (admins). */
+export function deleteConnection(id: string): Promise<void> {
+  return call(READ_TIMEOUT_MS, undefined, (s) =>
+    api.DELETE('/connections/{connection_id}', {
+      params: { path: { connection_id: id } },
+      signal: s,
+    }),
+  )
+}
+
+export function useConnections() {
+  return useQuery({
+    queryKey: CONNECTIONS_QUERY,
+    queryFn: ({ signal }) => listConnections(signal),
+  })
+}
+
 // The list is code on the server (llm/catalog.py): it changes only with a new release.
 const PROVIDERS_STALE_MS = 60 * 60_000
 

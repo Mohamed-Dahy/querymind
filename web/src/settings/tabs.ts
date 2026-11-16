@@ -1,4 +1,4 @@
-import { KeyRound, type LucideIcon } from 'lucide-react'
+import { Database, KeyRound, type LucideIcon } from 'lucide-react'
 
 import type { Me } from '@/api/session'
 
@@ -23,6 +23,12 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
     label: 'LLM key',
     Icon: KeyRound,
     keywords: ['api key', 'model', 'provider', 'groq', 'gemini', 'openai', 'cost'],
+  },
+  {
+    path: 'databases',
+    label: 'Databases',
+    Icon: Database,
+    keywords: ['connection', 'postgres', 'own database', 'add database', 'read-only'],
   },
 ]
 

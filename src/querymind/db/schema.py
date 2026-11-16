@@ -179,20 +179,29 @@ WHERE ns.nspname = %(schema)s AND rel.relkind IN ('r', 'p')
 
 
 def read_row_counts(
-    conn: psycopg.Connection, tables: Collection[str], *, schema: str = "public"
+    conn: psycopg.Connection,
+    tables: Collection[str],
+    *,
+    schema: str = "public",
+    count_missing: bool = True,
 ) -> dict[str, int | None]:
     """About how many rows each table has: Postgres's estimate, or else a real count.
 
     A table with no estimate is counted, under the role's statement timeout. If that fails too (the
     timeout, say), its count is None and the other tables still get theirs: one slow table mustn't
-    cost the whole list.
+    cost the whole list. `count_missing=False` (a user's own database, U7.1b): no real count, only
+    the estimates. A database that was never analysed has none, and counting each of its tables
+    could take minutes on someone else's server: the count is then None ("not known").
     """
     rows = conn.execute(_ROW_ESTIMATES_QUERY, {"schema": schema}).fetchall()
     estimates = {name: estimate for name, estimate in rows}
     counts: dict[str, int | None] = {}
     for table in tables:
         estimate = estimates.get(table, -1)
-        counts[table] = estimate if estimate >= 0 else _count_rows(conn, schema, table)
+        if estimate >= 0:
+            counts[table] = estimate
+        else:
+            counts[table] = _count_rows(conn, schema, table) if count_missing else None
     return counts
 
 

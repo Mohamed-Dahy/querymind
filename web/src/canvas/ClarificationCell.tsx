@@ -5,6 +5,7 @@ import type { ClarificationResponse } from '@/api/client'
 import { Button } from '@/components/ui/button'
 
 import { checkQuestion, clarifiedQuestion } from './question'
+import { UsageLine } from './UsageLine'
 
 // Options are written by the LLM, so they can be long: they wrap instead of overflowing the cell.
 const CHOICE_BUTTON =
@@ -82,6 +83,9 @@ export function ClarificationCell({ reply, busy, onAnswer }: ClarificationCellPr
             onCancel={close}
           />
         )}
+        <div className="mt-2">
+          <UsageLine usage={reply.usage} />
+        </div>
       </div>
     </div>
   )

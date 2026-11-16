@@ -37,6 +37,13 @@ export class ApiError extends Error {
   }
 }
 
+/** Any failure as an ApiError: the API's own, or a generic one for the unexpected (forms). */
+export function asApiError(caught: unknown): ApiError {
+  return caught instanceof ApiError
+    ? caught
+    : new ApiError('internal_error', 'Something went wrong. Please try again.')
+}
+
 // Absolute, because `new Request()` needs a full URL outside the browser (tests). Same origin:
 // in dev Vite's proxy forwards /api/* to uvicorn (vite.config.ts).
 const API_BASE = `${window.location.origin}/api`

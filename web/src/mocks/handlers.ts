@@ -17,7 +17,7 @@ import type { LoginRequest, SignupRequest } from '@/api/auth'
 import type { AskReply, AskRequest } from '@/api/client'
 import type { TokenResponse } from '@/api/session'
 import type { ConversationUpdate } from '@/api/conversations'
-import type { SaveLLMKeyRequest } from '@/api/settings'
+import type { SaveConnectionRequest, SaveLLMKeyRequest } from '@/api/settings'
 import type { StreamEvent, TraceEvent } from '@/api/stream'
 import {
   answer,
@@ -46,11 +46,16 @@ import {
 } from './fixtures'
 import { currentMockUser, mockLoggedOut, setMockLoggedOut } from './session'
 import {
+  CONNECTION_TRIGGERS,
+  deleteMockConnection,
   deleteMockKey,
   INVALID_KEY,
+  loadMockConnections,
   loadMockKey,
   refusedMessage,
+  saveMockConnection,
   saveMockKey,
+  testMockConnection,
   TOO_MANY_TRIES_KEY,
 } from './settings'
 
@@ -61,6 +66,7 @@ export const STREAM_URL = '/api/ask/stream'
 const CONVERSATION_URL = '/api/conversations/:id'
 export const SAVED_QUESTIONS_URL = '/api/saved-questions'
 export const LLM_KEY_URL = '/api/llm/key'
+export const CONNECTIONS_URL = '/api/connections'
 
 export const AUTH_URL = {
   refresh: '/api/auth/refresh',
@@ -311,4 +317,55 @@ export const handlers = [
     deleteMockKey()
     return new HttpResponse(null, { status: 204 })
   }),
+  // Settings: the workspace's own databases (U7.1b part 2). Every member may list them.
+  http.get(CONNECTIONS_URL, () => HttpResponse.json(loadMockConnections())),
+  http.post(CONNECTIONS_URL, async ({ request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const body = (await request.json()) as SaveConnectionRequest
+    const refused = connectionRefusal(body)
+    if (refused) return refused
+    const saved = saveMockConnection(body)
+    if (saved === null) {
+      return HttpResponse.json(
+        {
+          error: 'connection_name_taken',
+          message: `This workspace already has a database called '${body.name}'.`,
+        },
+        { status: 409 },
+      )
+    }
+    return HttpResponse.json(saved, { status: 201 })
+  }),
+  http.post(`${CONNECTIONS_URL}/:id/test`, ({ params }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const checked = testMockConnection(String(params['id']))
+    return checked ? HttpResponse.json(checked) : apiError('connection_not_found')
+  }),
+  http.delete(`${CONNECTIONS_URL}/:id`, ({ params }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    return deleteMockConnection(String(params['id']))
+      ? new HttpResponse(null, { status: 204 })
+      : apiError('connection_not_found')
+  }),
 ]
+
+/** The refusal a real check would give for what was typed (mocks/settings.ts), or none. */
+function connectionRefusal(body: SaveConnectionRequest) {
+  const t = CONNECTION_TRIGGERS
+  if (body.host === t.tooManyTriesHost) {
+    return HttpResponse.json(
+      {
+        error: 'rate_limited',
+        message: 'Too many database checks in a short time. Please wait before trying again.',
+        retry_after_seconds: 30,
+      },
+      { status: 429, headers: { 'Retry-After': '30' } },
+    )
+  }
+  if (body.host === t.unsafeHost) return apiError('connection_unsafe')
+  if (body.host === t.unreachableHost) return apiError('connection_unreachable')
+  if (body.host === t.selfSignedHost) return apiError('connection_tls_failed')
+  if (body.password === t.wrongPassword) return apiError('connection_login_failed')
+  if (body.user === t.writerUser) return apiError('connection_writable')
+  return null
+}

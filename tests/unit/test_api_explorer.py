@@ -129,10 +129,11 @@ class FakeStore:
         self.owners: list[Owner] = []
 
     def recent_questions_using(
-        self, table: str, *, owner: Owner, limit: int
+        self, table: str, *, owner: Owner, limit: int, connection_id: object = None
     ) -> list[TableQuestion]:
         if self.error is not None:
             raise self.error
+        assert connection_id is None  # no ?connection_id=: the demo
         self.asked.append((table, limit))
         self.owners.append(owner)
         return [

@@ -76,7 +76,7 @@ from querymind.config import ConfigError, Settings
 from querymind.db.connection import connect_readonly
 from querymind.db.errors import DatabaseUnavailableError, QueryExecutionError, QueryTimeoutError
 from querymind.db.executor import QueryResult, execute_query
-from querymind.db.schema import read_schema
+from querymind.db.schema import SchemaInfo, read_row_counts, read_schema
 from querymind.llm import LLMProvider
 from querymind.llm.embeddings import EmbeddingProvider
 from querymind.llm.prices import Prices, cost_usd, known_prices
@@ -543,6 +543,20 @@ class Pipeline:
                 catalog = SchemaCatalog(schema, self._semantic_layers, self._examples)
                 self._schema = (catalog, self._make_retriever(catalog))
             return self._schema
+
+    def described_schema(self) -> tuple[SchemaInfo, list[SemanticLayer], DataDictionary | None]:
+        """This database for the data explorer (U7.1b): its tables, its semantic layers (a saved
+        database's comes from its onboarded dictionary) and that dictionary. Reads the schema once,
+        like the first question would; the explorer shows no value from it."""
+        catalog, _ = self._schema_info()
+        return catalog.schema, list(self._semantic_layers), self._dictionary
+
+    def row_counts(self, *, count_missing: bool) -> dict[str, int | None]:
+        """About how many rows each table has, on this pipeline's own connection (the read-only
+        role, or a saved database's login). See `read_row_counts` for `count_missing`."""
+        catalog, _ = self._schema_info()
+        with self._connect(self._settings) as conn:
+            return read_row_counts(conn, catalog.schema.table_names, count_missing=count_missing)
 
     def table_names(self) -> list[str]:
         """Every table of this database the read-only login can read (reads the schema once)."""

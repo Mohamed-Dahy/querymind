@@ -56,6 +56,22 @@ describe('AnswerCell', () => {
     )
   })
 
+  it('says which model answered, on whose key, and what it cost (5.8b)', () => {
+    renderAnswer()
+
+    expect(
+      screen.getByText(
+        'gemini-3.5-flash-lite · demo key · 2 AI calls · 2,777 + 224 tokens · about $0.0014',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing about cost for an answer saved before 5.8b', () => {
+    renderAnswer({ usage: null })
+
+    expect(screen.queryByText(/AI calls?/)).not.toBeInTheDocument()
+  })
+
   it('says nothing about a database when no known table was read', () => {
     renderAnswer({ sources: [] })
 
