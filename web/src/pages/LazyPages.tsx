@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 
 import { PageSkeleton } from '@/components/PageSkeleton'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // Their own download: most visits are to the canvas, and these pages have a lot of their own.
 const ExplorePage = lazy(() => import('./ExplorePage'))
@@ -11,6 +12,8 @@ const AblationsPage = lazy(() => import('@/evals/AblationsPage'))
 const ModelsPage = lazy(() => import('@/evals/ModelsPage'))
 const QuestionsPage = lazy(() => import('@/evals/QuestionsPage'))
 const QuestionPage = lazy(() => import('@/evals/QuestionPage'))
+const SettingsLayout = lazy(() => import('@/settings/SettingsLayout'))
+const KeySettings = lazy(() => import('@/settings/KeySettings'))
 
 /** While a page's code downloads, the page's shape shows, not an empty screen. */
 function Page({ children }: { children: ReactNode }) {
@@ -79,4 +82,25 @@ export function LazyGlossaryPage() {
       <GlossaryPage />
     </Page>
   )
+}
+
+export function LazySettingsLayout() {
+  return (
+    <Page>
+      <SettingsLayout />
+    </Page>
+  )
+}
+
+/** A tab's own code loads inside the Settings frame: the heading and side list stay on screen. */
+export function LazyKeySettings() {
+  return (
+    <Suspense fallback={<TabSkeleton />}>
+      <KeySettings />
+    </Suspense>
+  )
+}
+
+function TabSkeleton() {
+  return <Skeleton aria-hidden="true" className="h-64 w-full motion-reduce:animate-none" />
 }

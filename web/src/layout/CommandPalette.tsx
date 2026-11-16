@@ -36,6 +36,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { EVAL_VIEWS } from '@/evals/views'
 import { businessLabel, termAnchor, termName } from '@/explorer/data'
 import { useExplorerData, useSemanticOverview } from '@/explorer/useExplorerData'
+import { SETTINGS_TABS } from '@/settings/tabs'
 import { useTheme, type ThemeChoice } from '@/lib/theme'
 
 import {
@@ -85,6 +86,15 @@ const PAGES: PaletteItem[] = [
     keywords: ['metrics', 'terms'],
     action: nav('/explore/glossary'),
   },
+  // Settings, one item per tab. Admin-only tabs are listed for everyone: the page itself says
+  // what a role may do, and the palette has no session to check.
+  ...SETTINGS_TABS.map(({ path, label, keywords }) => ({
+    id: `page:/settings/${path}`,
+    label,
+    hint: 'Settings',
+    keywords: ['settings', ...keywords],
+    action: nav(`/settings/${path}`),
+  })),
   ...EVAL_VIEWS.map(({ to, label }) => ({
     id: `page:${to}`,
     label,
@@ -101,6 +111,8 @@ function itemIcon({ action }: PaletteItem, group: GroupName): LucideIcon | undef
   if (action.to.startsWith('/evals')) return Gauge
   if (action.to === '/explore/glossary') return BookOpen
   if (action.to === '/explore') return Network
+  const tab = SETTINGS_TABS.find(({ path }) => action.to === `/settings/${path}`)
+  if (tab) return tab.Icon
   return LayoutGrid
 }
 

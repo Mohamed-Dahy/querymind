@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { getSession, resetAuth, setSession } from '@/api/session'
 import { AUTH_URL, TAKEN_EMAIL, WRONG_PASSWORD } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
-import { MOCK_LOGGED_OUT_KEY, mockSession } from '@/mocks/session'
+import { MOCK_LOGGED_OUT_KEY, mockSession, mockUser } from '@/mocks/session'
 import { renderApp } from '@/test/render'
 
 /** Nobody logged in, and the refresh cookie is gone too (the fake API answers 401). */
@@ -178,6 +178,9 @@ describe('logged in', () => {
     expect(within(header).getByText('analyst@example.com')).toBeInTheDocument()
     expect(within(header).getByText('Admin')).toBeInTheDocument()
 
+    // The account menu (U7.1b): who you are again, then Log out.
+    await user.click(within(header).getByRole('button', { name: 'Account' }))
+    expect(header).toHaveTextContent(`Admin · ${mockUser.workspace.name}`)
     await user.click(within(header).getByRole('button', { name: 'Log out' }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))

@@ -1,5 +1,6 @@
 import type { EvalsReply } from '@/api/evals'
 import type { Catalog, SemanticOverview } from '@/api/explorer'
+import type { ProviderOption } from '@/api/settings'
 import type {
   AskResponse,
   ClarificationResponse,
@@ -15,6 +16,7 @@ import clarificationJson from './recorded/clarification.json'
 import evalsJson from './recorded/evals.json'
 import followupJson from './recorded/followup.json'
 import monthlyJson from './recorded/monthly.json'
+import providersJson from './recorded/providers.json'
 import refusalJson from './recorded/refusal.json'
 import repairJson from './recorded/repair.json'
 import semanticJson from './recorded/semantic.json'
@@ -32,6 +34,8 @@ import singleStreamJson from './recorded/streams/single.json'
 // Pydantic models, so the casts are safe.
 export const catalog = catalogJson as Catalog
 export const semantic = semanticJson as SemanticOverview
+// GET /llm/providers: the fixed list the Settings key form offers (U7.1b), recorded with --explorer.
+export const providers = providersJson as ProviderOption[]
 // Written by `uv run python -m evals.snapshot`, the same bytes as evals/snapshot.json.
 export const evals = evalsJson as EvalsReply
 export const answer = answerJson as AskResponse

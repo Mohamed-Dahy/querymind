@@ -33,3 +33,24 @@ export function setMockLoggedOut(out: boolean) {
     // No storage (a private window): the fake login just won't survive a reload.
   }
 }
+
+/**
+ * Mock mode and tests only: `localStorage['querymind-mock-role'] = 'viewer'` logs in with that role,
+ * to see what an analyst or a viewer sees (Settings: read-only, no admin-only tabs). Unset: admin.
+ * The fake API refuses admin-only changes for the other roles, as the real one does (403).
+ */
+export const MOCK_ROLE_KEY = 'querymind-mock-role'
+
+export function mockRole(): Me['role'] {
+  try {
+    const role = localStorage.getItem(MOCK_ROLE_KEY)
+    return role === 'analyst' || role === 'viewer' ? role : 'admin'
+  } catch {
+    return 'admin'
+  }
+}
+
+/** Who the fake API says is logged in right now: mockUser, with the role above. */
+export function currentMockUser(): Me {
+  return { ...mockUser, role: mockRole() }
+}

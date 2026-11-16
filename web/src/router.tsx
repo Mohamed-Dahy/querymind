@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, type RouteObject } from 'react-router'
+import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
 
 import { AuthPage } from '@/auth/AuthPage'
 import { RequireLogin } from '@/auth/RequireLogin'
@@ -11,9 +11,11 @@ import {
   LazyEvalsPage,
   LazyExplorePage,
   LazyGlossaryPage,
+  LazyKeySettings,
   LazyModelsPage,
   LazyQuestionPage,
   LazyQuestionsPage,
+  LazySettingsLayout,
   LazyTablePage,
 } from '@/pages/LazyPages'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -119,6 +121,24 @@ export const routes: RouteObject[] = [
         path: 'evals/questions/:id',
         element: <LazyQuestionPage />,
         handle: { title: 'Question' } satisfies RouteHandle,
+      },
+      // Settings (U7.1b): one page, each tab its own URL. /settings opens the first tab; an unknown
+      // tab is the 404 below. Each Phase 5 screen adds its tab here and in settings/tabs.ts.
+      {
+        path: 'settings',
+        element: (
+          <RequireLogin>
+            <LazySettingsLayout />
+          </RequireLogin>
+        ),
+        children: [
+          { index: true, element: <Navigate to="key" replace /> },
+          {
+            path: 'key',
+            element: <LazyKeySettings />,
+            handle: { title: 'LLM key · Settings' } satisfies RouteHandle,
+          },
+        ],
       },
       // Any other path inside the shell: the 404 page, with the rail still there to get back.
       {

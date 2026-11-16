@@ -6,9 +6,9 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { logIn, signUp } from '@/api/auth'
 import { ApiError } from '@/api/client'
 import { safeNext, takeSessionEnded, useAuthStatus } from '@/api/session'
+import { FIELD } from '@/components/field'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 
 type Mode = 'login' | 'signup'
 
@@ -30,11 +30,6 @@ const TEXT: Record<Mode, { title: string; submit: string; busy: string; intro: s
 // The API's limits (auth/passwords.py), checked here first so the user hears it before sending.
 const MIN_PASSWORD = 10
 const MAX_PASSWORD = 128
-
-const FIELD = cn(
-  'mt-1.5 h-11 w-full rounded-lg border border-input bg-muted px-3 text-base',
-  'outline-none focus-visible:ring-3 focus-visible:ring-ring aria-invalid:border-danger',
-)
 
 /**
  * The login and sign-up page (U7.1). Outside the app shell, so logging in starts a fresh canvas.

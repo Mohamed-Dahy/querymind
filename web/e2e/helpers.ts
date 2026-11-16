@@ -67,6 +67,12 @@ export const ROUTES: { path: string; heading: string; title: string; code?: stri
     title: 'Question · QueryMind',
     code: 'src/evals/QuestionPage.tsx',
   },
+  {
+    path: '/settings/key',
+    heading: 'Settings',
+    title: 'LLM key · Settings · QueryMind',
+    code: 'src/settings/SettingsLayout.tsx',
+  },
   { path: '/no/such/page', heading: 'Page not found', title: 'Page not found · QueryMind' },
   {
     path: '/styleguide',

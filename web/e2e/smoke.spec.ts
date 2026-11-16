@@ -58,7 +58,7 @@ test('keyboard only: skip link first, then every control, and Enter navigates', 
     'QueryMind',
     'Search',
     'New conversation',
-    'Log out', // U7.1: the user menu, after the two actions (the email and role aren't focusable)
+    'Account', // the account menu (U7.1b: Settings, Log out), after the two actions
     'Dark',
     'Light',
     'System',

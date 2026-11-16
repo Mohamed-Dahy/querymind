@@ -1,0 +1,44 @@
+[
+  {
+    "id": "groq",
+    "label": "Groq",
+    "example_model": "openai/gpt-oss-120b",
+    "keys_url": "https://console.groq.com/keys"
+  },
+  {
+    "id": "gemini",
+    "label": "Google Gemini",
+    "example_model": "gemini-3.5-flash",
+    "keys_url": "https://aistudio.google.com/apikey"
+  },
+  {
+    "id": "openai",
+    "label": "OpenAI",
+    "example_model": "gpt-4.1-mini",
+    "keys_url": "https://platform.openai.com/api-keys"
+  },
+  {
+    "id": "openrouter",
+    "label": "OpenRouter",
+    "example_model": "openai/gpt-4.1-mini",
+    "keys_url": "https://openrouter.ai/keys"
+  },
+  {
+    "id": "deepseek",
+    "label": "DeepSeek",
+    "example_model": "deepseek-chat",
+    "keys_url": "https://platform.deepseek.com/api_keys"
+  },
+  {
+    "id": "together",
+    "label": "Together AI",
+    "example_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "keys_url": "https://api.together.ai/settings/api-keys"
+  },
+  {
+    "id": "anthropic",
+    "label": "Anthropic (Claude)",
+    "example_model": "claude-haiku-4-5",
+    "keys_url": "https://console.anthropic.com/settings/keys"
+  }
+]

@@ -34,6 +34,7 @@ test('a reload keeps you logged in, and "Log out" keeps you out', async ({ page 
   await page.reload()
   await expect(page.getByRole('heading', { level: 1, name: 'Ask about your data' })).toBeVisible()
 
+  await page.getByRole('banner').getByRole('button', { name: 'Account' }).click()
   await page.getByRole('banner').getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL(/\/login$/)
   await page.reload()

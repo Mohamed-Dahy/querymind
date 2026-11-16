@@ -103,8 +103,9 @@ RECORDINGS = (
 NAMES = tuple(recording.name for recording in RECORDINGS)
 
 
-# Recorded from GET /catalog and GET /semantic, for the data explorer.
-EXPLORER_FIXTURES = ("catalog", "semantic")
+# Metadata fixtures, no LLM: the data explorer's GET /catalog and GET /semantic, and the providers
+# the Settings key form offers (GET /llm/providers, U7.1b). File name → the route it comes from.
+EXPLORER_FIXTURES = {"catalog": "/catalog", "semantic": "/semantic", "providers": "/llm/providers"}
 
 
 def select(names: list[str]) -> tuple[Recording, ...]:
@@ -192,14 +193,14 @@ def write_fixtures(recorded: dict[str, Recorded], output_dir: Path) -> list[Path
 
 
 def record_explorer(settings: Settings, output_dir: Path) -> list[Path]:
-    """catalog.json and semantic.json, from the real endpoints. Metadata only, and no LLM."""
+    """catalog, semantic and providers .json, from the real endpoints. Metadata only, no LLM."""
     explorer = create_explorer(settings)
     app = logged_in_as_recorder(create_app(pipeline=object(), explorer=explorer))  # type: ignore[arg-type]
     paths = []
     with TestClient(app) as client:
-        for name in EXPLORER_FIXTURES:
+        for name, route in EXPLORER_FIXTURES.items():
             path = output_dir / f"{name}.json"
-            write_json(path, client.get(f"/{name}").raise_for_status().json())
+            write_json(path, client.get(route).raise_for_status().json())
             paths.append(path)
     return paths
 
@@ -233,7 +234,7 @@ def main() -> int:
     parser.add_argument(
         "--explorer",
         action="store_true",
-        help="record only catalog.json and semantic.json (needs the database, no LLM)",
+        help="record only catalog.json, semantic.json and providers.json (database, no LLM)",
     )
     args = parser.parse_args()
     wanted = set(args.only or NAMES)

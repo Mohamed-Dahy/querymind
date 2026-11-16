@@ -12,7 +12,9 @@ import pytest
 from pydantic import BaseModel, TypeAdapter
 
 from querymind.api.errors import ERROR_MAP, LLM_MESSAGES
+from querymind.api.llm_keys import ProviderOption
 from querymind.api.schemas import AskReply, StreamEvent
+from querymind.llm.catalog import CATALOG
 from querymind.semantic.catalog import Catalog, SemanticOverview, build_overview
 from querymind.semantic.dictionary import load_dictionaries
 from querymind.semantic.examples import load_all_examples
@@ -64,6 +66,23 @@ def test_the_explorer_fixtures_match_the_api_models(name: str, model: type[BaseM
     data = load(DEFAULT_OUTPUT / f"{name}.json")
 
     assert model.model_validate(data).model_dump(mode="json") == data
+
+
+def test_the_providers_fixture_is_the_catalog_today() -> None:
+    """The Settings key form's choices (U7.1b) are the real fixed list. If this fails, run:
+    uv run python scripts/record_fixtures.py --explorer
+    """
+    data = load(DEFAULT_OUTPUT / "providers.json")
+
+    assert TypeAdapter(list[ProviderOption]).validate_python(data) == [
+        ProviderOption(
+            id=entry.id,
+            label=entry.label,
+            example_model=entry.example_model,
+            keys_url=entry.keys_url,
+        )
+        for entry in CATALOG.values()
+    ]
 
 
 def test_the_semantic_fixture_is_what_the_yaml_files_say_today() -> None:

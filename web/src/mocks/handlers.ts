@@ -17,6 +17,7 @@ import type { LoginRequest, SignupRequest } from '@/api/auth'
 import type { AskReply, AskRequest } from '@/api/client'
 import type { TokenResponse } from '@/api/session'
 import type { ConversationUpdate } from '@/api/conversations'
+import type { SaveLLMKeyRequest } from '@/api/settings'
 import type { StreamEvent, TraceEvent } from '@/api/stream'
 import {
   answer,
@@ -32,6 +33,7 @@ import {
   health,
   monthly,
   monthlyStream,
+  providers,
   refusal,
   refusalStream,
   repair,
@@ -42,7 +44,15 @@ import {
   type MockError,
   type MockErrorCode,
 } from './fixtures'
-import { mockLoggedOut, mockUser, setMockLoggedOut } from './session'
+import { currentMockUser, mockLoggedOut, setMockLoggedOut } from './session'
+import {
+  deleteMockKey,
+  INVALID_KEY,
+  loadMockKey,
+  refusedMessage,
+  saveMockKey,
+  TOO_MANY_TRIES_KEY,
+} from './settings'
 
 // The paths the browser calls. MSW answers before Vite's proxy, so the /api prefix is still there.
 export const HEALTH_URL = '/api/health'
@@ -50,6 +60,7 @@ export const ASK_URL = '/api/ask'
 export const STREAM_URL = '/api/ask/stream'
 const CONVERSATION_URL = '/api/conversations/:id'
 export const SAVED_QUESTIONS_URL = '/api/saved-questions'
+export const LLM_KEY_URL = '/api/llm/key'
 
 export const AUTH_URL = {
   refresh: '/api/auth/refresh',
@@ -68,7 +79,7 @@ function tokens(email: string): TokenResponse {
     access_token: 'mock-access-token',
     token_type: 'bearer',
     expires_in: 900,
-    user: { ...mockUser, email: email.toLowerCase() },
+    user: { ...currentMockUser(), email: email.toLowerCase() },
   }
 }
 
@@ -197,7 +208,9 @@ export const handlers = [
   http.get(HEALTH_URL, () => HttpResponse.json(health)),
   // Logins (U7.1). Any email and password work, except the few below that show each error.
   http.post(AUTH_URL.refresh, () =>
-    mockLoggedOut() ? apiError('not_authenticated') : HttpResponse.json(tokens(mockUser.email)),
+    mockLoggedOut()
+      ? apiError('not_authenticated')
+      : HttpResponse.json(tokens(currentMockUser().email)),
   ),
   http.post(AUTH_URL.login, async ({ request }) => {
     const body = (await request.json()) as LoginRequest
@@ -215,7 +228,7 @@ export const handlers = [
     setMockLoggedOut(true)
     return new HttpResponse(null, { status: 204 })
   }),
-  http.get(AUTH_URL.me, () => HttpResponse.json(mockUser)),
+  http.get(AUTH_URL.me, () => HttpResponse.json(currentMockUser())),
   http.post(STREAM_URL, async ({ request }) => {
     const body = (await request.json()) as AskRequest
     if (BROKEN_STREAM.test(body.question)) return HttpResponse.error()
@@ -267,6 +280,35 @@ export const handlers = [
   }),
   http.delete(`${SAVED_QUESTIONS_URL}/:id`, ({ params }) => {
     removeSavedQuestion(String(params['id']))
+    return new HttpResponse(null, { status: 204 })
+  }),
+  // Settings: the workspace's LLM key (U7.1b). Admins change it; every member may read it.
+  http.get('/api/llm/providers', () => HttpResponse.json(providers)),
+  http.get(LLM_KEY_URL, () => HttpResponse.json(loadMockKey())),
+  http.put(LLM_KEY_URL, async ({ request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const body = (await request.json()) as SaveLLMKeyRequest
+    if (body.api_key === TOO_MANY_TRIES_KEY) {
+      return HttpResponse.json(
+        {
+          error: 'rate_limited',
+          message: 'Too many keys tried in a short time. Please wait before trying another.',
+          retry_after_seconds: 30,
+        },
+        { status: 429, headers: { 'Retry-After': '30' } },
+      )
+    }
+    if (body.api_key === INVALID_KEY) {
+      return HttpResponse.json(
+        { error: 'llm_key_invalid', message: refusedMessage(body.provider) },
+        { status: 422 },
+      )
+    }
+    return HttpResponse.json(saveMockKey(body))
+  }),
+  http.delete(LLM_KEY_URL, () => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    deleteMockKey()
     return new HttpResponse(null, { status: 204 })
   }),
 ]

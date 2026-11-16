@@ -1,27 +1,14 @@
 import { CircleAlert, Pencil, RotateCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
 
 import { errorTitle } from '@/api/errors'
 import { Button } from '@/components/ui/button'
+import { useSecondsLeft } from '@/lib/useSecondsLeft'
 
 import type { CellError } from './state'
 import { formatWait } from './wait'
 
 // The same question would fail the same way, and each try costs LLM quota: change it instead.
 const RETRY_WONT_HELP: readonly string[] = ['unsafe_sql', 'invalid_request']
-
-/** Whole seconds until `until` (a timestamp), counting down while the component is on screen. */
-function useSecondsLeft(until: number | undefined): number {
-  const [now, setNow] = useState(() => Date.now())
-  const left = until === undefined ? 0 : Math.max(0, Math.ceil((until - now) / 1000))
-  const counting = left > 0
-  useEffect(() => {
-    if (!counting) return undefined
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [counting])
-  return left
-}
 
 type ErrorCellProps = {
   error: CellError
