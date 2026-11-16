@@ -8,6 +8,7 @@
  */
 import type { AskReply } from '@/api/client'
 import type { ConversationDetail, RerunResult } from '@/api/conversations'
+import type { DatabaseId } from '@/api/explorer'
 import type { TraceEvent } from '@/api/stream'
 
 /** The key of the conversation that has no id yet: the canvas at `/`. */
@@ -52,11 +53,22 @@ export type SavedInfo = {
   freshAt?: string
 }
 
-/** `id` is null until the server's first reply gives the conversation one. */
-export type Conversation = { id: string | null; cells: Cell[] }
+/**
+ * `id` is null until the server's first reply gives the conversation one. `connectionId`: the
+ * database it is about (null = the demo; U7.1b), set by its first question or its saved copy;
+ * undefined until known. Follow-ups always go to it: the API keeps a conversation on its database.
+ */
+export type Conversation = { id: string | null; cells: Cell[]; connectionId?: DatabaseId }
 
 export type ConversationAction =
-  | { type: 'asked'; cellId: string; question: string; parentId?: string }
+  | {
+      type: 'asked'
+      cellId: string
+      question: string
+      parentId?: string
+      /** The database a new conversation's first question goes to. */
+      connectionId?: DatabaseId
+    }
   | { type: 'traced'; cellId: string; event: TraceEvent }
   | { type: 'replied'; cellId: string; reply: AskReply }
   | { type: 'failed'; cellId: string; error: CellError }
@@ -67,10 +79,13 @@ export type ConversationAction =
 export function conversationReducer(state: Conversation, action: ConversationAction): Conversation {
   switch (action.type) {
     case 'asked': {
-      const { cellId, question, parentId } = action
+      const { cellId, question, parentId, connectionId } = action
       const cell: Cell = { id: cellId, question, status: 'running' }
       if (parentId !== undefined) cell.parentId = parentId
-      return { ...state, cells: [...state.cells, cell] }
+      const next = { ...state, cells: [...state.cells, cell] }
+      // Only the first question picks the database; a follow-up can't move the conversation.
+      const first = state.cells.length === 0 && state.id === null
+      return first && connectionId !== undefined ? { ...next, connectionId } : next
     }
     case 'traced':
       return updateCell(state, action.cellId, 'running', (cell) => ({
@@ -199,7 +214,11 @@ export function canvasReducer(store: CanvasStore, action: CanvasAction): CanvasS
     const { id } = action.conversation
     // Never over live cells: a question asked while it was loading must not vanish.
     if (conversationAt(store, id).cells.length > 0) return store
-    const loaded: Conversation = { id, cells: cellsFromSaved(action.conversation) }
+    const loaded: Conversation = {
+      id,
+      cells: cellsFromSaved(action.conversation),
+      connectionId: action.conversation.connection_id ?? null,
+    }
     return { ...store, conversations: { ...store.conversations, [id]: loaded } }
   }
   if (action.type === 'dropped') {

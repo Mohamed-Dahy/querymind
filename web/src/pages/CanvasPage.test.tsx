@@ -107,7 +107,7 @@ describe('CanvasPage', () => {
 
     const id = router.state.location.pathname.slice('/c/'.length)
     expect(bodies).toEqual([
-      { question: 'Sales per category?', conversation_id: null },
+      { question: 'Sales per category?', conversation_id: null, connection_id: null },
       { question: 'Now only for 1997', conversation_id: id },
     ])
     expect(screen.getAllByRole('article')).toHaveLength(2)
@@ -167,8 +167,8 @@ describe('CanvasPage', () => {
     expect(screen.getAllByRole('article')).toHaveLength(1)
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
     expect(bodies).toEqual([
-      { question: 'Sales per category?', conversation_id: null },
-      { question: 'Sales per category?', conversation_id: null },
+      { question: 'Sales per category?', conversation_id: null, connection_id: null },
+      { question: 'Sales per category?', conversation_id: null, connection_id: null },
     ])
     // The first success names the conversation; the focus didn't vanish with the Retry button.
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/c\//))
@@ -430,7 +430,11 @@ describe('CanvasPage', () => {
 
     await askByKeyboard(user, 'Top 3 artists')
     await screen.findByRole('article', { name: 'Top 3 artists' })
-    expect(bodies[1]).toEqual({ question: 'Top 3 artists', conversation_id: null })
+    expect(bodies[1]).toEqual({
+      question: 'Top 3 artists',
+      conversation_id: null,
+      connection_id: null,
+    })
 
     await act(() => router.navigate(oldPath))
     expect(await screen.findByText(answer.answer)).toBeInTheDocument()
@@ -590,7 +594,11 @@ describe('CanvasPage', () => {
     expect(await screen.findByText(followup.answer)).toBeInTheDocument()
     const id = router.state.location.pathname.slice('/c/'.length)
     expect(bodies).toEqual([
-      { question: 'Which products are the most popular?', conversation_id: null },
+      {
+        question: 'Which products are the most popular?',
+        conversation_id: null,
+        connection_id: null,
+      },
       {
         question: 'Which products are the most popular? (by total revenue)',
         conversation_id: id,
@@ -770,7 +778,11 @@ describe('CanvasPage', () => {
       expect(await screen.findByRole('article', { name: 'Top 3 artists' })).toBeInTheDocument()
       expect(screen.queryByRole('article', { name: 'Sales per category?' })).toBeNull()
       await waitFor(() => expect(bodies).toHaveLength(2))
-      expect(bodies[1]).toEqual({ question: 'Top 3 artists', conversation_id: null })
+      expect(bodies[1]).toEqual({
+        question: 'Top 3 artists',
+        conversation_id: null,
+        connection_id: null,
+      })
       await waitFor(() => {
         expect(router.state.location.pathname).toMatch(/^\/c\//)
         expect(router.state.location.pathname).not.toBe(first)

@@ -24,8 +24,10 @@ import { isPaletteShortcut, MODIFIER } from '@/lib/keys'
 import { cn } from '@/lib/utils'
 
 import { ApiStatus } from './ApiStatus'
+import { DatabaseSwitcher } from './DatabaseSwitcher'
 import { HistoryRail } from './HistoryRail'
 import { SkipLink } from './SkipLink'
+import { DEMO_NAME, explorerPath, useDatabase } from './useDatabase'
 import { useDeleteWithUndo, type DeleteWithUndo } from './useDeleteWithUndo'
 import { useFocusOnRouteChange } from './useFocusOnRouteChange'
 
@@ -83,11 +85,16 @@ function Frame() {
             <ScanSearch aria-hidden="true" className="size-5 text-signal" />
             QueryMind
           </Link>
-          {/* Not on a phone: the canvas's own intro names both businesses. */}
-          <span className="hidden items-center gap-1.5 text-sm text-fg-muted sm:flex">
-            <Database aria-hidden="true" className="size-4" />
-            Northwind + Chinook
-          </span>
+          {/* Which database (U7.1b). Not on a phone: there it's at the top of the page. Logged
+              out, only the demo's name, as before. */}
+          {loggedIn ? (
+            <DatabaseSwitcher place="bar" />
+          ) : (
+            <span className="hidden items-center gap-1.5 text-sm text-fg-muted sm:flex">
+              <Database aria-hidden="true" className="size-4" />
+              {DEMO_NAME}
+            </span>
+          )}
           <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-4">
             {loggedIn && (
               <Button
@@ -206,6 +213,8 @@ function usePalette(enabled: boolean) {
 /** The left rail (a row on phones): the three areas, then the history (logged in only). */
 function NavRail({ deletes, loggedIn }: { deletes: DeleteWithUndo; loggedIn: boolean }) {
   const { pathname } = useLocation()
+  // Explore opens on the current database (U7.1b).
+  const database = useDatabase().id
   const [sheetOpen, setSheetOpen] = useState(false)
   const [sheetLoaded, setSheetLoaded] = useState(false)
   const historyButton = useRef<HTMLButtonElement>(null)
@@ -221,7 +230,7 @@ function NavRail({ deletes, loggedIn }: { deletes: DeleteWithUndo; loggedIn: boo
           return (
             <li key={to}>
               <Link
-                to={to}
+                to={to === '/explore' ? explorerPath(to, database) : to}
                 // Tells screen readers which page this is; the look follows it (not colour alone: weight too).
                 aria-current={current ? 'page' : undefined}
                 className={cn(

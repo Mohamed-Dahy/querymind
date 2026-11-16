@@ -11,13 +11,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { businessLabel, metricMatches, metricQuestion, termAnchor, termName } from './data'
 import { LoadError } from './LoadError'
 import { useSemanticOverview } from './useExplorerData'
+import { useExplorerDatabase, useExplorerHref } from './useExplorerDatabase'
 
 /**
  * Every business term and exactly what it means in SQL. It reads only the semantic layer, so it works
  * even when the database is down.
  */
 export default function GlossaryPage() {
-  const { data, error, isPending, refetch } = useSemanticOverview()
+  const database = useExplorerDatabase()
+  const href = useExplorerHref()
+  const { data, error, isPending, refetch } = useSemanticOverview(database)
   const [search, setSearch] = useState('')
   const searchId = useId()
   const { hash } = useLocation()
@@ -39,7 +42,7 @@ export default function GlossaryPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       <Link
-        to="/explore"
+        to={href('/explore')}
         className="inline-flex min-h-11 items-center gap-1.5 rounded-lg text-sm text-info underline underline-offset-4"
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
@@ -50,6 +53,12 @@ export default function GlossaryPage() {
         Every term QueryMind knows, with the exact SQL it uses. A person wrote and checked these, so
         &ldquo;revenue&rdquo; always means the same thing.
       </p>
+      {database !== null && (
+        <p role="note" className="mt-4 rounded-lg border bg-muted px-3 py-2 text-sm">
+          Business terms are written by hand, and so far only for the demo databases. Your own
+          database has none yet: questions about it use the meanings of its tables and columns.
+        </p>
+      )}
 
       <div className="mt-6">
         {isPending ? (
@@ -106,6 +115,7 @@ export default function GlossaryPage() {
 }
 
 function Term({ metric }: { metric: MetricMeaning }) {
+  const href = useExplorerHref()
   const draftNew = useDraftNew()
   const { name, kind, description, synonyms, table, sql } = metric
   const title = termName(name)
@@ -129,7 +139,7 @@ function Term({ metric }: { metric: MetricMeaning }) {
       <p className="mt-2 text-sm">
         <span className="text-fg-muted">On the table:</span>{' '}
         <Link
-          to={`/explore/tables/${encodeURIComponent(table)}`}
+          to={href(`/explore/tables/${encodeURIComponent(table)}`)}
           className="text-info underline underline-offset-4"
         >
           {table}

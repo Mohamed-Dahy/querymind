@@ -4,7 +4,7 @@ import { useEffect, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 
 import { CONVERSATIONS_KEY } from '@/api/conversations'
-import { getTableQuestions } from '@/api/explorer'
+import { getTableQuestions, type DatabaseId } from '@/api/explorer'
 import { useDraftNew } from '@/canvas/useConversation'
 import { SqlCode } from '@/canvas/SqlView'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -21,13 +21,13 @@ import {
 } from './data'
 import { LoadError } from './LoadError'
 import { useExplorerData } from './useExplorerData'
-
-const tablePath = (name: string) => `/explore/tables/${encodeURIComponent(name)}`
+import { useExplorerDatabase, useExplorerHref } from './useExplorerDatabase'
 
 /** One table: what it means, its columns and joins, its terms, and questions to ask about it. */
 export default function TablePage() {
   const { table: name } = useParams()
-  const { catalog, semantic, error, pending, retry } = useExplorerData()
+  const database = useExplorerDatabase()
+  const { catalog, semantic, error, pending, retry } = useExplorerData(database)
 
   // A join is followed from far down the page, and the next table starts at its title.
   useEffect(() => {
@@ -54,16 +54,17 @@ export default function TablePage() {
   }
   const details = tableDetails(name ?? '', catalog, semantic)
   if (details === undefined) return <NotFoundPage />
-  return <TableView details={details} />
+  return <TableView details={details} database={database} />
 }
 
-function TableView({ details }: { details: TableDetails }) {
+function TableView({ details, database }: { details: TableDetails; database: DatabaseId }) {
+  const href = useExplorerHref()
   const { table, meaning, businessDescription } = details
   const piiCount = meaning?.columns.filter(({ pii }) => pii).length ?? 0
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       <Link
-        to={`/explore?table=${encodeURIComponent(table.name)}`}
+        to={href(`/explore?table=${encodeURIComponent(table.name)}`)}
         className="inline-flex min-h-11 items-center gap-1.5 rounded-lg text-sm text-info underline underline-offset-4"
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
@@ -90,7 +91,7 @@ function TableView({ details }: { details: TableDetails }) {
         <Joins relations={details.relations} />
         <Terms details={details} />
         <Questions questions={meaning?.suggested_questions ?? []} />
-        <RecentQuestions table={table.name} />
+        <RecentQuestions table={table.name} database={database} />
       </div>
     </div>
   )
@@ -233,13 +234,14 @@ function Joins({ relations }: { relations: readonly Relation[] }) {
 
 function RelationRow({ relation }: { relation: Relation }) {
   const { from, to, other, preferred, note } = relation
+  const href = useExplorerHref()
   return (
     <li className="flex flex-wrap items-center gap-x-2 text-sm">
       <code className="font-mono break-all">{from}</code>
       <ArrowRight aria-label="points to" className="size-3.5 shrink-0 text-fg-muted" />
       <code className="font-mono break-all">{to}</code>
       <Link
-        to={tablePath(other)}
+        to={href(`/explore/tables/${encodeURIComponent(other)}`)}
         className="inline-flex min-h-8 items-center rounded-lg text-info underline underline-offset-4 pointer-coarse:min-h-11"
       >
         Open {other}
@@ -251,6 +253,7 @@ function RelationRow({ relation }: { relation: Relation }) {
 }
 
 function Terms({ details: { metrics } }: { details: TableDetails }) {
+  const href = useExplorerHref()
   return (
     <Section title="Business terms">
       {metrics.length === 0 ? (
@@ -270,7 +273,7 @@ function Terms({ details: { metrics } }: { details: TableDetails }) {
                 <SqlCode sql={metric.sql} />
               </div>
               <Link
-                to={`/explore/glossary#${termAnchor(metric.name)}`}
+                to={href(`/explore/glossary#${termAnchor(metric.name)}`)}
                 className="mt-1 inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
               >
                 {termName(metric.name)} in the glossary
@@ -316,11 +319,12 @@ function Questions({ questions }: { questions: readonly string[] }) {
 }
 
 /** Saved questions whose SQL read this table. Nothing at all with history off. */
-function RecentQuestions({ table }: { table: string }) {
-  // Under the conversations' key, so a new answer refreshes it too.
+function RecentQuestions({ table, database }: { table: string; database: DatabaseId }) {
+  // Under the conversations' key, so a new answer refreshes it too. Per database: the demo's
+  // `customers` is not a saved database's.
   const recent = useQuery({
-    queryKey: [...CONVERSATIONS_KEY, 'using', table],
-    queryFn: ({ signal }) => getTableQuestions(table, signal),
+    queryKey: [...CONVERSATIONS_KEY, 'using', table, database],
+    queryFn: ({ signal }) => getTableQuestions(table, database, signal),
     retry: false,
   })
   if (!recent.isSuccess) return null

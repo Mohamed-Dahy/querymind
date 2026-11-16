@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 
 import { groupConversations } from './history'
 import type { DeleteWithUndo } from './useDeleteWithUndo'
+import { useDatabase } from './useDatabase'
 
 const SEARCH_DELAY_MS = 250
 
@@ -212,6 +213,9 @@ function HistoryItem({
 }) {
   const { id, title, pinned } = conversation
   const { pathname } = useLocation()
+  // About one of the workspace's own databases (U7.1b): its name, small. The demo's say nothing.
+  const { connections } = useDatabase()
+  const database = connections.find(({ id: one }) => one === conversation.connection_id)
   const queryClient = useQueryClient()
   const { newConversation } = useHistoryActions()
   const [renaming, setRenaming] = useState(false)
@@ -262,6 +266,12 @@ function HistoryItem({
       >
         {pinned && <Pin aria-label="Pinned" className="size-3 shrink-0" />}
         <span className="truncate">{title}</span>
+        {database && (
+          <span className="max-w-24 shrink-0 truncate rounded border px-1 text-xs text-fg-muted">
+            <span className="sr-only">, about </span>
+            {database.name}
+          </span>
+        )}
       </Link>
       <div className={ACTIONS}>
         <IconButton

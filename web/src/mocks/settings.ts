@@ -11,7 +11,9 @@ import type {
   SaveLLMKeyRequest,
 } from '@/api/settings'
 
-import { providers } from './fixtures'
+import type { Catalog, SemanticOverview } from '@/api/explorer'
+
+import { catalog, providers } from './fixtures'
 
 const KEY = 'querymind-mock-llm-key'
 
@@ -123,3 +125,22 @@ export function deleteMockConnection(id: string): boolean {
   saveAll(all.filter((connection) => connection.id !== id))
   return all.some((connection) => connection.id === id)
 }
+
+/** Is this one of the fake workspace's saved databases? */
+export function isMockConnection(id: string): boolean {
+  return loadMockConnections().some((connection) => connection.id === id)
+}
+
+/**
+ * A saved database in the explorer (U7.1b): the demo's Northwind tables, as a database that hasn't
+ * been onboarded shows them: no business, and no meanings yet.
+ */
+export function savedDatabaseCatalog(): Catalog {
+  return {
+    tables: catalog.tables
+      .filter(({ business }) => business === 'northwind')
+      .map((table) => ({ ...table, business: null })),
+  }
+}
+
+export const NOT_ONBOARDED: SemanticOverview = { businesses: [] }

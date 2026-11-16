@@ -36,8 +36,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { EVAL_VIEWS } from '@/evals/views'
 import { businessLabel, termAnchor, termName } from '@/explorer/data'
 import { useExplorerData, useSemanticOverview } from '@/explorer/useExplorerData'
-import { SETTINGS_TABS } from '@/settings/tabs'
 import { useTheme, type ThemeChoice } from '@/lib/theme'
+import { SETTINGS_TABS } from '@/settings/tabs'
 
 import {
   paletteGroups,
@@ -48,6 +48,7 @@ import {
   type PaletteSources,
   type Source,
 } from './palette'
+import { explorerPath, useDatabase } from './useDatabase'
 
 type CommandPaletteProps = {
   open: boolean
@@ -108,10 +109,11 @@ const PAGES: PaletteItem[] = [
 function itemIcon({ action }: PaletteItem, group: GroupName): LucideIcon | undefined {
   if (action.kind === 'theme') return THEME_ICONS[action.choice]
   if (group !== 'Pages' || action.kind !== 'navigate') return undefined
-  if (action.to.startsWith('/evals')) return Gauge
-  if (action.to === '/explore/glossary') return BookOpen
-  if (action.to === '/explore') return Network
-  const tab = SETTINGS_TABS.find(({ path }) => action.to === `/settings/${path}`)
+  const path = action.to.split(/[?#]/)[0] ?? action.to // without ?db=…
+  if (path.startsWith('/evals')) return Gauge
+  if (path === '/explore/glossary') return BookOpen
+  if (path === '/explore') return Network
+  const tab = SETTINGS_TABS.find(({ path: tabPath }) => path === `/settings/${tabPath}`)
   if (tab) return tab.Icon
   return LayoutGrid
 }
@@ -249,8 +251,10 @@ function usePaletteSources(
     queryFn: ({ signal }) => listConversations({ limit: CONVERSATION_LIMIT }, signal),
     enabled: open,
   })
-  const explorer = useExplorerData()
-  const semantic = useSemanticOverview()
+  // The current database's tables and terms (U7.1b), with links that stay on it.
+  const database = useDatabase().id
+  const explorer = useExplorerData(database)
+  const semantic = useSemanticOverview(database)
 
   const conversationItems = conversations.data?.conversations
   const tables = explorer.data?.tables
@@ -303,7 +307,7 @@ function usePaletteSources(
             label: name,
             hint: businessLabel(business),
             keywords: [...synonyms, ...columns],
-            action: nav(`/explore/tables/${encodeURIComponent(name)}`),
+            action: nav(explorerPath(`/explore/tables/${encodeURIComponent(name)}`, database)),
           })),
         }
       : {
@@ -319,7 +323,7 @@ function usePaletteSources(
               label: termName(name),
               hint: businessLabel(database),
               keywords: [name, ...synonyms],
-              action: nav(`/explore/glossary#${termAnchor(name)}`),
+              action: nav(explorerPath(`/explore/glossary#${termAnchor(name)}`, database)),
             })),
           ),
         }
@@ -330,7 +334,11 @@ function usePaletteSources(
 
     return {
       actions,
-      pages: PAGES,
+      pages: PAGES.map((page) =>
+        page.action.kind === 'navigate' && page.action.to.startsWith('/explore')
+          ? { ...page, action: nav(explorerPath(page.action.to, database)) }
+          : page,
+      ),
       conversations: conversationSource,
       tables: tableSource,
       terms: termSource,
@@ -345,5 +353,6 @@ function usePaletteSources(
     explorer.error,
     businesses,
     semantic.isError,
+    database,
   ])
 }

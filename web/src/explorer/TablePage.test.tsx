@@ -174,7 +174,7 @@ describe('TablePage', () => {
     await user.keyboard('{Control>}{Enter}{/Control}')
 
     await waitFor(() => expect(asks).toHaveLength(2))
-    expect(asks[1]).toEqual({ question, conversation_id: null })
+    expect(asks[1]).toEqual({ question, conversation_id: null, connection_id: null })
   })
 
   it('a reload does not fill the composer again', async () => {

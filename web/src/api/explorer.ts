@@ -12,17 +12,36 @@ export type TableQuestionList = Schemas['TableQuestionList']
 
 const TIMEOUT_MS = 20_000 // the first read of the catalog may have to count a few tables
 
-export function getCatalog(signal?: AbortSignal): Promise<Catalog> {
-  return call(TIMEOUT_MS, signal, (s) => api.GET('/catalog', { signal: s }))
+/** Which database (U7.1b): one of the workspace's saved ones, or null for the demo. */
+export type DatabaseId = string | null
+
+/** `?connection_id=` for a saved database; nothing for the demo. */
+function onDatabase(database: DatabaseId) {
+  return database === null ? {} : { connection_id: database }
 }
 
-export function getSemantic(signal?: AbortSignal): Promise<SemanticOverview> {
-  return call(TIMEOUT_MS, signal, (s) => api.GET('/semantic', { signal: s }))
-}
-
-/** Recent saved questions whose SQL read this table. Fails with history off. */
-export function getTableQuestions(table: string, signal?: AbortSignal): Promise<TableQuestionList> {
+export function getCatalog(database: DatabaseId, signal?: AbortSignal): Promise<Catalog> {
   return call(TIMEOUT_MS, signal, (s) =>
-    api.GET('/catalog/tables/{table}/questions', { params: { path: { table } }, signal: s }),
+    api.GET('/catalog', { params: { query: onDatabase(database) }, signal: s }),
+  )
+}
+
+export function getSemantic(database: DatabaseId, signal?: AbortSignal): Promise<SemanticOverview> {
+  return call(TIMEOUT_MS, signal, (s) =>
+    api.GET('/semantic', { params: { query: onDatabase(database) }, signal: s }),
+  )
+}
+
+/** Recent saved questions on this database whose SQL read this table. Fails with history off. */
+export function getTableQuestions(
+  table: string,
+  database: DatabaseId,
+  signal?: AbortSignal,
+): Promise<TableQuestionList> {
+  return call(TIMEOUT_MS, signal, (s) =>
+    api.GET('/catalog/tables/{table}/questions', {
+      params: { path: { table }, query: onDatabase(database) },
+      signal: s,
+    }),
   )
 }

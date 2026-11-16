@@ -50,8 +50,11 @@ import {
   deleteMockConnection,
   deleteMockKey,
   INVALID_KEY,
+  isMockConnection,
   loadMockConnections,
   loadMockKey,
+  NOT_ONBOARDED,
+  savedDatabaseCatalog,
   refusedMessage,
   saveMockConnection,
   saveMockKey,
@@ -175,7 +178,7 @@ export function streamOf(events: readonly StreamEvent[], { stuck = false } = {})
 /** The whole recorded stream for a question: its events, then the reply. */
 export function replyStream(request: AskRequest) {
   const { reply, events } = recordedFor(request)
-  recordTurn(reply, events) // the real API saves before the final event, too
+  recordTurn(reply, events, request.connection_id ?? null) // the real API saves before the final event, too
   return streamOf([...events, { type: 'final', reply }])
 }
 
@@ -237,6 +240,12 @@ export const handlers = [
   http.get(AUTH_URL.me, () => HttpResponse.json(currentMockUser())),
   http.post(STREAM_URL, async ({ request }) => {
     const body = (await request.json()) as AskRequest
+    // The real stream sends these as its only event, with status 200 (seen live, U7.1b).
+    const refused = ownDatabaseRefusal(body)
+    if (refused) {
+      const { message } = errors[refused]
+      return streamOf([{ type: 'error', error: { error: refused, message } }])
+    }
     if (BROKEN_STREAM.test(body.question)) return HttpResponse.error()
     if (STUCK_STREAM.test(body.question)) return streamOf(answerStream.slice(0, 5), { stuck: true })
     const code = ERROR_PREFIX.exec(body.question)?.[1]?.toLowerCase()
@@ -245,10 +254,12 @@ export const handlers = [
   }),
   http.post(ASK_URL, async ({ request }) => {
     const body = (await request.json()) as AskRequest
+    const refused = ownDatabaseRefusal(body)
+    if (refused) return apiError(refused)
     const code = ERROR_PREFIX.exec(body.question)?.[1]?.toLowerCase()
     if (code && code in errors) return apiError(code as MockErrorCode)
     const reply = replyFor(body)
-    recordTurn(reply, [])
+    recordTurn(reply, [], body.connection_id ?? null)
     return HttpResponse.json(reply)
   }),
   http.get('/api/conversations', ({ request }) => {
@@ -273,12 +284,29 @@ export const handlers = [
     const result = rerunStored(String(params['id']), Number(params['n']))
     return result ? HttpResponse.json(result) : apiError('turn_not_found')
   }),
-  http.get('/api/catalog', () => HttpResponse.json(catalog)),
-  http.get('/api/semantic', () => HttpResponse.json(semantic)),
+  // A saved database's (U7.1b): `?connection_id=`; one the workspace doesn't have is a 404.
+  http.get('/api/catalog', ({ request }) => {
+    const database = new URL(request.url).searchParams.get('connection_id')
+    if (database === null) return HttpResponse.json(catalog)
+    return isMockConnection(database)
+      ? HttpResponse.json(savedDatabaseCatalog())
+      : apiError('connection_not_found')
+  }),
+  http.get('/api/semantic', ({ request }) => {
+    const database = new URL(request.url).searchParams.get('connection_id')
+    if (database === null) return HttpResponse.json(semantic)
+    return isMockConnection(database)
+      ? HttpResponse.json(NOT_ONBOARDED)
+      : apiError('connection_not_found')
+  }),
   http.get('/api/evals', () => HttpResponse.json(evals)),
-  http.get('/api/catalog/tables/:table/questions', ({ params }) =>
-    HttpResponse.json(questionsUsing(String(params['table']))),
-  ),
+  http.get('/api/catalog/tables/:table/questions', ({ params, request }) => {
+    const database = new URL(request.url).searchParams.get('connection_id')
+    if (database === null) return HttpResponse.json(questionsUsing(String(params['table'])))
+    return isMockConnection(database)
+      ? HttpResponse.json({ questions: [] })
+      : apiError('connection_not_found')
+  }),
   http.get(SAVED_QUESTIONS_URL, () => HttpResponse.json({ questions: listSavedQuestions() })),
   http.post(SAVED_QUESTIONS_URL, async ({ request }) => {
     const { question } = (await request.json()) as { question: string }
@@ -367,5 +395,18 @@ function connectionRefusal(body: SaveConnectionRequest) {
   if (body.host === t.selfSignedHost) return apiError('connection_tls_failed')
   if (body.password === t.wrongPassword) return apiError('connection_login_failed')
   if (body.user === t.writerUser) return apiError('connection_writable')
+  return null
+}
+
+/**
+ * Why a first question about a saved database is refused, as the real API would: one the
+ * workspace doesn't have (`connection_not_found`), or no LLM key of its own to ask it with
+ * (`llm_key_required`). POST /ask answers with that HTTP error; the stream sends it as an event.
+ */
+function ownDatabaseRefusal(body: AskRequest): MockErrorCode | null {
+  const database = body.connection_id
+  if (database === null || database === undefined) return null
+  if (!isMockConnection(database)) return 'connection_not_found'
+  if (loadMockKey() === null) return 'llm_key_required'
   return null
 }

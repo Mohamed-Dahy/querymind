@@ -90,10 +90,12 @@ export function deleteConnection(id: string): Promise<void> {
   )
 }
 
-export function useConnections() {
+/** `enabled: false` while logged out: the list needs a login (the shell asks on every page). */
+export function useConnections({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: CONNECTIONS_QUERY,
     queryFn: ({ signal }) => listConnections(signal),
+    enabled,
   })
 }
 

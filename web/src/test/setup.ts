@@ -4,6 +4,7 @@ import { cleanup, configure } from '@testing-library/react'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
 
+import { resetChosenDatabases } from '../api/database'
 import { resetAuth, setSession } from '../api/session'
 import { server } from '../mocks/server'
 import { mockSession } from '../mocks/session'
@@ -15,6 +16,8 @@ beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 // The fake API keeps its saved conversations in localStorage (mocks/conversations.ts).
 afterEach(() => localStorage.clear())
+// The chosen database is also kept in memory for the page load (api/database.ts).
+afterEach(() => resetChosenDatabases())
 // Sonner keeps its toasts in the module, and a new <Toaster> shows them again: without this, one
 // test's toast would appear in the next test too.
 afterEach(() => {

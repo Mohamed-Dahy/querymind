@@ -5,6 +5,8 @@ import { useLocation, useNavigate } from 'react-router'
 import { ApiError, type AskRequest } from '@/api/client'
 import { CONVERSATIONS_KEY, type ConversationDetail, type RerunResult } from '@/api/conversations'
 import { askStream, type AskStreamOptions } from '@/api/stream'
+import type { DatabaseId } from '@/api/explorer'
+import { useDatabase } from '@/layout/useDatabase'
 import { KEEP_FOCUS } from '@/layout/useFocusOnRouteChange'
 
 import {
@@ -62,19 +64,37 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     new Map<string, { controller: AbortController; named: boolean; stopped: boolean }>(),
   )
 
-  // The latest store and path, for code that runs after an await (when the render's values are old).
-  const latest = useRef({ store, pathname })
+  // The database a new conversation goes to (U7.1b): the switcher's choice.
+  const database = useDatabase().id
+  // The latest store, path and database, for code that runs after an await (or in a callback made
+  // before the last render).
+  const latest = useRef({ store, pathname, database })
   useEffect(() => {
-    latest.current = { store, pathname }
-  }, [store, pathname])
+    latest.current = { store, pathname, database }
+  }, [store, pathname, database])
 
   // Asks the API for a cell that is already running, and dispatches what happened.
   const send = useCallback(
-    async (key: string, cellId: string, question: string, { fresh = false } = {}) => {
+    async (
+      key: string,
+      cellId: string,
+      question: string,
+      { fresh = false, connectionId }: { fresh?: boolean; connectionId?: DatabaseId } = {},
+    ) => {
       // The id comes from the conversation, not the URL: a follow-up typed at `/` right after the
       // first answer must continue that conversation. `fresh`: it was only just reset, which
       // `latest` hasn't seen yet, so `new` could still lead to the old conversation.
-      const conversationId = fresh ? null : conversationAt(latest.current.store, key).id
+      const conversation = conversationAt(latest.current.store, key)
+      const conversationId = fresh ? null : conversation.id
+      // A new conversation says its database; a follow-up doesn't (null there means "not said"
+      // to the API, which keeps the conversation's own database).
+      // Not `??`: null is a real answer here (the demo), not "unknown".
+      const database =
+        connectionId !== undefined
+          ? connectionId
+          : conversation.connectionId !== undefined
+            ? conversation.connectionId
+            : latest.current.database
       // Its id, not `key`: `new` may mean another conversation by the time the reply arrives.
       const target = conversationId ?? key
       const controller = new AbortController()
@@ -82,7 +102,10 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       running.current.set(cellId, run)
       try {
         const reply = await mutateAsync({
-          body: { question, conversation_id: conversationId },
+          body:
+            conversationId === null
+              ? { question, conversation_id: null, connection_id: database }
+              : { question, conversation_id: conversationId },
           options: {
             signal: controller.signal,
             onEvent: (event) => dispatch({ key: target, type: 'traced', cellId, event }),
@@ -150,17 +173,25 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
       askNew: (question) => {
         startOver()
         const cellId = `cell-${++lastCellId}`
-        dispatch({ key: NEW_CONVERSATION, type: 'asked', cellId, question })
-        void send(NEW_CONVERSATION, cellId, question, { fresh: true })
+        const connectionId = latest.current.database
+        dispatch({ key: NEW_CONVERSATION, type: 'asked', cellId, question, connectionId })
+        void send(NEW_CONVERSATION, cellId, question, { fresh: true, connectionId })
       },
       ask: (key, question, parentId) => {
         const cellId = `cell-${++lastCellId}`
-        dispatch(
-          parentId === undefined
-            ? { key, type: 'asked', cellId, question }
-            : { key, type: 'asked', cellId, question, parentId },
-        )
-        void send(key, cellId, question)
+        // A new conversation's first question: it goes to the database chosen now.
+        const fresh = conversationAt(latest.current.store, key)
+        const connectionId =
+          fresh.cells.length === 0 && fresh.id === null ? latest.current.database : undefined
+        dispatch({
+          key,
+          type: 'asked',
+          cellId,
+          question,
+          ...(parentId !== undefined && { parentId }),
+          ...(connectionId !== undefined && { connectionId }),
+        })
+        void send(key, cellId, question, connectionId !== undefined ? { connectionId } : {})
       },
       retry: (key, cellId) => {
         const cell = conversationAt(latest.current.store, key).cells.find(

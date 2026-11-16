@@ -1,13 +1,15 @@
 import { CornerDownRight, Info } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 
 import { ApiError } from '@/api/client'
+import { chooseDatabase } from '@/api/database'
 import { getConversation } from '@/api/conversations'
 import { errorTitle } from '@/api/errors'
 import { Cell } from '@/canvas/Cell'
 import { Composer, type ComposerHandle } from '@/canvas/Composer'
+import { ConversationDatabase } from '@/canvas/conversationDatabase'
 import { EmptyCanvas } from '@/canvas/EmptyCanvas'
 import { FirstRunHint } from '@/canvas/FirstRunHint'
 import { NEW_CONVERSATION, type Cell as CellData } from '@/canvas/state'
@@ -15,6 +17,8 @@ import { railFrom, repairAnnouncement } from '@/canvas/trace'
 import { useConversation, type DraftState } from '@/canvas/useConversation'
 import { formatWait } from '@/canvas/wait'
 import { Button } from '@/components/ui/button'
+import { DatabaseSwitcher } from '@/layout/DatabaseSwitcher'
+import { explorerPath, useDatabase } from '@/layout/useDatabase'
 import { KEEP_FOCUS } from '@/layout/useFocusOnRouteChange'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -76,6 +80,24 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
     if (saved.data) load(saved.data)
   }, [saved.data, load])
 
+  // Opening a conversation about another database switches the app to it (decided with
+  // Mohamed): its follow-ups go there anyway, so what the switcher says matches what is asked.
+  // Once per conversation, when its database is known: switching afterwards starts a new one.
+  const database = useDatabase()
+  // The ref is reset on the empty canvas: this component can stay mounted from `/c/A` to `/` and
+  // back, and Back to A must switch to A's database again.
+  const synced = useRef<string | null>(null)
+  const { id: openId, connectionId } = conversation
+  useEffect(() => {
+    if (openId === null) {
+      synced.current = null
+      return
+    }
+    if (connectionId === undefined || synced.current === openId) return
+    synced.current = openId
+    chooseDatabase(connectionId)
+  }, [openId, connectionId])
+
   // A question sent here from the explorer. Used once: the state is cleared, so a reload or coming
   // back doesn't put it in the composer again. On the next frame, because the shell moves focus to
   // the page after this effect has run, and the box should have it.
@@ -107,9 +129,14 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
   return (
     <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 pt-10">
       <h1 className="text-2xl">Ask about your data</h1>
+      <div className="mt-3">
+        <DatabaseSwitcher place="page" />
+      </div>
       <p className="mt-2 text-fg-muted">
-        Questions about the Northwind shop and the Chinook music store, in plain language. Every
-        answer shows the SQL that produced it.
+        {database.id === null
+          ? 'Questions about the Northwind shop and the Chinook music store, in plain language.'
+          : `Questions about ${database.name}, your own database, in plain language.`}{' '}
+        Every answer shows the SQL that produced it.
       </p>
 
       <div className="mt-8 flex-1">
@@ -122,40 +149,46 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
           <>
             {saved.error && <NotLoadedNotice error={saved.error} />}
             <FirstRunHint />
-            <EmptyCanvas onAsk={ask} busy={busy} />
+            {database.id === null ? (
+              <EmptyCanvas onAsk={ask} busy={busy} />
+            ) : (
+              <OwnDatabaseStart name={database.name} id={database.id} />
+            )}
           </>
         ) : (
           // scroll-mb: when the browser scrolls a cell or a focused control into view, it stops
           // above the sticky composer (about 200 px tall on a phone) instead of behind it.
-          <ol aria-label="Questions and answers" className="space-y-4 [&_*]:scroll-mb-56">
-            {cells.map((cell, index) => (
-              <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
-                <Cell
-                  cell={cell}
-                  first={index === 0}
-                  parentQuestion={cells.find(({ id }) => id === cell.parentId)?.question}
-                  busy={busy}
-                  onAsk={ask}
-                  onRetry={(cellId) => {
-                    retry(cellId)
-                    // The Retry button is about to go away: don't lose the keyboard focus with it.
-                    composer.current?.focus()
-                  }}
-                  onRephrase={(question) => composer.current?.fill(question)}
-                  onStop={(cellId) => {
-                    stop(cellId)
-                    // The Stop button goes away too.
-                    composer.current?.focus()
-                  }}
-                  onRerun={applyRerun}
-                  onFollowUp={(cellId) => {
-                    setFollowingUpId(cellId)
-                    composer.current?.focus()
-                  }}
-                />
-              </li>
-            ))}
-          </ol>
+          <ConversationDatabase value={connectionId ?? database.id}>
+            <ol aria-label="Questions and answers" className="space-y-4 [&_*]:scroll-mb-56">
+              {cells.map((cell, index) => (
+                <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
+                  <Cell
+                    cell={cell}
+                    first={index === 0}
+                    parentQuestion={cells.find(({ id }) => id === cell.parentId)?.question}
+                    busy={busy}
+                    onAsk={ask}
+                    onRetry={(cellId) => {
+                      retry(cellId)
+                      // The Retry button is about to go away: don't lose the keyboard focus with it.
+                      composer.current?.focus()
+                    }}
+                    onRephrase={(question) => composer.current?.fill(question)}
+                    onStop={(cellId) => {
+                      stop(cellId)
+                      // The Stop button goes away too.
+                      composer.current?.focus()
+                    }}
+                    onRerun={applyRerun}
+                    onFollowUp={(cellId) => {
+                      setFollowingUpId(cellId)
+                      composer.current?.focus()
+                    }}
+                  />
+                </li>
+              ))}
+            </ol>
+          </ConversationDatabase>
         )}
       </div>
 
@@ -207,5 +240,24 @@ function NotLoadedNotice({ error }: { error: Error }) {
         ? "This conversation wasn't found. It may have been deleted, or it was never saved. A question here starts it again."
         : "This conversation's earlier questions can't be shown right now. You can still ask here: the server may remember them for a while."}
     </p>
+  )
+}
+
+/**
+ * The start of a conversation about the workspace's own database: no example questions (they are
+ * the demo's), but a way to see what it holds first.
+ */
+function OwnDatabaseStart({ name, id }: { name: string; id: string }) {
+  return (
+    <div className="rounded-cell border bg-surface p-4 text-sm">
+      <p className="font-medium">Ask anything about {name}</p>
+      <p className="mt-1 text-fg-muted">
+        Not sure what&rsquo;s in it?{' '}
+        <Link to={explorerPath('/explore', id)} className="text-info underline underline-offset-4">
+          Look at its tables in the explorer
+        </Link>
+        , then ask in your own words below.
+      </p>
+    </div>
   )
 }

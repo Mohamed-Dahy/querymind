@@ -1,5 +1,5 @@
 import { TriangleAlert } from 'lucide-react'
-import type { ReactNode, RefObject } from 'react'
+import { useContext, type ReactNode, type RefObject } from 'react'
 import { Link } from 'react-router'
 
 import type { AskResponse } from '@/api/client'
@@ -11,8 +11,10 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { diffWords } from '@/lib/diff'
+import { explorerPath } from '@/layout/useDatabase'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 
+import { ConversationDatabase } from './conversationDatabase'
 import { formatDuration } from './trace'
 import { tablesPath, triesOf, type FailedKind, type WorkTry } from './work'
 
@@ -48,7 +50,10 @@ type ShowYourWorkProps = {
 export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWorkProps) {
   const tries = triesOf(reply)
   const { schema_selection: selection, search_question: searchedAs, tables_used: used } = reply
-  const explorerPath = tablesPath(reply)
+  // On the conversation's database: a link without it would switch the app to the demo.
+  const database = useContext(ConversationDatabase)
+  const lit = tablesPath(reply)
+  const explorerLink = lit === null ? null : explorerPath(lit, database)
   // A side panel needs width; on a phone it would cover everything, so it rises from the bottom
   // instead, leaving the answer's top in view (like a phone's own share sheets).
   const wide = useMediaQuery('(min-width: 640px)')
@@ -91,7 +96,7 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
             </Section>
           )}
 
-          {explorerPath !== null && (
+          {explorerLink !== null && (
             <Section title="Tables the SQL read">
               {used.length > 0 ? (
                 <ul aria-label="Tables read" className="flex flex-wrap gap-1.5">
@@ -107,7 +112,7 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
                 </p>
               )}
               <Link
-                to={explorerPath}
+                to={explorerLink}
                 className="mt-2 inline-flex min-h-8 items-center rounded-lg text-info underline underline-offset-4 pointer-coarse:min-h-11"
               >
                 See these tables

@@ -40,7 +40,12 @@ function summary({ stored_turns: turns, ...conversation }: Stored): Conversation
   return { ...conversation, turns: turns.length }
 }
 
-export function recordTurn(reply: AskReply, trace: readonly TraceEvent[]) {
+/** `connectionId`: the database a new conversation is about (null = the demo), as the API keeps it. */
+export function recordTurn(
+  reply: AskReply,
+  trace: readonly TraceEvent[],
+  connectionId: string | null = null,
+) {
   const conversations = load()
   const now = new Date().toISOString()
   let conversation = conversations.find(({ id }) => id === reply.conversation_id)
@@ -51,6 +56,7 @@ export function recordTurn(reply: AskReply, trace: readonly TraceEvent[]) {
       pinned: false,
       created_at: now,
       updated_at: now,
+      connection_id: connectionId,
       stored_turns: [],
     }
     conversations.push(conversation)

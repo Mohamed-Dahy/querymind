@@ -1,9 +1,13 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { MemoryRouter } from 'react-router'
+
 import { errorTitle } from '@/api/errors'
 import { errors, type MockErrorCode } from '@/mocks/fixtures'
+import { renderWithQueryClient } from '@/test/render'
 
+import { CanvasProvider } from './CanvasProvider'
 import { ErrorCell } from './ErrorCell'
 import type { CellError } from './state'
 
@@ -16,6 +20,20 @@ function renderCell(error: CellError, busy = false) {
   return { onRetry, onRephrase, ...view }
 }
 
+/** Inside the app's router and canvas: the database errors offer a link or a new start (U7.1b). */
+function renderInApp(error: CellError) {
+  return renderWithQueryClient(
+    <MemoryRouter>
+      <CanvasProvider>
+        <ErrorCell error={error} busy={false} onRetry={() => {}} onRephrase={() => {}} />
+      </CanvasProvider>
+    </MemoryRouter>,
+  )
+}
+
+// They need the router and the canvas around them, which the other codes don't.
+const IN_APP: readonly string[] = ['llm_key_required', 'conversation_other_database']
+
 const RETRY = { name: 'Retry' }
 const REPHRASE = { name: 'Rephrase' }
 
@@ -24,11 +42,27 @@ describe('ErrorCell', () => {
 
   it.each(codes)('%s shows its own title and the server message', (code) => {
     const { message } = errors[code]
-    renderCell({ code, message })
+    if (IN_APP.includes(code)) renderInApp({ code, message })
+    else renderCell({ code, message })
 
     expect(errorTitle(code)).not.toBe('Something went wrong.')
     expect(screen.getByText(errorTitle(code))).toBeInTheDocument()
     expect(screen.getByText(message)).toBeInTheDocument()
+  })
+
+  it('your own database without your own key: a link to save one', () => {
+    renderInApp({ code: 'llm_key_required', message: errors.llm_key_required.message })
+
+    expect(screen.getByRole('link', { name: 'Save your own key' })).toHaveAttribute(
+      'href',
+      '/settings/key',
+    )
+  })
+
+  it('a conversation about another database: a new conversation instead', () => {
+    renderInApp({ code: 'conversation_other_database', message: 'x' })
+
+    expect(screen.getByRole('button', { name: 'New conversation' })).toBeInTheDocument()
   })
 
   it.each(['query_failed', 'llm_unavailable', 'api_unreachable'])(

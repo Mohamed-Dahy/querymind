@@ -7,6 +7,8 @@ import { highlightsFrom } from '@/explorer/data'
 import { LoadError } from '@/explorer/LoadError'
 import { TableList } from '@/explorer/TableList'
 import { useExplorerData } from '@/explorer/useExplorerData'
+import { useExplorerDatabase, useExplorerHref } from '@/explorer/useExplorerDatabase'
+import { DatabaseSwitcher } from '@/layout/DatabaseSwitcher'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 
 // Only wider screens draw the graph, so only they download it.
@@ -18,7 +20,9 @@ const GRAPH_FITS = '(min-width: 768px)'
 
 /** The data explorer: every table and how they join, as a graph and as a list. */
 export default function ExplorePage() {
-  const { data, error, pending, retry } = useExplorerData()
+  const database = useExplorerDatabase()
+  const href = useExplorerHref()
+  const { data, semantic, error, pending, retry } = useExplorerData(database)
   const wide = useMediaQuery(GRAPH_FITS)
   // In the URL, so the Back button works and a link can show a chosen table.
   const [params, setParams] = useSearchParams()
@@ -41,18 +45,29 @@ export default function ExplorePage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
       <h1 className="text-2xl">Data explorer</h1>
+      <div className="mt-3">
+        <DatabaseSwitcher place="page" />
+      </div>
       <p className="mt-2 text-fg-muted">
         Every table QueryMind can read and how they join, without any of their data. Row counts are
         approximate.
       </p>
       <p className="mt-1">
         <Link
-          to="/explore/glossary"
+          to={href('/explore/glossary')}
           className="inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
         >
           Business glossary: what each term means
         </Link>
       </p>
+
+      {/* A saved database's meanings come from its onboarding (U7.1c): until then, tables only. */}
+      {database !== null && semantic?.businesses.length === 0 && (
+        <p role="note" className="mt-4 rounded-lg border bg-muted px-3 py-2 text-sm">
+          No descriptions yet: they appear once this database has been onboarded (QueryMind drafts
+          what each table and column means, with your own LLM key).
+        </p>
+      )}
 
       <div className="mt-6">
         {pending ? (
@@ -70,7 +85,12 @@ export default function ExplorePage() {
                   means its SQL read them, <span className="text-info">shown</span> means the AI saw
                   them and didn&apos;t need them.
                 </p>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setParams({})}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setParams(database === null ? {} : { db: database })}
+                >
                   Clear
                 </Button>
               </div>

@@ -12,6 +12,7 @@ import {
   type ExplorerTable,
   type Highlights,
 } from './data'
+import { useExplorerHref } from './useExplorerDatabase'
 
 type TableListProps = {
   tables: readonly ExplorerTable[]
@@ -93,6 +94,7 @@ function TableRow({
   onFocus: (table: string | null) => void
 }) {
   const near = neighboursOf(table)
+  const href = useExplorerHref()
   // Chosen in the graph, or by a link: the list has to show which one it is.
   const row = useRef<HTMLLIElement>(null)
   useEffect(() => {
@@ -123,7 +125,7 @@ function TableRow({
       {focused && (
         <div className="px-2 pb-2 text-xs">
           <Link
-            to={`/explore/tables/${encodeURIComponent(table.name)}`}
+            to={href(`/explore/tables/${encodeURIComponent(table.name)}`)}
             className="mb-1 inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
           >
             Everything about {table.name}

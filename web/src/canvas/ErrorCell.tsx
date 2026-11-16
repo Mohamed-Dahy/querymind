@@ -1,10 +1,12 @@
-import { CircleAlert, Pencil, RotateCw } from 'lucide-react'
+import { CircleAlert, KeyRound, Pencil, RotateCw, SquarePen } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { errorTitle } from '@/api/errors'
 import { Button } from '@/components/ui/button'
 import { useSecondsLeft } from '@/lib/useSecondsLeft'
 
 import type { CellError } from './state'
+import { useNewConversation } from './useConversation'
 import { formatWait } from './wait'
 
 // The same question would fail the same way, and each try costs LLM quota: change it instead.
@@ -52,6 +54,16 @@ export function ErrorCell({ error, busy, onRetry, onRephrase }: ErrorCellProps) 
               Retry
             </Button>
           )}
+          {/* The way forward for the database errors (U7.1b): a key to save, or a new start. */}
+          {error.code === 'llm_key_required' && (
+            <Button asChild variant="outline">
+              <Link to="/settings/key">
+                <KeyRound aria-hidden="true" />
+                Save your own key
+              </Link>
+            </Button>
+          )}
+          {error.code === 'conversation_other_database' && <NewConversationButton />}
           {/* Hidden from screen readers: a number changing every second would be noise. They hear
               the wait with the error (CanvasPage), and the end of it just below. */}
           {waiting && (
@@ -65,5 +77,16 @@ export function ErrorCell({ error, busy, onRetry, onRephrase }: ErrorCellProps) 
         </p>
       </div>
     </div>
+  )
+}
+
+/** This conversation is about another database: a new one asks the database chosen now. */
+function NewConversationButton() {
+  const newConversation = useNewConversation()
+  return (
+    <Button type="button" variant="outline" onClick={newConversation}>
+      <SquarePen aria-hidden="true" />
+      New conversation
+    </Button>
   )
 }
