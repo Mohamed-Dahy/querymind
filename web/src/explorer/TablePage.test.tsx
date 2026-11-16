@@ -7,7 +7,9 @@ import type { AskRequest } from '@/api/client'
 import { answer, catalog, clarification, semantic } from '@/mocks/fixtures'
 import { recordTurn } from '@/mocks/conversations'
 import { apiError, replyStream, STREAM_URL } from '@/mocks/handlers'
+import { pollMockOnboarding, startMockOnboarding } from '@/mocks/onboarding'
 import { server } from '@/mocks/server'
+import { saveMockConnection, saveMockKey } from '@/mocks/settings'
 import { renderApp } from '@/test/render'
 
 const section = (name: string | RegExp) => screen.findByRole('region', { name })
@@ -257,6 +259,29 @@ describe('TablePage', () => {
       'href',
       '/explore?table=album',
     )
+  })
+
+  it('an onboarded saved database shows each description once, as the draft (U7.1c)', async () => {
+    saveMockKey({ provider: 'groq', model: 'openai/gpt-oss-120b', api_key: 'gsk_test_1234' })
+    const sales = saveMockConnection({
+      name: 'Sales',
+      host: 'db.example.com',
+      port: 5432,
+      dbname: 'sales',
+      user: 'querymind_reader',
+      password: 'secret password',
+      sslmode: 'verify-full',
+    })!
+    startMockOnboarding(sales)
+    for (let poll = 0; poll < 3; poll++) pollMockOnboarding(sales)
+    renderApp(`/explore/tables/categories?db=${sales.id}`)
+
+    // Its meanings are made from the dictionary: written and drafted are the same words.
+    const about = await section('What it is')
+    expect(within(about).getAllByText(/Each row represents a product category/)).toHaveLength(1)
+    expect(within(about).getByText('AI draft:')).toBeVisible()
+    const columns = await section(/^Columns \(/)
+    expect(within(columns).getAllByText(/Name of the product category\./)).toHaveLength(1)
   })
 
   it('a table that does not exist is the 404 page', async () => {

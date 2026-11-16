@@ -18,16 +18,17 @@ import {
   type SslMode,
 } from '@/api/settings'
 import { SqlCode } from '@/canvas/SqlView'
-import { formatWait } from '@/canvas/wait'
 import { FIELD } from '@/components/field'
 import { SubmitButton } from '@/components/SubmitButton'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { LoadError } from '@/explorer/LoadError'
-import { useSecondsLeft } from '@/lib/useSecondsLeft'
 
 import { ConfirmButton } from './ConfirmButton'
 import { FormError } from './FormError'
+import { OnboardingStatus } from './OnboardingStatus'
+import { reviewPath } from './tabs'
+import { RetryNote } from './RetryNote'
 
 const CHECKED = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -54,6 +55,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;`
  * Settings → Databases (U7.1b part 2): the workspace's own PostgreSQL databases. Every member sees
  * the list; admins add one (QueryMind connects and refuses a login that can change data), test it
  * again, or delete it with its conversations. The password goes in once and never comes back.
+ * Each row shows its onboarding (U7.1c): saving a database with a key already starts one.
  */
 export default function DatabasesSettings() {
   const connections = useConnections()
@@ -94,7 +96,12 @@ export default function DatabasesSettings() {
                 .
               </p>
             )}
-            <DatabaseList connections={connections.data} admin={admin} focusAfterDelete={heading} />
+            <DatabaseList
+              connections={connections.data}
+              admin={admin}
+              hasKey={key.data === undefined ? undefined : key.data !== null}
+              focusAfterDelete={heading}
+            />
             {admin ? (
               <AddDatabase />
             ) : (
@@ -112,10 +119,12 @@ export default function DatabasesSettings() {
 type DatabaseListProps = {
   connections: ConnectionInfo[]
   admin: boolean
+  /** Has the workspace its own LLM key (onboarding needs it)? `undefined` while loading. */
+  hasKey: boolean | undefined
   focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-function DatabaseList({ connections, admin, focusAfterDelete }: DatabaseListProps) {
+function DatabaseList({ connections, admin, hasKey, focusAfterDelete }: DatabaseListProps) {
   if (connections.length === 0) {
     return (
       <div className="rounded-cell border bg-surface p-4 text-sm">
@@ -133,6 +142,7 @@ function DatabaseList({ connections, admin, focusAfterDelete }: DatabaseListProp
           key={connection.id}
           connection={connection}
           admin={admin}
+          hasKey={hasKey}
           focusAfterDelete={focusAfterDelete}
         />
       ))}
@@ -140,14 +150,19 @@ function DatabaseList({ connections, admin, focusAfterDelete }: DatabaseListProp
   )
 }
 
-/** One database: where it is, when it was last found safe, and the admin's two actions. */
+/**
+ * One database: where it is, when it was last found safe, the admin's two actions, and its
+ * onboarding (U7.1c): progress for admins, a link to its descriptions for the other roles.
+ */
 function DatabaseRow({
   connection,
   admin,
+  hasKey,
   focusAfterDelete,
 }: {
   connection: ConnectionInfo
   admin: boolean
+  hasKey: boolean | undefined
   focusAfterDelete: RefObject<HTMLElement | null>
 }) {
   const queryClient = useQueryClient()
@@ -254,23 +269,23 @@ function DatabaseRow({
       {error && (
         <div className="mt-3">
           <FormError id={errorId} error={error} />
-          {retryAt !== undefined && <RetryNote key={retryAt} retryAt={retryAt} />}
+          {retryAt !== undefined && (
+            <RetryNote key={retryAt} retryAt={retryAt} action="test again" />
+          )}
         </div>
       )}
+      {admin ? (
+        <OnboardingStatus connection={connection} hasKey={hasKey} />
+      ) : (
+        // Onboarding's progress is admins' (its counts are the whole database's); the
+        // descriptions of the tables this role may use are for everyone.
+        <p className="mt-4 border-t pt-4 text-sm">
+          <Link to={reviewPath(connection.id)} className="text-info underline underline-offset-4">
+            Read its descriptions <span className="sr-only">({connection.name})</span>
+          </Link>
+        </p>
+      )}
     </li>
-  )
-}
-
-/** After a "too many checks": when testing again makes sense. Keyed by the wait where it's used,
- * so it counts from the 429 (useSecondsLeft counts from when it appears). */
-function RetryNote({ retryAt }: { retryAt: number }) {
-  const secondsLeft = useSecondsLeft(retryAt)
-  return (
-    <p className="mt-1.5 text-xs text-fg-muted tabular-nums">
-      {secondsLeft > 0
-        ? `You can test again in ${formatWait(secondsLeft)}.`
-        : 'You can test again now.'}
-    </p>
   )
 }
 

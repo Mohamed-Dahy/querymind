@@ -36,3 +36,6 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 export function tabsFor(role: Me['role'] | undefined): SettingsTab[] {
   return SETTINGS_TABS.filter((tab) => !tab.adminOnly || role === 'admin')
 }
+
+/** A saved database's descriptions, to review (U7.1c): a page under the Databases tab. */
+export const reviewPath = (id: string) => `/settings/databases/${id}/dictionary`

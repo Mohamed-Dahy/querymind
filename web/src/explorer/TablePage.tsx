@@ -117,8 +117,10 @@ function DictionaryNote({ text, reviewed }: { text: string; reviewed: boolean })
 }
 
 function About({ details: { meaning } }: { details: TableDetails }) {
-  const written = meaning?.description
   const drafted = meaning?.dictionary_description
+  // A saved database's meanings are made from its dictionary (U7.1c): the same words would show
+  // twice, once as written and once as the draft. Then only the draft (or reviewed entry) shows.
+  const written = meaning?.description === drafted ? undefined : meaning?.description
   const synonyms = meaning?.synonyms ?? []
   return (
     <Section title="What it is">
@@ -175,6 +177,7 @@ function Columns({ details: { table, meaning } }: { details: TableDetails }) {
           <tbody>
             {table.columns.map(({ name, data_type: type }) => {
               const note = notes.get(name)
+              const written = note?.description === note?.dictionary_note ? '' : note?.description
               const target = keyTargets.get(name)
               return (
                 <tr key={name} className="border-t align-top">
@@ -193,7 +196,7 @@ function Columns({ details: { table, meaning } }: { details: TableDetails }) {
                   </th>
                   <td className="px-3 py-2 text-fg-muted">{type}</td>
                   <td className="space-y-1 px-3 py-2">
-                    {note?.description && <p>{note.description}</p>}
+                    {written && <p>{written}</p>}
                     {note?.dictionary_note && (
                       <DictionaryNote text={note.dictionary_note} reviewed={reviewed} />
                     )}

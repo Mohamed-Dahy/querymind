@@ -17,6 +17,7 @@ import type { LoginRequest, SignupRequest } from '@/api/auth'
 import type { AskReply, AskRequest } from '@/api/client'
 import type { TokenResponse } from '@/api/session'
 import type { ConversationUpdate } from '@/api/conversations'
+import type { DictionaryEdit } from '@/api/onboarding'
 import type { SaveConnectionRequest, SaveLLMKeyRequest } from '@/api/settings'
 import type { StreamEvent, TraceEvent } from '@/api/stream'
 import {
@@ -44,10 +45,20 @@ import {
   type MockError,
   type MockErrorCode,
 } from './fixtures'
+import {
+  editMockDictionary,
+  forgetMockOnboarding,
+  isMockOnboardingRunning,
+  mockDictionary,
+  onboardedOverview,
+  pollMockOnboarding,
+  startMockOnboarding,
+} from './onboarding'
 import { currentMockUser, mockLoggedOut, setMockLoggedOut } from './session'
 import {
   CONNECTION_TRIGGERS,
   deleteMockConnection,
+  findMockConnection,
   deleteMockKey,
   INVALID_KEY,
   isMockConnection,
@@ -288,16 +299,21 @@ export const handlers = [
   http.get('/api/catalog', ({ request }) => {
     const database = new URL(request.url).searchParams.get('connection_id')
     if (database === null) return HttpResponse.json(catalog)
-    return isMockConnection(database)
-      ? HttpResponse.json(savedDatabaseCatalog())
-      : apiError('connection_not_found')
+    const connection = findMockConnection(database)
+    if (!connection) return apiError('connection_not_found')
+    // Onboarded: its tables belong to the business its dictionary makes (U7.1c).
+    const dictionary = mockDictionary(database)
+    return HttpResponse.json(
+      savedDatabaseCatalog(dictionary && { name: connection.name, tables: dictionary.tables }),
+    )
   }),
   http.get('/api/semantic', ({ request }) => {
     const database = new URL(request.url).searchParams.get('connection_id')
     if (database === null) return HttpResponse.json(semantic)
-    return isMockConnection(database)
-      ? HttpResponse.json(NOT_ONBOARDED)
-      : apiError('connection_not_found')
+    const connection = findMockConnection(database)
+    if (!connection) return apiError('connection_not_found')
+    const dictionary = mockDictionary(database)
+    return HttpResponse.json(dictionary ? onboardedOverview(connection, dictionary) : NOT_ONBOARDED)
   }),
   http.get('/api/evals', () => HttpResponse.json(evals)),
   http.get('/api/catalog/tables/:table/questions', ({ params, request }) => {
@@ -353,6 +369,8 @@ export const handlers = [
     const refused = connectionRefusal(body)
     if (refused) return refused
     const saved = saveMockConnection(body)
+    // With a key, saving starts onboarding at once (api/onboarding.py start_if_possible).
+    if (saved !== null && loadMockKey() !== null) startMockOnboarding(saved)
     if (saved === null) {
       return HttpResponse.json(
         {
@@ -371,9 +389,55 @@ export const handlers = [
   }),
   http.delete(`${CONNECTIONS_URL}/:id`, ({ params }) => {
     if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    forgetMockOnboarding(String(params['id']))
     return deleteMockConnection(String(params['id']))
       ? new HttpResponse(null, { status: 204 })
       : apiError('connection_not_found')
+  }),
+  // Onboarding and the dictionary review (U7.1c): mocks/onboarding.ts.
+  http.post(`${CONNECTIONS_URL}/:id/onboard`, ({ params }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const connection = findMockConnection(String(params['id']))
+    if (!connection) return apiError('connection_not_found')
+    if (loadMockKey() === null) {
+      return HttpResponse.json(
+        {
+          error: 'llm_key_required',
+          message:
+            'Onboarding drafts the data dictionary with your own LLM key: an admin can save one in Settings.',
+        },
+        { status: 409 },
+      )
+    }
+    const started = startMockOnboarding(connection)
+    return started ? HttpResponse.json(started, { status: 202 }) : apiError('onboarding_running')
+  }),
+  http.get(`${CONNECTIONS_URL}/:id/onboarding`, ({ params }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const connection = findMockConnection(String(params['id']))
+    const status = connection ? pollMockOnboarding(connection) : null
+    if (status === null) {
+      return HttpResponse.json(
+        { error: 'dictionary_not_found', message: "This database hasn't been onboarded yet." },
+        { status: 404 },
+      )
+    }
+    return HttpResponse.json(status)
+  }),
+  http.get(`${CONNECTIONS_URL}/:id/dictionary`, ({ params }) => {
+    const dictionary = mockDictionary(String(params['id']))
+    return dictionary ? HttpResponse.json(dictionary) : apiError('dictionary_not_found')
+  }),
+  http.put(`${CONNECTIONS_URL}/:id/dictionary`, async ({ params, request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const id = String(params['id'])
+    if (mockDictionary(id) === null) return apiError('dictionary_not_found')
+    if (isMockOnboardingRunning(id)) return apiError('onboarding_running')
+    const { tables } = (await request.json()) as DictionaryEdit
+    const result = editMockDictionary(id, tables)
+    return 'refused' in result
+      ? HttpResponse.json({ error: 'dictionary_invalid', message: result.refused }, { status: 422 })
+      : HttpResponse.json(result)
   }),
 ]
 

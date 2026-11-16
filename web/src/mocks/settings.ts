@@ -128,18 +128,28 @@ export function deleteMockConnection(id: string): boolean {
 
 /** Is this one of the fake workspace's saved databases? */
 export function isMockConnection(id: string): boolean {
-  return loadMockConnections().some((connection) => connection.id === id)
+  return findMockConnection(id) !== undefined
+}
+
+export function findMockConnection(id: string): ConnectionInfo | undefined {
+  return loadMockConnections().find((connection) => connection.id === id)
 }
 
 /**
- * A saved database in the explorer (U7.1b): the demo's Northwind tables, as a database that hasn't
- * been onboarded shows them: no business, and no meanings yet.
+ * A saved database in the explorer (U7.1b): the demo's Northwind tables. Before onboarding they
+ * have no business; after it (U7.1c), the described ones belong to the database's own, named
+ * after it, as the real API's layer from the dictionary does.
  */
-export function savedDatabaseCatalog(): Catalog {
+export function savedDatabaseCatalog(
+  described: { name: string; tables: Record<string, unknown> } | null = null,
+): Catalog {
   return {
     tables: catalog.tables
       .filter(({ business }) => business === 'northwind')
-      .map((table) => ({ ...table, business: null })),
+      .map((table) => ({
+        ...table,
+        business: described && table.name in described.tables ? described.name : null,
+      })),
   }
 }
 

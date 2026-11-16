@@ -105,6 +105,20 @@ describe('Settings → Databases', () => {
     expect(sent).toEqual([{ ...SALES, sslmode: 'require' }])
   })
 
+  it('with a key, a new database starts onboarding at once (U7.1c)', async () => {
+    saveMockKey({ provider: 'groq', model: 'openai/gpt-oss-120b', api_key: 'gsk_saved_1234' })
+    const user = userEvent.setup()
+    await openTab()
+
+    const form = await fill(user)
+    await user.click(within(form).getByRole('button', { name: 'Check and add' }))
+
+    const row = await screen.findByRole('listitem', { name: 'Sales' })
+    // Its run is under way: the stages, not "Not onboarded yet" and an Onboard button.
+    expect(await within(row).findByRole('list', { name: 'Onboarding' })).toBeVisible()
+    expect(within(row).queryByText('Not onboarded yet.')).not.toBeInTheDocument()
+  })
+
   it.each([
     [{ host: T.unsafeHost }, "QueryMind can't connect to that address.", 'Host', false],
     [{ host: T.unreachableHost }, "Couldn't reach the database.", 'Host', false],

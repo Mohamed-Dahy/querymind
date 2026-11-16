@@ -6,10 +6,13 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { Toaster } from '@/components/ui/sonner'
 import { routes } from '@/router'
 
-/** Render inside a fresh query cache, so tests never share data, and failures aren't retried. */
+/**
+ * Render inside a fresh query cache, so tests never share data, and failures aren't retried.
+ * Returns the cache too, so a test can ask again now instead of waiting for a poll.
+ */
 export function renderWithQueryClient(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+  return { ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>), client }
 }
 
 /**
