@@ -64,13 +64,15 @@ export function updateConversation(
 /** `keepalive`: the request still goes out if the page is closing. */
 export async function deleteConversation(
   id: string,
-  { keepalive = false }: { keepalive?: boolean } = {},
+  { keepalive = false, token }: { keepalive?: boolean; token?: string } = {},
 ): Promise<void> {
   await call(TIMEOUT_MS, undefined, (s) =>
     api.DELETE('/conversations/{conversation_id}', {
       params: { path: { conversation_id: id } },
       signal: s,
       keepalive,
+      // The token it was deleted under (U7.1d): its workspace's, even after a switch.
+      ...(token === undefined ? {} : { headers: { Authorization: `Bearer ${token}` } }),
     }),
   )
 }

@@ -12,6 +12,7 @@ import {
   LazyExplorePage,
   LazyDatabasesSettings,
   LazyDictionaryReview,
+  LazyMembersSettings,
   LazyGlossaryPage,
   LazyKeySettings,
   LazyModelsPage,
@@ -144,6 +145,11 @@ export const routes: RouteObject[] = [
             path: 'databases',
             element: <LazyDatabasesSettings />,
             handle: { title: 'Databases · Settings' } satisfies RouteHandle,
+          },
+          {
+            path: 'members',
+            element: <LazyMembersSettings />,
+            handle: { title: 'Members · Settings' } satisfies RouteHandle,
           },
           // A database's descriptions, to review (U7.1c): under the Databases tab, which stays lit.
           {

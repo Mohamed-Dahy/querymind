@@ -37,6 +37,7 @@ import { EVAL_VIEWS } from '@/evals/views'
 import { businessLabel, termAnchor, termName } from '@/explorer/data'
 import { useExplorerData, useSemanticOverview } from '@/explorer/useExplorerData'
 import { useTheme, type ThemeChoice } from '@/lib/theme'
+import { useSession } from '@/api/session'
 import { SETTINGS_TABS } from '@/settings/tabs'
 
 import {
@@ -87,8 +88,8 @@ const PAGES: PaletteItem[] = [
     keywords: ['metrics', 'terms'],
     action: nav('/explore/glossary'),
   },
-  // Settings, one item per tab. Admin-only tabs are listed for everyone: the page itself says
-  // what a role may do, and the palette has no session to check.
+  // Settings, one item per tab. Admin-only tabs (Members, U7.1d) are left out for the other roles
+  // where the list is built (`ADMIN_ONLY`).
   ...SETTINGS_TABS.map(({ path, label, keywords }) => ({
     id: `page:/settings/${path}`,
     label,
@@ -104,6 +105,11 @@ const PAGES: PaletteItem[] = [
     action: nav(to),
   })),
 ]
+
+// The Settings tabs only admins may open: not offered to the other roles.
+const ADMIN_ONLY = new Set(
+  SETTINGS_TABS.filter(({ adminOnly }) => adminOnly).map(({ path }) => `/settings/${path}`),
+)
 
 /** Pages and themes each get their own icon (the same as in the rail and the switcher). */
 function itemIcon({ action }: PaletteItem, group: GroupName): LucideIcon | undefined {
@@ -253,6 +259,7 @@ function usePaletteSources(
   })
   // The current database's tables and terms (U7.1b), with links that stay on it.
   const database = useDatabase().id
+  const role = useSession()?.user.role
   const explorer = useExplorerData(database)
   const semantic = useSemanticOverview(database)
 
@@ -334,7 +341,10 @@ function usePaletteSources(
 
     return {
       actions,
-      pages: PAGES.map((page) =>
+      pages: PAGES.filter(
+        ({ action }) =>
+          role === 'admin' || action.kind !== 'navigate' || !ADMIN_ONLY.has(action.to),
+      ).map((page) =>
         page.action.kind === 'navigate' && page.action.to.startsWith('/explore')
           ? { ...page, action: nav(explorerPath(page.action.to, database)) }
           : page,
@@ -344,6 +354,7 @@ function usePaletteSources(
       terms: termSource,
     }
   }, [
+    role,
     theme,
     conversationItems,
     hidden,

@@ -1,9 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, CircleUser, LogIn, LogOut, Settings } from 'lucide-react'
+import { Check, ChevronDown, CircleUser, LogIn, LogOut, Settings } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { toast } from 'sonner'
 
-import { logOut } from '@/api/auth'
+import { logOut, switchWorkspace, useWorkspaces, type WorkspaceChoice } from '@/api/auth'
+import { asApiError } from '@/api/client'
 import { useSession } from '@/api/session'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,8 +19,8 @@ const ITEM = cn(
 )
 
 /**
- * Who is logged in and their role, then the account menu: Settings and Log out (U7.1b; the
- * workspace switcher joins it in U7.1d). One button, so a phone's top bar keeps a single row.
+ * Who is logged in and their role, then the account menu: Settings, the workspaces (U7.1d, when
+ * there is more than one) and Log out. One button, so a phone's top bar keeps a single row.
  * Logged out (on the public evals lab): a "Log in" link.
  */
 export function UserMenu() {
@@ -74,6 +76,9 @@ function AccountMenu({
   const panelId = useId()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  // Asked once per workspace (the cache is cleared on a switch); shown only with two or more.
+  const workspaces = useWorkspaces()
+  const choices = workspaces.data && workspaces.data.length > 1 ? workspaces.data : null
 
   useEffect(() => {
     if (!open) return undefined
@@ -127,6 +132,7 @@ function AccountMenu({
             </p>
           </div>
           <div aria-hidden="true" className="-mx-1 my-1 h-px bg-border" />
+          {choices && <WorkspaceList choices={choices} onSwitched={() => setOpen(false)} />}
           <ul>
             <li>
               {/* The workspace's key, databases, members… */}
@@ -156,5 +162,77 @@ function AccountMenu({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * The workspaces this login belongs to (U7.1d): the current one ticked, the others buttons. A
+ * switch gets a token for the other workspace; the app then drops everything of the old one and
+ * goes to the canvas (layout/useWorkspaceChange.ts).
+ */
+function WorkspaceList({
+  choices,
+  onSwitched,
+}: {
+  choices: WorkspaceChoice[]
+  onSwitched: () => void
+}) {
+  const [switching, setSwitching] = useState<string | null>(null)
+  const headingId = useId()
+
+  async function switchTo(choice: WorkspaceChoice) {
+    setSwitching(choice.id)
+    try {
+      await switchWorkspace(choice.id)
+      onSwitched()
+    } catch (caught) {
+      toast.error(asApiError(caught).message)
+    } finally {
+      setSwitching(null)
+    }
+  }
+
+  return (
+    <>
+      <p id={headingId} className="px-2 pt-1 pb-0.5 text-xs font-medium text-fg-muted">
+        Workspaces
+      </p>
+      <ul aria-labelledby={headingId}>
+        {choices.map((choice) => {
+          const role = ROLE_NAMES[choice.role]
+          const body = (
+            <>
+              {choice.current ? (
+                <Check aria-hidden="true" />
+              ) : (
+                <span aria-hidden="true" className="size-4 shrink-0" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{choice.name}</span>{' '}
+              <span className="text-xs text-fg-muted">{role}</span>
+            </>
+          )
+          return (
+            <li key={choice.id}>
+              {choice.current ? (
+                <p aria-current="true" className={cn(ITEM, 'font-medium hover:bg-transparent')}>
+                  {body} <span className="sr-only">(current)</span>
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className={ITEM}
+                  disabled={switching !== null}
+                  aria-busy={switching === choice.id}
+                  onClick={() => void switchTo(choice)}
+                >
+                  <span className="sr-only">Switch to</span> {body}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      <div aria-hidden="true" className="-mx-1 my-1 h-px bg-border" />
+    </>
   )
 }

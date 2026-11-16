@@ -30,6 +30,7 @@ import { SkipLink } from './SkipLink'
 import { DEMO_NAME, explorerPath, useDatabase } from './useDatabase'
 import { useDeleteWithUndo, type DeleteWithUndo } from './useDeleteWithUndo'
 import { useFocusOnRouteChange } from './useFocusOnRouteChange'
+import { useWorkspaceChange } from './useWorkspaceChange'
 
 type NavItem = { to: string; label: string; Icon: LucideIcon; matches: (path: string) => boolean }
 
@@ -50,10 +51,13 @@ const CommandPalette = lazy(() => import('./CommandPalette'))
 
 /** The frame around every page: top bar, left rail, and the page itself in <main>. */
 export function AppShell() {
+  // A new generation when the session moves to another workspace (U7.1d): the canvas starts over.
+  const generation = useWorkspaceChange()
   return (
     // Above the routes, so the conversations survive `/` → `/c/<id>` and a visit to Explore; and
-    // above the top bar, for its "New conversation" button.
-    <CanvasProvider>
+    // above the top bar, for its "New conversation" button. Keyed by workspace generation: one
+    // workspace's conversations never show in another.
+    <CanvasProvider key={generation}>
       <Frame />
     </CanvasProvider>
   )

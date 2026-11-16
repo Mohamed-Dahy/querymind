@@ -98,6 +98,9 @@ describe('the Settings page', () => {
     expect(settings()).not.toBeInTheDocument()
 
     await user.click(account)
+    // The fake login is in two workspaces (U7.1d): the other one is a button too.
+    await within(header).findByRole('button', { name: /Switch to Acme Sales/ })
+    await user.tab() // Switch to Acme Sales
     await user.tab() // Settings
     await user.tab() // Log out
     await user.tab() // out of the menu

@@ -73,6 +73,15 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
     latest.current = { store, pathname, database }
   }, [store, pathname, database])
 
+  // Unmounted (the workspace changed, U7.1d): its questions stop. Their answers belong to a
+  // workspace this canvas no longer shows.
+  useEffect(() => {
+    const runs = running.current
+    return () => {
+      for (const run of runs.values()) run.controller.abort()
+    }
+  }, [])
+
   // Asks the API for a cell that is already running, and dispatches what happened.
   const send = useCallback(
     async (

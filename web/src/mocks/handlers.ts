@@ -17,6 +17,7 @@ import type { LoginRequest, SignupRequest } from '@/api/auth'
 import type { AskReply, AskRequest } from '@/api/client'
 import type { TokenResponse } from '@/api/session'
 import type { ConversationUpdate } from '@/api/conversations'
+import type { MemberInfo, Role } from '@/api/members'
 import type { DictionaryEdit } from '@/api/onboarding'
 import type { SaveConnectionRequest, SaveLLMKeyRequest } from '@/api/settings'
 import type { StreamEvent, TraceEvent } from '@/api/stream'
@@ -54,7 +55,20 @@ import {
   pollMockOnboarding,
   startMockOnboarding,
 } from './onboarding'
-import { currentMockUser, mockLoggedOut, setMockLoggedOut } from './session'
+import {
+  addMockMember,
+  loadMockMembers,
+  MEMBER_MESSAGES,
+  removeMockMember,
+  setMockRole,
+} from './members'
+import {
+  currentMockUser,
+  mockLoggedOut,
+  mockWorkspaces,
+  setMockLoggedOut,
+  switchMockWorkspace,
+} from './session'
 import {
   CONNECTION_TRIGGERS,
   deleteMockConnection,
@@ -81,6 +95,7 @@ const CONVERSATION_URL = '/api/conversations/:id'
 export const SAVED_QUESTIONS_URL = '/api/saved-questions'
 export const LLM_KEY_URL = '/api/llm/key'
 export const CONNECTIONS_URL = '/api/connections'
+export const MEMBERS_URL = '/api/admin/members'
 
 export const AUTH_URL = {
   refresh: '/api/auth/refresh',
@@ -249,6 +264,36 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
   http.get(AUTH_URL.me, () => HttpResponse.json(currentMockUser())),
+  // Workspaces (U7.1d): yours and Acme Sales (a viewer there); a switch moves the fake login.
+  http.get('/api/auth/workspaces', () => HttpResponse.json({ workspaces: mockWorkspaces() })),
+  http.post('/api/auth/switch', async ({ request }) => {
+    const { workspace_id: id } = (await request.json()) as { workspace_id: string }
+    if (!switchMockWorkspace(id)) return memberRefusal('member_not_found')
+    return HttpResponse.json(tokens(currentMockUser().email))
+  }),
+  // Members (U7.1d): admins only, as the real API (403 for the other roles).
+  http.get(MEMBERS_URL, () =>
+    currentMockUser().role === 'admin'
+      ? HttpResponse.json({ members: loadMockMembers() })
+      : apiError('forbidden'),
+  ),
+  http.post(MEMBERS_URL, async ({ request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const { email, role } = (await request.json()) as { email: string; role: Role }
+    return memberResult(addMockMember(email, role), 201)
+  }),
+  http.patch(`${MEMBERS_URL}/:id`, async ({ params, request }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const { role } = (await request.json()) as { role: Role }
+    return memberResult(setMockRole(String(params['id']), role))
+  }),
+  http.delete(`${MEMBERS_URL}/:id`, ({ params }) => {
+    if (currentMockUser().role !== 'admin') return apiError('forbidden')
+    const result = removeMockMember(String(params['id']))
+    return typeof result === 'string'
+      ? memberRefusal(result)
+      : new HttpResponse(null, { status: 204 })
+  }),
   http.post(STREAM_URL, async ({ request }) => {
     const body = (await request.json()) as AskRequest
     // The real stream sends these as its only event, with status 200 (seen live, U7.1b).
@@ -440,6 +485,30 @@ export const handlers = [
       : HttpResponse.json(result)
   }),
 ]
+
+const MEMBER_STATUS = {
+  account_not_found: 404,
+  member_not_found: 404,
+  already_member: 409,
+  last_admin: 409,
+  rate_limited: 429,
+} as const
+
+/** A members refusal with the real API's status and words (mocks/members.ts). */
+function memberRefusal(code: keyof typeof MEMBER_STATUS) {
+  const status = MEMBER_STATUS[code]
+  if (code === 'rate_limited') {
+    return HttpResponse.json(
+      { error: code, message: MEMBER_MESSAGES[code], retry_after_seconds: 30 },
+      { status, headers: { 'Retry-After': '30' } },
+    )
+  }
+  return HttpResponse.json({ error: code, message: MEMBER_MESSAGES[code] }, { status })
+}
+
+function memberResult(result: MemberInfo | keyof typeof MEMBER_STATUS, status = 200) {
+  return typeof result === 'string' ? memberRefusal(result) : HttpResponse.json(result, { status })
+}
 
 /** The refusal a real check would give for what was typed (mocks/settings.ts), or none. */
 function connectionRefusal(body: SaveConnectionRequest) {

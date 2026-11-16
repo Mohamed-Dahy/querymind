@@ -50,7 +50,45 @@ export function mockRole(): Me['role'] {
   }
 }
 
-/** Who the fake API says is logged in right now: mockUser, with the role above. */
+/**
+ * The fake login's second workspace (U7.1d), where it is a viewer: someone else's, which added it.
+ * With two, the account menu offers the switch. The current one is kept in localStorage, like a
+ * refresh cookie that was switched.
+ */
+export const OTHER_WORKSPACE = { id: '5f0d6c1e-0000-4000-8000-000000000003', name: 'Acme Sales' }
+export const MOCK_WORKSPACE_KEY = 'querymind-mock-workspace'
+
+function inOther(): boolean {
+  try {
+    return localStorage.getItem(MOCK_WORKSPACE_KEY) === OTHER_WORKSPACE.id
+  } catch {
+    return false
+  }
+}
+
+/** Who the fake API says is logged in right now: mockUser, with the role above (or a viewer in Acme). */
 export function currentMockUser(): Me {
+  if (inOther()) return { ...mockUser, role: 'viewer', workspace: OTHER_WORKSPACE }
   return { ...mockUser, role: mockRole() }
+}
+
+/** GET /auth/workspaces: yours first, then Acme Sales; the current one marked. */
+export function mockWorkspaces() {
+  const other = inOther()
+  return [
+    { ...mockUser.workspace, role: mockRole(), current: !other },
+    { ...OTHER_WORKSPACE, role: 'viewer' as const, current: other },
+  ]
+}
+
+/** POST /auth/switch: false for a workspace this login isn't in. */
+export function switchMockWorkspace(id: string): boolean {
+  if (id !== mockUser.workspace.id && id !== OTHER_WORKSPACE.id) return false
+  try {
+    if (id === OTHER_WORKSPACE.id) localStorage.setItem(MOCK_WORKSPACE_KEY, id)
+    else localStorage.removeItem(MOCK_WORKSPACE_KEY)
+  } catch {
+    // No storage: the switch won't survive a reload.
+  }
+  return true
 }

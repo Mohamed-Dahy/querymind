@@ -1,4 +1,4 @@
-import { Database, KeyRound, type LucideIcon } from 'lucide-react'
+import { Database, KeyRound, Users, type LucideIcon } from 'lucide-react'
 
 import type { Me } from '@/api/session'
 
@@ -29,6 +29,14 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
     label: 'Databases',
     Icon: Database,
     keywords: ['connection', 'postgres', 'own database', 'add database', 'read-only'],
+  },
+  {
+    path: 'members',
+    label: 'Members',
+    Icon: Users,
+    keywords: ['team', 'people', 'add member', 'role', 'admin', 'analyst', 'viewer'],
+    // The members list is admins' only (the API answers 403 to the other roles).
+    adminOnly: true,
   },
 ]
 

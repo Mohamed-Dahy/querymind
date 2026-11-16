@@ -4,13 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getHealth } from './client'
 import {
   authFetch,
+  checkMe,
   getSession,
+  onWorkspaceChange,
   refreshSession,
   resetAuth,
   safeNext,
   setSession,
   takeSessionEnded,
   type TokenResponse,
+  type WorkspaceChange,
 } from './session'
 
 import { AUTH_URL } from '@/mocks/handlers'
@@ -175,6 +178,93 @@ describe('refreshSession', () => {
 
     expect(await refreshSession()).toBeNull()
     expect(getSession()).toEqual(mockSession)
+  })
+})
+
+const ELSEWHERE = { id: '5f0d6c1e-0000-4000-8000-000000000099', name: 'Your own' }
+
+describe('another workspace (U7.1d)', () => {
+  it('a refresh that lands in another workspace never replays the request there', async () => {
+    let asks = 0
+    server.use(
+      http.post(AUTH_URL.refresh, () =>
+        HttpResponse.json({ ...tokens('renewed'), user: { ...mockUser, workspace: ELSEWHERE } }),
+      ),
+      http.post('/api/ask', () => {
+        asks += 1
+        return HttpResponse.json(
+          { error: 'not_authenticated', message: 'Please log in.' },
+          { status: 401 },
+        )
+      }),
+    )
+
+    const response = await authFetch(
+      new Request(`${ORIGIN}/api/ask`, { method: 'POST', body: '{"question":"x"}' }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(asks).toBe(1) // removed from the workspace: the question isn't asked in your own
+    expect(getSession()?.user.workspace).toEqual(ELSEWHERE)
+  })
+
+  it('/auth/me and the other token routes refresh on a 401, like any route', async () => {
+    let refreshes = 0
+    const seen = recordAuth(AUTH_URL.me, () =>
+      seen.length === 1
+        ? HttpResponse.json({ error: 'not_authenticated', message: 'x' }, { status: 401 })
+        : HttpResponse.json(mockUser),
+    )
+    server.use(
+      http.post(AUTH_URL.refresh, () => {
+        refreshes += 1
+        return HttpResponse.json(tokens('renewed'))
+      }),
+    )
+
+    const response = await authFetch(new Request(`${ORIGIN}${AUTH_URL.me}`))
+
+    expect(response.status).toBe(200)
+    expect(refreshes).toBe(1)
+    expect(seen).toEqual(['Bearer mock-access-token', 'Bearer renewed'])
+  })
+
+  it('tells the workspace listeners before anything re-renders, and only on a real move', () => {
+    const changes: (WorkspaceChange & { sessionThen: string | undefined })[] = []
+    const stop = onWorkspaceChange((change) =>
+      changes.push({ ...change, sessionThen: getSession()?.user.workspace.id }),
+    )
+
+    setSession({ ...mockSession, accessToken: 'same workspace' }) // a refresh: same workspace
+    setSession({ ...mockSession, user: { ...mockUser, workspace: ELSEWHERE } }, { chosen: true })
+    stop()
+    setSession(mockSession) // after unsubscribing: nobody told
+
+    expect(changes).toHaveLength(1)
+    expect(changes[0]).toMatchObject({ from: mockUser, chosen: true, sessionThen: ELSEWHERE.id })
+    expect(changes[0]!.to.workspace).toEqual(ELSEWHERE)
+  })
+
+  it('a 403 asks who you are now: a changed role reaches the session', async () => {
+    server.use(
+      http.get('/api/admin/members', () =>
+        HttpResponse.json({ error: 'forbidden', message: 'x' }, { status: 403 }),
+      ),
+      http.get(AUTH_URL.me, () => HttpResponse.json({ ...mockUser, role: 'viewer' })),
+    )
+
+    const response = await authFetch(new Request(`${ORIGIN}/api/admin/members`))
+    expect(response.status).toBe(403)
+
+    await vi.waitFor(() => expect(getSession()?.user.role).toBe('viewer'))
+  })
+
+  it('checkMe asks once for everyone asking at the same moment', async () => {
+    const seen = recordAuth(AUTH_URL.me, () => HttpResponse.json(mockUser))
+
+    await Promise.all([checkMe(), checkMe(), checkMe()])
+
+    expect(seen).toHaveLength(1)
   })
 })
 
