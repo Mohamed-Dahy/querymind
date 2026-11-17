@@ -17,7 +17,7 @@ export function FormError({ id, error }: { id?: string; error: ApiError }) {
     >
       <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
       <div className="min-w-0">
-        <p className="font-medium">{errorTitle(error.code)}</p>
+        <p className="font-medium">{errorTitle(error.code, error.limit)}</p>
         <p className="break-words text-fg-muted">{error.message}</p>
       </div>
     </div>

@@ -6,7 +6,7 @@
  * (CanvasProvider.tsx) does the side effects: it calls the API, then dispatches what happened.
  * U2's streaming events will become more actions on the same cells.
  */
-import type { AskReply } from '@/api/client'
+import type { AskReply, LimitName } from '@/api/client'
 import type { ConversationDetail, RerunResult } from '@/api/conversations'
 import type { DatabaseId } from '@/api/explorer'
 import type { TraceEvent } from '@/api/stream'
@@ -21,6 +21,8 @@ export type CellError = {
   status?: number
   /** A rate limit's wait, as the API said it. */
   retryAfterSeconds?: number
+  /** Which limit (U7.5): its own title. */
+  limit?: LimitName
   /** When that wait ends (a timestamp, not a counter: leaving the page doesn't restart it). */
   retryAt?: number
 }

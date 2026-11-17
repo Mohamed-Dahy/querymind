@@ -15,6 +15,7 @@ import { csvFileName, downloadCsv, toCsv } from '@/lib/csv'
 
 import { CertaintyMeter } from './CertaintyMeter'
 import { pickChart } from './pickChart'
+import { HiddenColumnsNote } from './HiddenValue'
 import { ResultTable } from './ResultTable'
 import { SqlView } from './SqlView'
 import { RowsChip } from './RowsChip'
@@ -65,7 +66,10 @@ export function AnswerCell({
   saved?: SavedInfo | undefined
   onRerun?: (result: RerunResult) => void
 }) {
-  const chart = useMemo(() => pickChart(reply.columns, reply.rows), [reply.columns, reply.rows])
+  const chart = useMemo(
+    () => pickChart(reply.columns, reply.rows, reply.masked_columns),
+    [reply.columns, reply.rows, reply.masked_columns],
+  )
   // Rows aren't saved, so a reopened answer has to fetch them again to show them.
   const rowsNotStored = saved !== undefined && saved.freshAt === undefined && reply.row_count > 0
   const [workOpen, setWorkOpen] = useState(false)
@@ -149,8 +153,14 @@ export function AnswerCell({
           ) : (
             <RowsNote rowCount={reply.row_count} truncated={reply.truncated} />
           )}
+          <HiddenColumnsNote columns={reply.columns} masked={reply.masked_columns} />
           {reply.rows.length > 0 && (
-            <ResultTable columns={reply.columns} rows={reply.rows} question={reply.question} />
+            <ResultTable
+              columns={reply.columns}
+              rows={reply.rows}
+              question={reply.question}
+              masked={reply.masked_columns}
+            />
           )}
           {!rowsNotStored && (
             <Button
@@ -253,7 +263,9 @@ function RerunPanel({
       {error && (
         <p role="alert" className="flex items-start gap-1.5 text-danger">
           <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          {errorTitle(error instanceof ApiError ? error.code : 'unexpected')}
+          {error instanceof ApiError
+            ? errorTitle(error.code, error.limit)
+            : errorTitle('unexpected')}
         </p>
       )}
     </div>

@@ -67,7 +67,8 @@ def test_questions_per_user_per_minute() -> None:
     with pytest.raises(RateLimitedError) as info:
         rules.check_question(user)
     assert info.value.retry_after_seconds == 60
-    assert "Too many questions" in str(info.value)
+    assert info.value.limit == "questions_minute"  # U7.5: the web names the limit
+    assert str(info.value).startswith("You can ask 3 questions a minute.")
     rules.check_question(uuid4())  # someone else still can
 
 
@@ -82,6 +83,20 @@ def test_questions_per_user_per_day() -> None:
     with pytest.raises(RateLimitedError) as info:
         rules.check_question(user)
     assert info.value.retry_after_seconds > 60 * 60  # hours: the day's first one must age out
+    assert info.value.limit == "questions_day"
+    assert "5 questions a day" in str(info.value)
+
+
+def test_the_minute_and_the_day_both_full_names_the_day() -> None:
+    # The longest wait is the one that matters: "wait a minute" would be wrong.
+    rules = limits(Clock(), questions_per_minute=3, questions_per_day=3)
+    user = uuid4()
+    for _ in range(3):
+        rules.check_question(user)
+
+    with pytest.raises(RateLimitedError) as info:
+        rules.check_question(user)
+    assert info.value.limit == "questions_day"
 
 
 def test_a_total_for_everyone_so_many_accounts_cant_add_up() -> None:
@@ -90,8 +105,9 @@ def test_a_total_for_everyone_so_many_accounts_cant_add_up() -> None:
     for _ in range(8):
         rules.check_question(uuid4())  # 8 different users, one question each
 
-    with pytest.raises(RateLimitedError):
+    with pytest.raises(RateLimitedError) as info:
         rules.check_question(uuid4())
+    assert info.value.limit == "questions_everyone"
 
 
 def test_a_refused_request_uses_up_nothing() -> None:
@@ -128,12 +144,14 @@ def test_signups_and_reruns() -> None:
     with pytest.raises(RateLimitedError) as info:
         rules.check_signup("1.2.3.4")
     assert info.value.retry_after_seconds == 3600
+    assert info.value.limit == "signups"
 
     user = uuid4()
     rules.check_rerun(user)
     rules.check_rerun(user)
-    with pytest.raises(RateLimitedError):
+    with pytest.raises(RateLimitedError) as info:
         rules.check_rerun(user)
+    assert info.value.limit == "reruns"
 
 
 def test_many_threads_at_once_never_get_past_the_limit() -> None:

@@ -172,6 +172,36 @@ describe('AnswerCell', () => {
     expect(cells[1]).toHaveTextContent(new Intl.NumberFormat().format(1234.57))
   })
 
+  it('says which columns were hidden for your role; the table shows "hidden", the CSV keeps ***', async () => {
+    const download = vi.spyOn(csv, 'downloadCsv').mockImplementation(() => {})
+    const columns = ['company_name', 'contact_name', 'contact_title', 'city']
+    const rows = [
+      ['Alfreds Futterkiste', '***', '***', 'Berlin'],
+      ['Blauer See Delikatessen', '***', '***', 'Mannheim'],
+    ]
+    const user = renderAnswer({ columns, rows, row_count: 2, masked_columns: [1, 2] })
+
+    // Two text columns: no chart, so the table opens by itself.
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === 'SPAN' &&
+          element.textContent ===
+            '2 columns hidden for your role: contact_name, contact_title. Only admins see personal data; the CSV keeps the *** too.',
+      ),
+    ).toBeVisible()
+    expect(within(screen.getByRole('table')).getAllByText('hidden')).toHaveLength(4)
+
+    await user.click(screen.getByRole('button', { name: 'Download CSV' }))
+    expect(download.mock.calls[0]?.[1]).toContain('Alfreds Futterkiste,***,***,Berlin')
+  })
+
+  it('says nothing about hidden columns when none were', () => {
+    renderAnswer()
+
+    expect(screen.queryByText(/hidden for your role/)).not.toBeInTheDocument()
+  })
+
   it('downloads the rows as CSV, named after the question', async () => {
     const download = vi.spyOn(csv, 'downloadCsv').mockImplementation(() => {})
     const user = renderAnswer()

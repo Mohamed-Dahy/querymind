@@ -148,4 +148,7 @@ def error_response(exc: Exception) -> tuple[int, ErrorResponse]:
     wait = exc.retry_after_seconds if isinstance(exc, limited) else None
     # Whole seconds, as the Retry-After header requires. Rounded up, so a retry is never too early.
     seconds = math.ceil(wait) if wait is not None else None
-    return status, ErrorResponse(error=code, message=message, retry_after_seconds=seconds)
+    limit = exc.limit if isinstance(exc, RateLimitedError) else None  # which one (U7.5)
+    return status, ErrorResponse(
+        error=code, message=message, retry_after_seconds=seconds, limit=limit
+    )

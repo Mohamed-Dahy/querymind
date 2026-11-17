@@ -140,3 +140,28 @@ describe('ResultTable', () => {
     expect(columnText(1)[0]).toBe(largest)
   })
 })
+
+describe('ResultTable with hidden values (U7.3)', () => {
+  const columns = ['company_name', 'contact_name', 'city']
+  const rows = [
+    ['Alfreds Futterkiste', '***', 'Berlin'],
+    ['Blauer See', null, 'Mannheim'],
+  ]
+
+  it('shows a masked value as "hidden", locks its column, and keeps null as null', () => {
+    render(<ResultTable columns={columns} rows={rows} question="q" masked={[1]} />)
+
+    expect(columnText(1)).toEqual(['hidden', 'null'])
+    expect(screen.queryByText('***')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'contact_name (hidden for your role)' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'city' })).toBeInTheDocument()
+  })
+
+  it('"***" in a column the API didn’t mask is just text', () => {
+    render(<ResultTable columns={columns} rows={rows} question="q" />)
+
+    expect(columnText(1)).toEqual(['***', 'null'])
+  })
+})

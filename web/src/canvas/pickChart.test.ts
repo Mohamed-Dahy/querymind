@@ -185,3 +185,22 @@ describe('describeChart', () => {
     )
   })
 })
+
+describe('pickChart with hidden values (U7.3)', () => {
+  const columns = ['contact_name', 'orders']
+  const rows = [
+    ['***', 3],
+    ['***', 5],
+  ]
+
+  it('draws no bars whose labels are hidden', () => {
+    expect(pickChart(columns, rows, [0])).toEqual({
+      kind: 'none',
+      reason: 'The labels are hidden for your role.',
+    })
+  })
+
+  it('the same columns, not masked, are a bar chart', () => {
+    expect(pickChart(columns, rows).kind).toBe('bar')
+  })
+})

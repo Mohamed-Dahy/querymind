@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { ApiError, ask } from '@/api/client'
 import { ERROR_TITLES } from '@/api/errors'
 import { askStream, type TraceEvent } from '@/api/stream'
+import { LIMIT_MESSAGES, LIMIT_WAITS } from '@/mocks/limits'
 import {
   answer,
   answerStream,
@@ -126,7 +127,8 @@ describe('mock API, streaming', () => {
     expect(plain.events).toEqual(answerStream)
   })
 
-  it.each(Object.keys(errors) as MockErrorCode[])(
+  // rate_limited refuses before the stream starts (below), as the real API does.
+  it.each((Object.keys(errors) as MockErrorCode[]).filter((code) => code !== 'rate_limited'))(
     '"error: %s" sends the first steps, then fails with that code',
     async (code) => {
       const events: TraceEvent[] = []
@@ -135,6 +137,28 @@ describe('mock API, streaming', () => {
         askStream({ question: `error: ${code}` }, { onEvent: (event) => events.push(event) }),
       ).rejects.toMatchObject({ code, message: errors[code].message })
       expect(events).toEqual(answerStream.slice(0, 4))
+    },
+  )
+
+  it.each([
+    ['error: rate_limited', 'questions_minute'],
+    ['limit: questions_day', 'questions_day'],
+    ['limit: questions_everyone', 'questions_everyone'],
+  ] as const)(
+    '"%s" is a plain 429 before any step, naming its limit (U7.5)',
+    async (question, limit) => {
+      const events: TraceEvent[] = []
+
+      await expect(
+        askStream({ question }, { onEvent: (event) => events.push(event) }),
+      ).rejects.toMatchObject({
+        code: 'rate_limited',
+        status: 429,
+        limit,
+        message: LIMIT_MESSAGES[limit],
+        retryAfterSeconds: LIMIT_WAITS[limit],
+      })
+      expect(events).toEqual([])
     },
   )
 

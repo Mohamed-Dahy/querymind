@@ -7,6 +7,7 @@
  */
 import type { MemberInfo, Role } from '@/api/members'
 
+import { LIMIT_MESSAGES } from './limits'
 import { mockUser } from './session'
 
 const KEY = 'querymind-mock-members'
@@ -24,7 +25,7 @@ export const MEMBER_MESSAGES = {
   already_member: 'They are already a member of this workspace.',
   last_admin: 'A workspace needs an admin: make someone else an admin first.',
   member_not_found: 'This workspace has no such member.',
-  rate_limited: 'Too many people added in a short time. Please wait before adding more.',
+  rate_limited: LIMIT_MESSAGES.member_adds,
 } as const
 
 function seed(): MemberInfo[] {

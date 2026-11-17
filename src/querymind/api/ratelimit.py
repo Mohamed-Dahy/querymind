@@ -25,7 +25,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from querymind.config import Settings
@@ -36,12 +36,28 @@ DAY = 86_400.0
 MAX_KEYS = 50_000  # a sweep drops idle keys first; past this, the oldest go (memory stays bounded)
 
 
+# Which limit was reached (U7.5): the web says one sentence per limit. The questions have three,
+# and only the API knows which one refused.
+LimitName = Literal[
+    "questions_minute",
+    "questions_day",
+    "questions_everyone",
+    "reruns",
+    "logins",
+    "signups",
+    "key_checks",
+    "connection_checks",
+    "member_adds",
+]
+
+
 class RateLimitedError(Exception):
     """Over a limit. The message is safe to show; `retry_after_seconds` is when one more fits."""
 
-    def __init__(self, message: str, retry_after_seconds: float) -> None:
+    def __init__(self, message: str, retry_after_seconds: float, limit: LimitName) -> None:
         super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
+        self.limit: LimitName = limit
 
 
 @dataclass(frozen=True)
@@ -128,6 +144,38 @@ class RateLimits:
         self._key_checks = window(key_checks_per_hour, HOUR)
         self._connection_checks = window(connection_checks_per_hour, HOUR)
         self._member_adds = window(member_adds_per_hour, HOUR)
+        # What each limit says when it refuses, with its number (the user can plan around it).
+        self._messages: dict[LimitName, str] = {
+            "questions_minute": (
+                f"You can ask {questions_per_minute} questions a minute. "
+                "Please wait a moment before asking again."
+            ),
+            "questions_day": (
+                f"You can ask {questions_per_day} questions a day, and you've reached that. "
+                "Each one counts for 24 hours."
+            ),
+            "questions_everyone": (
+                "QueryMind has answered as many questions today as it can for everyone. "
+                "Please try again later."
+            ),
+            "reruns": (
+                f"You can re-run {reruns_per_minute} questions a minute. Please wait a moment."
+            ),
+            "logins": "Too many login attempts. Please wait a moment before trying again.",
+            "signups": "Too many new accounts from here. Please try again later.",
+            "key_checks": (
+                f"You can try {key_checks_per_hour} keys an hour. "
+                "Please wait before trying another."
+            ),
+            "connection_checks": (
+                f"You can test {connection_checks_per_hour} database connections an hour. "
+                "Please wait before trying again."
+            ),
+            "member_adds": (
+                f"You can add {member_adds_per_hour} people an hour. "
+                "Please wait before adding more."
+            ),
+        }
 
     @classmethod
     def from_settings(
@@ -147,61 +195,48 @@ class RateLimits:
             clock=clock,
         )
 
-    def _check(self, checks: list[tuple[SlidingWindow, str]], message: str) -> None:
-        """All the limits a request falls under: room in every one, or none is counted."""
+    def _check(self, checks: list[tuple[SlidingWindow, str, LimitName]]) -> None:
+        """All the limits a request falls under: room in every one, or none is counted.
+
+        Refused: the limit with the longest wait is the one named (the minute and the day both
+        full means waiting for the day).
+        """
         with self._lock:
-            wait = max(window.wait(key) for window, key in checks)
+            wait, name = max((window.wait(key), name) for window, key, name in checks)
             if wait > 0:
-                raise RateLimitedError(message, retry_after_seconds=math.ceil(wait))
-            for window, key in checks:
+                raise RateLimitedError(
+                    self._messages[name], retry_after_seconds=math.ceil(wait), limit=name
+                )
+            for window, key, _ in checks:
                 window.add(key)
 
     def check_question(self, user_id: UUID) -> None:
         user = str(user_id)
         self._check(
             [
-                (self._questions_minute, user),
-                (self._questions_day, user),
-                (self._questions_total, "everyone"),
-            ],
-            "Too many questions for now. Please wait a moment before asking again.",
+                (self._questions_minute, user, "questions_minute"),
+                (self._questions_day, user, "questions_day"),
+                (self._questions_total, "everyone", "questions_everyone"),
+            ]
         )
 
     def check_rerun(self, user_id: UUID) -> None:
-        self._check(
-            [(self._reruns, str(user_id))],
-            "Too many re-runs in a short time. Please wait a moment.",
-        )
+        self._check([(self._reruns, str(user_id), "reruns")])
 
     def check_login(self, ip: str, email: str) -> None:
-        self._check(
-            [(self._logins_ip, ip), (self._logins_email, email)],
-            "Too many login attempts. Please wait a moment before trying again.",
-        )
+        self._check([(self._logins_ip, ip, "logins"), (self._logins_email, email, "logins")])
 
     def check_key_check(self, user_id: UUID) -> None:
         """Saving an LLM key (5.8): each save is a call to the provider with that key."""
-        self._check(
-            [(self._key_checks, str(user_id))],
-            "Too many keys tried in a short time. Please wait before trying another.",
-        )
+        self._check([(self._key_checks, str(user_id), "key_checks")])
 
     def check_connection_check(self, user_id: UUID) -> None:
         """Saving or testing a database (5.9): each one connects to an address a user typed."""
-        self._check(
-            [(self._connection_checks, str(user_id))],
-            "Too many database checks in a short time. Please wait before trying again.",
-        )
+        self._check([(self._connection_checks, str(user_id), "connection_checks")])
 
     def check_member_add(self, user_id: UUID) -> None:
         """Adding a member by email (5.12): each try tells whether that email has an account."""
-        self._check(
-            [(self._member_adds, str(user_id))],
-            "Too many people added in a short time. Please wait before adding more.",
-        )
+        self._check([(self._member_adds, str(user_id), "member_adds")])
 
     def check_signup(self, ip: str) -> None:
-        self._check(
-            [(self._signups_ip, ip)],
-            "Too many new accounts from here. Please try again later.",
-        )
+        self._check([(self._signups_ip, ip, "signups")])

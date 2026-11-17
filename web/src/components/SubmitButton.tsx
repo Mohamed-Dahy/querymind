@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { formatWait } from '@/canvas/wait'
 import { Button } from '@/components/ui/button'
 import { useSecondsLeft } from '@/lib/useSecondsLeft'
+import { cn } from '@/lib/utils'
 
 type SubmitButtonProps = {
   label: string
@@ -11,6 +12,8 @@ type SubmitButtonProps = {
   busy: boolean
   /** After a `rate_limited` answer: when trying again makes sense (a timestamp). */
   retryAt: number | undefined
+  /** The button across the whole form (the login page), the countdown under it. */
+  wide?: boolean
 }
 
 /**
@@ -23,7 +26,7 @@ export function SubmitButton(props: SubmitButtonProps) {
   return <Countdown key={props.retryAt ?? 'none'} {...props} />
 }
 
-function Countdown({ label, busyLabel, busy, retryAt }: SubmitButtonProps) {
+function Countdown({ label, busyLabel, busy, retryAt, wide = false }: SubmitButtonProps) {
   const secondsLeft = useSecondsLeft(retryAt)
   const waiting = secondsLeft > 0
 
@@ -40,7 +43,10 @@ function Countdown({ label, busyLabel, busy, retryAt }: SubmitButtonProps) {
         onClick={(event) => {
           if (waiting) event.preventDefault()
         }}
-        className="pointer-coarse:min-h-11 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+        className={cn(
+          'pointer-coarse:min-h-11 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          wide && 'w-full',
+        )}
       >
         {busy && <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
         {busy ? busyLabel : label}

@@ -13,6 +13,8 @@ export type RefusalResponse = Schemas['RefusalResponse']
 export type AskReply = paths['/ask']['post']['responses'][200]['content']['application/json']
 export type HealthResponse = Schemas['HealthResponse']
 type ErrorBody = Schemas['ErrorResponse']
+/** Which of QueryMind's limits refused (U7.5): `rate_limited` only. */
+export type LimitName = NonNullable<ErrorBody['limit']>
 
 // A question makes two LLM calls plus a query, and rate-limit
 // retries or SQL repairs can take a while.
@@ -27,13 +29,22 @@ export class ApiError extends Error {
   readonly status: number | undefined
   /** How long to wait before retrying, when the API knows (`llm_rate_limited`, `rate_limited`). */
   readonly retryAfterSeconds: number | undefined
+  /** Which limit refused (`rate_limited`): the questions have three, each said differently. */
+  readonly limit: LimitName | undefined
 
-  constructor(code: string, message: string, status?: number, retryAfterSeconds?: number) {
+  constructor(
+    code: string,
+    message: string,
+    status?: number,
+    retryAfterSeconds?: number,
+    limit?: LimitName,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
     this.retryAfterSeconds = retryAfterSeconds
+    this.limit = limit
   }
 }
 
@@ -133,7 +144,8 @@ export function isErrorBody(body: unknown): body is ErrorBody {
 /** Our API always sends {error, message}. Anything else came from something in between. */
 export function errorFrom(status: number, body: unknown): ApiError {
   if (isErrorBody(body)) {
-    return new ApiError(body.error, body.message, status, body.retry_after_seconds ?? undefined)
+    const { error, message, retry_after_seconds: wait, limit } = body
+    return new ApiError(error, message, status, wait ?? undefined, limit ?? undefined)
   }
   // A gateway error without our body: the proxy (dev) or load balancer (prod) couldn't reach the API.
   if (status === 502 || status === 503 || status === 504) {

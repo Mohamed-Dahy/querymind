@@ -7,11 +7,13 @@ import {
   type SortDirection,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Lock } from 'lucide-react'
 import { useMemo, useRef } from 'react'
 
 import { columnTypes, compareValues, formatValue, type ColumnType } from '@/lib/columns'
 import { cn } from '@/lib/utils'
+
+import { HiddenValue, MASK } from './HiddenValue'
 
 type Row = readonly unknown[]
 
@@ -38,14 +40,18 @@ type ResultTableProps = {
   rows: readonly Row[]
   /** What the rows answer, for the table's caption (read by screen readers). */
   question: string
+  /** Positions of the columns whose values the API hid (personal data, U7.3). */
+  masked?: readonly number[] | undefined
 }
 
 /**
- * The result rows: sortable columns, numbers on the right, null shown as "null", and only the
+ * The result rows: sortable columns, numbers on the right, null shown as "null", a hidden value
+ * (personal data, U7.3) as a "hidden" chip, with a lock on its column, and only the
  * rows in view are in the page (virtualized), so 1,000 rows scroll smoothly. Still a real
  * <table>: aria-rowcount and aria-rowindex tell screen readers where they are in all the rows.
  */
-export function ResultTable({ columns, rows, question }: ResultTableProps) {
+export function ResultTable({ columns, rows, question, masked }: ResultTableProps) {
+  const hidden = useMemo(() => new Set(masked), [masked])
   const types = useMemo(() => columnTypes(columns, rows), [columns, rows])
 
   const columnDefs = useMemo(
@@ -129,6 +135,12 @@ export function ResultTable({ columns, rows, question }: ResultTableProps) {
                       )}
                     >
                       {String(header.column.columnDef.header)}
+                      {hidden.has(Number(header.column.id)) && (
+                        <>
+                          <Lock aria-hidden="true" className="size-3.5 shrink-0 text-fg-muted" />{' '}
+                          <span className="sr-only">(hidden for your role)</span>
+                        </>
+                      )}
                       <SortIcon direction={direction} />
                     </button>
                   </th>
@@ -155,6 +167,8 @@ export function ResultTable({ columns, rows, question }: ResultTableProps) {
                     >
                       {value === undefined ? (
                         <span className="text-fg-muted italic">null</span>
+                      ) : value === MASK && hidden.has(Number(cell.column.id)) ? (
+                        <HiddenValue />
                       ) : (
                         formatValue(value, type)
                       )}

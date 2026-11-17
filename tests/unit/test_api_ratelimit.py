@@ -53,6 +53,7 @@ def test_the_third_question_in_a_minute_waits() -> None:
     body = response.json()
     assert body["error"] == "rate_limited"
     assert body["retry_after_seconds"] == 60
+    assert body["limit"] == "questions_minute"  # U7.5: which limit, for the web's sentence
     assert response.headers["Retry-After"] == "60"
     assert pipeline.questions == ["q0", "q1"]  # the third never reached the LLM
 
@@ -64,6 +65,7 @@ def test_the_stream_answers_a_plain_429_before_it_starts() -> None:
 
     assert response.status_code == 429
     assert response.json()["error"] == "rate_limited"
+    assert response.json()["limit"] == "questions_minute"
 
 
 def test_not_logged_in_is_a_401_and_uses_up_nothing() -> None:

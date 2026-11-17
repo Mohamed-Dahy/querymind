@@ -33,7 +33,7 @@ function announcement(cell: CellData | undefined): string {
     return repairing || 'Working on your question.'
   }
   if (cell.status === 'failed') {
-    const title = errorTitle(cell.error?.code ?? 'unexpected')
+    const title = errorTitle(cell.error?.code ?? 'unexpected', cell.error?.limit)
     const wait = cell.error?.retryAfterSeconds
     return wait === undefined ? title : `${title} You can try again in ${formatWait(wait)}.`
   }

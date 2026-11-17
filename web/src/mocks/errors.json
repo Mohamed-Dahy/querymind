@@ -74,7 +74,7 @@
   },
   "rate_limited": {
     "status": 429,
-    "message": "Too many questions for now. Please wait a moment before asking again.",
+    "message": "You can ask 10 questions a minute. Please wait a moment before asking again.",
     "retry_after_seconds": 30
   },
   "llm_key_invalid": {

@@ -35,7 +35,11 @@ export type ChartSpec =
 type Rows = readonly (readonly unknown[])[]
 
 /** The chart for these rows, or why there is none. */
-export function pickChart(columns: readonly string[], rows: Rows): ChartSpec {
+export function pickChart(
+  columns: readonly string[],
+  rows: Rows,
+  masked: readonly number[] = [],
+): ChartSpec {
   if (rows.length < 2) return { kind: 'none', reason: 'One row: the number says it all.' }
   const types = columnTypes(columns, rows)
 
@@ -51,6 +55,10 @@ export function pickChart(columns: readonly string[], rows: Rows): ChartSpec {
   if (texts.length === 1 && numbers.length === 1) {
     if (rows.length > MAX_BARS) {
       return { kind: 'none', reason: `More than ${MAX_BARS} bars would be too many to read.` }
+    }
+    // Every bar would be called "***" (U7.3): the table says which values are hidden instead.
+    if (masked.includes(texts[0] as number)) {
+      return { kind: 'none', reason: 'The labels are hidden for your role.' }
     }
     return barChart(columns, rows, texts[0] as number, numbers[0] as number)
   }

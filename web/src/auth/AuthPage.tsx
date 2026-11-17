@@ -1,14 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Loader2, ScanSearch, TriangleAlert } from 'lucide-react'
+import { ScanSearch, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
 import { logIn, signUp } from '@/api/auth'
-import { ApiError } from '@/api/client'
+import { asApiError, type ApiError } from '@/api/client'
 import { safeNext, takeSessionEnded, useAuthStatus } from '@/api/session'
+import { formatWait } from '@/canvas/wait'
 import { FIELD } from '@/components/field'
+import { SubmitButton } from '@/components/SubmitButton'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
-import { Button } from '@/components/ui/button'
 
 type Mode = 'login' | 'signup'
 
@@ -46,6 +47,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const [ended] = useState(takeSessionEnded)
   const [error, setError] = useState<ApiError | null>(null)
   const [busy, setBusy] = useState(false)
+  // After a `rate_limited` (U7.5): when one more login or sign-up fits.
+  const [retryAt, setRetryAt] = useState<number | undefined>()
   const ids = { email: useId(), password: useId(), hint: useId(), error: useId() }
 
   useEffect(() => {
@@ -67,11 +70,11 @@ export function AuthPage({ mode }: { mode: Mode }) {
       queryClient.clear()
       void navigate(next, { replace: true })
     } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught
-          : new ApiError('internal_error', 'Something went wrong. Please try again.'),
-      )
+      const failure = asApiError(caught)
+      setError(failure)
+      if (failure.retryAfterSeconds !== undefined) {
+        setRetryAt(Date.now() + failure.retryAfterSeconds * 1000)
+      }
       setBusy(false)
     }
   }
@@ -157,16 +160,26 @@ export function AuthPage({ mode }: { mode: Mode }) {
                 className="flex items-start gap-1.5 rounded-lg border border-danger px-3 py-2 text-sm"
               >
                 <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
-                <span>{error.message}</span>
+                <span>
+                  {error.message}
+                  {/* The countdown by the button is hidden from screen readers: the wait is here. */}
+                  {error.retryAfterSeconds !== undefined && (
+                    <span className="sr-only">
+                      {' '}
+                      You can try again in {formatWait(error.retryAfterSeconds)}.
+                    </span>
+                  )}
+                </span>
               </div>
             )}
 
-            <Button type="submit" size="lg" disabled={busy} aria-busy={busy} className="w-full">
-              {busy && (
-                <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
-              )}
-              {busy ? text.busy : text.submit}
-            </Button>
+            <SubmitButton
+              label={text.submit}
+              busyLabel={text.busy}
+              busy={busy}
+              retryAt={retryAt}
+              wide
+            />
           </form>
 
           <p className="mt-5 text-sm">

@@ -1,0 +1,11 @@
+{
+  "questions_minute": "You can ask 10 questions a minute. Please wait a moment before asking again.",
+  "questions_day": "You can ask 200 questions a day, and you've reached that. Each one counts for 24 hours.",
+  "questions_everyone": "QueryMind has answered as many questions today as it can for everyone. Please try again later.",
+  "reruns": "You can re-run 30 questions a minute. Please wait a moment.",
+  "logins": "Too many login attempts. Please wait a moment before trying again.",
+  "signups": "Too many new accounts from here. Please try again later.",
+  "key_checks": "You can try 10 keys an hour. Please wait before trying another.",
+  "connection_checks": "You can test 10 database connections an hour. Please wait before trying again.",
+  "member_adds": "You can add 30 people an hour. Please wait before adding more."
+}

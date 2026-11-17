@@ -44,7 +44,8 @@ test('a refused key, then too many tries: each says why, next to the form', asyn
 
   await keyField(page).fill('gsk_too_many_tries')
   await keyField(page).press('Enter')
-  await expect(page.getByRole('alert')).toContainText('Too many keys tried in a short time.')
+  await expect(page.getByRole('alert')).toContainText('Too many keys tried.')
+  await expect(page.getByRole('alert')).toContainText('You can try 10 keys an hour.')
   await expect(page.getByText(/^Try again in \d+ seconds$/)).toBeVisible()
   await expect(saveButton(page)).toHaveAttribute('aria-disabled', 'true')
 })

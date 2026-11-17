@@ -32,7 +32,7 @@ export function ErrorCell({ error, busy, onRetry, onRephrase }: ErrorCellProps) 
     <div className="flex items-start gap-2 text-sm">
       <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
-        <p className="font-medium">{errorTitle(error.code)}</p>
+        <p className="font-medium">{errorTitle(error.code, error.limit)}</p>
         {error.code === 'no_tables_permitted' ? (
           <NoTablesNote />
         ) : (

@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MemoryRouter } from 'react-router'
 
-import { errorTitle } from '@/api/errors'
+import type { LimitName } from '@/api/client'
+import { errorTitle, LIMIT_TITLES } from '@/api/errors'
 import { errors, type MockErrorCode } from '@/mocks/fixtures'
+import { LIMIT_MESSAGES } from '@/mocks/limits'
 import { mockUser } from '@/mocks/session'
 import { renderWithQueryClient } from '@/test/render'
 
@@ -116,6 +118,16 @@ describe('ErrorCell', () => {
     expect(retry).toBeEnabled()
   })
 
+  it.each(Object.keys(LIMIT_TITLES) as LimitName[])(
+    'the %s limit has its own title, above the API’s sentence with the number (U7.5)',
+    (limit) => {
+      renderCell({ code: 'rate_limited', message: LIMIT_MESSAGES[limit], limit })
+
+      expect(screen.getByText(LIMIT_TITLES[limit])).toBeInTheDocument()
+      expect(screen.getByText(LIMIT_MESSAGES[limit])).toBeInTheDocument()
+    },
+  )
+
   it('a rate limit without a known wait can be retried at once, with no countdown', () => {
     const { onRetry } = renderCell({ code: 'llm_rate_limited', message: 'x' })
 
@@ -168,6 +180,20 @@ describe('ErrorCell countdown', () => {
     expect(screen.getByText('You can try again now.')).toBeInTheDocument()
     fireEvent.click(retry)
     expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('the day’s limit says so, and waits in hours, not seconds', () => {
+    const wait = 5 * 3600 + 20 * 60
+    renderCell({
+      code: 'rate_limited',
+      message: LIMIT_MESSAGES.questions_day,
+      limit: 'questions_day',
+      retryAfterSeconds: wait,
+      retryAt: Date.now() + wait * 1000,
+    })
+
+    expect(screen.getByText("You've reached today's question limit.")).toBeInTheDocument()
+    expect(screen.getByText('Try again in 5 hours 20 minutes')).toBeInTheDocument()
   })
 
   it('stops the timer at zero', () => {

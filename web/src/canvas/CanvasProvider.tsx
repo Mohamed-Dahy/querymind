@@ -29,11 +29,12 @@ const STOPPED: CellError = {
 /** Any failure as a cell error: the API's own code and message, or a generic one. */
 function cellError(error: unknown): CellError {
   if (error instanceof ApiError) {
-    const { code, message, status, retryAfterSeconds } = error
+    const { code, message, status, retryAfterSeconds, limit } = error
     return {
       code,
       message,
       ...(status !== undefined && { status }),
+      ...(limit !== undefined && { limit }),
       ...(retryAfterSeconds !== undefined && {
         retryAfterSeconds,
         retryAt: Date.now() + retryAfterSeconds * 1000,

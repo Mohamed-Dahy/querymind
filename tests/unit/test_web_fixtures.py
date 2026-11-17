@@ -6,14 +6,16 @@ fixtures would silently drift (re-record them with scripts/record_fixtures.py, o
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
 from querymind.api.errors import ERROR_MAP, LLM_MESSAGES
 from querymind.api.llm_keys import ProviderOption
+from querymind.api.ratelimit import LimitName, RateLimits
 from querymind.api.schemas import AskReply, StreamEvent
+from querymind.config import Settings
 from querymind.llm.catalog import CATALOG
 from querymind.semantic.catalog import Catalog, SemanticOverview, build_overview
 from querymind.semantic.dictionary import load_dictionaries
@@ -124,3 +126,17 @@ def test_llm_error_fixtures_use_the_fixed_messages_the_api_sends() -> None:
 
     for error_type, message in LLM_MESSAGES.items():
         assert errors[codes[error_type]]["message"] == message
+
+
+def test_the_mock_limit_messages_are_the_apis_with_its_default_numbers() -> None:
+    """mocks/limits.json (U7.5): one message per limit, word for word what the API sends."""
+    defaults = {
+        name: field.default
+        for name, field in Settings.model_fields.items()
+        if name.startswith("rate_")
+    }
+    api = RateLimits.from_settings(Settings.model_construct(**defaults))
+
+    mocked = load(MOCKS / "limits.json")
+    assert set(mocked) == set(get_args(LimitName))
+    assert mocked == api._messages

@@ -25,6 +25,7 @@ from querymind.agent.schemas import (
     LLMUsage,
     ShownSchema,
 )
+from querymind.api.ratelimit import LimitName
 from querymind.store.conversations import ConversationSummary, SavedQuestion, TableQuestion
 
 
@@ -225,6 +226,11 @@ class ErrorResponse(BaseModel):
         default=None,
         description="Seconds to wait before retrying (llm_rate_limited, if the provider said)",
         examples=[18],
+    )
+    limit: LimitName | None = Field(
+        default=None,
+        description="Which of QueryMind's limits was reached (rate_limited only)",
+        examples=["questions_minute"],
     )
 
 

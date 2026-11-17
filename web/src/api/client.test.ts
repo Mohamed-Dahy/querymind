@@ -106,6 +106,28 @@ describe('a rate limit', () => {
     })
   })
 
+  it('carries which of our limits refused (U7.5)', async () => {
+    stubFetch(() =>
+      Promise.resolve(
+        Response.json(
+          {
+            error: 'rate_limited',
+            message: 'You can ask 200 questions a day.',
+            retry_after_seconds: 3600,
+            limit: 'questions_day',
+          },
+          { status: 429 },
+        ),
+      ),
+    )
+
+    await expect(ask({ question: 'q' })).rejects.toMatchObject({
+      code: 'rate_limited',
+      retryAfterSeconds: 3600,
+      limit: 'questions_day',
+    })
+  })
+
   it('has no wait when the API sent none', async () => {
     stubFetch(() =>
       Promise.resolve(

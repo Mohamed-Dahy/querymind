@@ -184,7 +184,8 @@ describe('Settings → LLM key', () => {
     await user.click(screen.getByRole('button', { name: 'Test and save' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Too many keys tried in a short time.')
+    expect(alert).toHaveTextContent('Too many keys tried.')
+    expect(alert).toHaveTextContent('You can try 10 keys an hour.')
     expect(screen.getByText('Try again in 30 seconds')).toBeInTheDocument()
     const button = screen.getByRole('button', { name: 'Test and save' })
     expect(button).toHaveAttribute('aria-disabled', 'true')

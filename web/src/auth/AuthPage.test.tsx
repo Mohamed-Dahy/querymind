@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
 import { getSession, resetAuth, setSession } from '@/api/session'
-import { AUTH_URL, TAKEN_EMAIL, WRONG_PASSWORD } from '@/mocks/handlers'
+import { AUTH_URL, TAKEN_EMAIL, TOO_MANY_TRIES_EMAIL, WRONG_PASSWORD } from '@/mocks/handlers'
 import { server } from '@/mocks/server'
 import { MOCK_LOGGED_OUT_KEY, mockSession, mockUser } from '@/mocks/session'
 import { renderApp } from '@/test/render'
@@ -102,6 +102,24 @@ describe('the login form', () => {
     expect(getSession()).toBeNull()
   })
 
+  it('too many tries: says so, and the button waits out the limit (U7.5)', async () => {
+    loggedOut()
+    renderApp('/login')
+
+    const user = await fillIn(TOO_MANY_TRIES_EMAIL, 'a long enough password')
+    await user.click(screen.getByRole('button', { name: 'Log in' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Too many login attempts.')
+    // Screen readers hear the wait in the alert; the countdown beside the button is for the eyes.
+    expect(alert).toHaveTextContent('You can try again in 40 seconds.')
+    expect(screen.getByText('Try again in 40 seconds')).toBeInTheDocument()
+    const button = screen.getByRole('button', { name: 'Log in' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    await user.click(button)
+    expect(getSession()).toBeNull()
+  })
+
   it('lets the browser fill saved passwords', async () => {
     loggedOut()
     renderApp('/login')
@@ -158,6 +176,22 @@ describe('the sign-up form', () => {
       'An account with this email already exists.',
     )
     expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('too many new accounts from here: says so, with the wait', async () => {
+    loggedOut()
+    renderApp('/signup')
+
+    const user = await fillIn(TOO_MANY_TRIES_EMAIL, 'a long enough password')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Too many new accounts from here.')
+    expect(alert).toHaveTextContent('You can try again in 1 hour.')
+    expect(screen.getByRole('button', { name: 'Create account' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
   })
 
   it('links to the login, keeping where to go next', async () => {

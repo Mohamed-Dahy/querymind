@@ -185,7 +185,8 @@ def test_an_error_in_the_run_has_the_code_and_message_of_post_ask(
     assert streamed.status_code == 200
     events = events_of(streamed)
     assert [event["type"] for event in events] == ["step", "error"]
-    assert events[-1]["error"] == {"error": code, "message": message, "retry_after_seconds": None}
+    expected = {"error": code, "message": message, "retry_after_seconds": None, "limit": None}
+    assert events[-1]["error"] == expected
 
 
 def test_a_rate_limit_in_the_stream_says_how_long_to_wait() -> None:

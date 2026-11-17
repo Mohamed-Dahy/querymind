@@ -1,3 +1,5 @@
+import type { LimitName } from './client'
+
 // What to tell the user for each error code; the API's own message is shown below it.
 // First written for the Streamlit UI (retired in U6.6), one title per API error code (errors.py),
 // plus the client-side codes from client.ts (bad_response) and the server's catch-all (internal_error).
@@ -54,7 +56,27 @@ export const ERROR_TITLES = {
 
 export type ErrorCode = keyof typeof ERROR_TITLES
 
-/** The title for an error code; codes we don't know yet get a generic one. */
-export function errorTitle(code: string): string {
+// One title per limit (U7.5), for `rate_limited`: the API's message below it gives the number.
+// "Wait a minute" and "come back tomorrow" are different news.
+export const LIMIT_TITLES = {
+  questions_minute: "That's a lot of questions in a minute.",
+  questions_day: "You've reached today's question limit.",
+  questions_everyone: 'QueryMind has reached its daily limit for everyone.',
+  reruns: "That's a lot of re-runs in a minute.",
+  logins: 'Too many login attempts.',
+  signups: 'Too many new accounts from here.',
+  key_checks: 'Too many keys tried.',
+  connection_checks: 'Too many database checks.',
+  member_adds: 'Too many people added.',
+} as const satisfies Record<LimitName, string>
+
+/**
+ * The title for an error code; codes we don't know yet get a generic one. A `rate_limited` error
+ * that names its limit gets that limit's title.
+ */
+export function errorTitle(code: string, limit?: string): string {
+  if (code === 'rate_limited' && limit !== undefined && limit in LIMIT_TITLES) {
+    return LIMIT_TITLES[limit as LimitName]
+  }
   return code in ERROR_TITLES ? ERROR_TITLES[code as ErrorCode] : 'Something went wrong.'
 }

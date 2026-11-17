@@ -1442,6 +1442,32 @@
             "title": "Error",
             "type": "string"
           },
+          "limit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "questions_minute",
+                  "questions_day",
+                  "questions_everyone",
+                  "reruns",
+                  "logins",
+                  "signups",
+                  "key_checks",
+                  "connection_checks",
+                  "member_adds"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which of QueryMind's limits was reached (rate_limited only)",
+            "examples": [
+              "questions_minute"
+            ],
+            "title": "Limit"
+          },
           "message": {
             "examples": [
               "Only SELECT queries are allowed."

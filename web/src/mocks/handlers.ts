@@ -48,6 +48,8 @@ import {
   type MockError,
   type MockErrorCode,
 } from './fixtures'
+import { isLimitName, LIMIT_PREFIX, limitError } from './limits'
+import { CONTACTS, contactsAnswer } from './masking'
 import {
   editMockDictionary,
   forgetMockOnboarding,
@@ -112,6 +114,8 @@ export const AUTH_URL = {
 export const WRONG_PASSWORD = 'wrong password'
 /** Sign up with this email to see "That email already has an account." */
 export const TAKEN_EMAIL = 'taken@example.com'
+/** Log in or sign up with this email to see the logins' or the sign-ups' limit (U7.5). */
+export const TOO_MANY_TRIES_EMAIL = 'too-many@example.com'
 
 function tokens(email: string): TokenResponse {
   return {
@@ -127,6 +131,8 @@ const EVENT_DELAY_MS = import.meta.env.MODE === 'mock' ? 60 : 0
 
 /** The API's error body with its real status, e.g. apiError('db_unavailable') → 503. */
 export function apiError(code: MockErrorCode) {
+  // The questions' limit per minute, as the real API names it (U7.5).
+  if (code === 'rate_limited') return limitError('questions_minute')
   const { status, message, retry_after_seconds: wait }: MockError = errors[code]
   if (wait === undefined) return HttpResponse.json({ error: code, message }, { status })
   return HttpResponse.json(
@@ -180,6 +186,7 @@ function recordedFor(request: AskRequest): { reply: AskReply; events: TraceEvent
   if (PER_MONTH.test(question)) return fitted(monthly, monthlyStream)
   if (NEEDS_REPAIR.test(question)) return fitted(repair, repairStream)
   if (ONE_NUMBER.test(question)) return fitted(single, singleStream)
+  if (CONTACTS.test(question)) return fitted(contactsAnswer(), answerStream)
   return fitted(answer, answerStream)
 }
 
@@ -255,12 +262,14 @@ export const handlers = [
   ),
   http.post(AUTH_URL.login, async ({ request }) => {
     const body = (await request.json()) as LoginRequest
+    if (body.email === TOO_MANY_TRIES_EMAIL) return limitError('logins')
     if (body.password === WRONG_PASSWORD) return apiError('invalid_login')
     setMockLoggedOut(false)
     return HttpResponse.json(tokens(body.email))
   }),
   http.post(AUTH_URL.signup, async ({ request }) => {
     const body = (await request.json()) as SignupRequest
+    if (body.email === TOO_MANY_TRIES_EMAIL) return limitError('signups')
     if (body.email === TAKEN_EMAIL) return apiError('email_taken')
     setMockLoggedOut(false)
     return HttpResponse.json(tokens(body.email), { status: 201 })
@@ -310,7 +319,11 @@ export const handlers = [
     }
     if (BROKEN_STREAM.test(body.question)) return HttpResponse.error()
     if (STUCK_STREAM.test(body.question)) return streamOf(answerStream.slice(0, 5), { stuck: true })
+    // A limit refuses before the stream starts: a plain 429, as the real API sends.
+    const limit = LIMIT_PREFIX.exec(body.question)?.[1]?.toLowerCase()
+    if (isLimitName(limit)) return limitError(limit)
     const code = ERROR_PREFIX.exec(body.question)?.[1]?.toLowerCase()
+    if (code === 'rate_limited') return limitError('questions_minute')
     if (code && code in errors) return errorStream(code as MockErrorCode)
     return replyStream(body)
   }),
@@ -318,6 +331,8 @@ export const handlers = [
     const body = (await request.json()) as AskRequest
     const refused = ownDatabaseRefusal(body)
     if (refused) return apiError(refused)
+    const limit = LIMIT_PREFIX.exec(body.question)?.[1]?.toLowerCase()
+    if (isLimitName(limit)) return limitError(limit)
     const code = ERROR_PREFIX.exec(body.question)?.[1]?.toLowerCase()
     if (code && code in errors) return apiError(code as MockErrorCode)
     const reply = replyFor(body)
@@ -392,16 +407,7 @@ export const handlers = [
   http.put(LLM_KEY_URL, async ({ request }) => {
     if (currentMockUser().role !== 'admin') return apiError('forbidden')
     const body = (await request.json()) as SaveLLMKeyRequest
-    if (body.api_key === TOO_MANY_TRIES_KEY) {
-      return HttpResponse.json(
-        {
-          error: 'rate_limited',
-          message: 'Too many keys tried in a short time. Please wait before trying another.',
-          retry_after_seconds: 30,
-        },
-        { status: 429, headers: { 'Retry-After': '30' } },
-      )
-    }
+    if (body.api_key === TOO_MANY_TRIES_KEY) return limitError('key_checks')
     if (body.api_key === INVALID_KEY) {
       return HttpResponse.json(
         { error: 'llm_key_invalid', message: refusedMessage(body.provider) },
@@ -555,12 +561,7 @@ function onlyAllowed(full: Catalog, database: string | null): Catalog {
 /** A members refusal with the real API's status and words (mocks/members.ts). */
 function memberRefusal(code: keyof typeof MEMBER_STATUS) {
   const status = MEMBER_STATUS[code]
-  if (code === 'rate_limited') {
-    return HttpResponse.json(
-      { error: code, message: MEMBER_MESSAGES[code], retry_after_seconds: 30 },
-      { status, headers: { 'Retry-After': '30' } },
-    )
-  }
+  if (code === 'rate_limited') return limitError('member_adds')
   return HttpResponse.json({ error: code, message: MEMBER_MESSAGES[code] }, { status })
 }
 
@@ -571,16 +572,7 @@ function memberResult(result: MemberInfo | keyof typeof MEMBER_STATUS, status = 
 /** The refusal a real check would give for what was typed (mocks/settings.ts), or none. */
 function connectionRefusal(body: SaveConnectionRequest) {
   const t = CONNECTION_TRIGGERS
-  if (body.host === t.tooManyTriesHost) {
-    return HttpResponse.json(
-      {
-        error: 'rate_limited',
-        message: 'Too many database checks in a short time. Please wait before trying again.',
-        retry_after_seconds: 30,
-      },
-      { status: 429, headers: { 'Retry-After': '30' } },
-    )
-  }
+  if (body.host === t.tooManyTriesHost) return limitError('connection_checks')
   if (body.host === t.unsafeHost) return apiError('connection_unsafe')
   if (body.host === t.unreachableHost) return apiError('connection_unreachable')
   if (body.host === t.selfSignedHost) return apiError('connection_tls_failed')

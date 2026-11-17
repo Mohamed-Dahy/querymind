@@ -1354,6 +1354,12 @@ export interface components {
              */
             error: string;
             /**
+             * Limit
+             * @description Which of QueryMind's limits was reached (rate_limited only)
+             * @example questions_minute
+             */
+            limit?: ("questions_minute" | "questions_day" | "questions_everyone" | "reruns" | "logins" | "signups" | "key_checks" | "connection_checks" | "member_adds") | null;
+            /**
              * Message
              * @example Only SELECT queries are allowed.
              */
