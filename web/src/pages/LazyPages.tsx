@@ -18,6 +18,7 @@ const DatabasesSettings = lazy(() => import('@/settings/DatabasesSettings'))
 const DictionaryReview = lazy(() => import('@/settings/DictionaryReview'))
 const MembersSettings = lazy(() => import('@/settings/MembersSettings'))
 const PermissionsSettings = lazy(() => import('@/settings/PermissionsSettings'))
+const AuditSettings = lazy(() => import('@/settings/AuditSettings'))
 
 /** While a page's code downloads, the page's shape shows, not an empty screen. */
 function Page({ children }: { children: ReactNode }) {
@@ -133,6 +134,14 @@ export function LazyPermissionsSettings() {
   return (
     <Suspense fallback={<TabSkeleton />}>
       <PermissionsSettings />
+    </Suspense>
+  )
+}
+
+export function LazyAuditSettings() {
+  return (
+    <Suspense fallback={<TabSkeleton />}>
+      <AuditSettings />
     </Suspense>
   )
 }

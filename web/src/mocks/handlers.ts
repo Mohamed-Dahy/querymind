@@ -48,6 +48,7 @@ import {
   type MockError,
   type MockErrorCode,
 } from './fixtures'
+import { mockAuditPage } from './audit'
 import { isLimitName, LIMIT_PREFIX, limitError } from './limits'
 import { CONTACTS, contactsAnswer } from './masking'
 import {
@@ -401,6 +402,12 @@ export const handlers = [
     removeSavedQuestion(String(params['id']))
     return new HttpResponse(null, { status: 204 })
   }),
+  // The audit log (U7.4): admins only, filtered and paged like the real store.
+  http.get('/api/admin/audit', ({ request }) =>
+    currentMockUser().role === 'admin'
+      ? HttpResponse.json(mockAuditPage(new URL(request.url).searchParams))
+      : apiError('forbidden'),
+  ),
   // Settings: the workspace's LLM key (U7.1b). Admins change it; every member may read it.
   http.get('/api/llm/providers', () => HttpResponse.json(providers)),
   http.get(LLM_KEY_URL, () => HttpResponse.json(loadMockKey())),

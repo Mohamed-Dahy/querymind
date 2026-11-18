@@ -8,6 +8,7 @@ import { AppShell } from '@/layout/AppShell'
 import { CanvasPage } from '@/pages/CanvasPage'
 import {
   LazyAblationsPage,
+  LazyAuditSettings,
   LazyEvalsPage,
   LazyExplorePage,
   LazyDatabasesSettings,
@@ -156,6 +157,11 @@ export const routes: RouteObject[] = [
             path: 'permissions',
             element: <LazyPermissionsSettings />,
             handle: { title: 'Permissions · Settings' } satisfies RouteHandle,
+          },
+          {
+            path: 'audit',
+            element: <LazyAuditSettings />,
+            handle: { title: 'Audit log · Settings' } satisfies RouteHandle,
           },
           // A database's descriptions, to review (U7.1c): under the Databases tab, which stays lit.
           {

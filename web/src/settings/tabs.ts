@@ -1,4 +1,4 @@
-import { Database, KeyRound, ShieldCheck, Users, type LucideIcon } from 'lucide-react'
+import { Database, KeyRound, ScrollText, ShieldCheck, Users, type LucideIcon } from 'lucide-react'
 
 import type { Me } from '@/api/session'
 
@@ -43,6 +43,13 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
     label: 'Permissions',
     Icon: ShieldCheck,
     keywords: ['access', 'tables', 'rows', 'restrict', 'analyst', 'viewer', 'table access'],
+    adminOnly: true,
+  },
+  {
+    path: 'audit',
+    label: 'Audit log',
+    Icon: ScrollText,
+    keywords: ['history', 'activity', 'log', 'who asked', 'sql', 'logins', 'security'],
     adminOnly: true,
   },
 ]
