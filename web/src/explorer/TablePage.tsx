@@ -38,7 +38,7 @@ export default function TablePage() {
     return (
       <div aria-hidden="true" className="mx-auto max-w-5xl space-y-3 px-4 py-10">
         <Skeleton className="h-8 w-48 motion-reduce:animate-none" />
-        <Skeleton className="h-64 w-full motion-reduce:animate-none" />
+        <Skeleton className="h-64 w-full rounded-cell motion-reduce:animate-none" />
       </div>
     )
   }
@@ -70,22 +70,31 @@ function TableView({ details, database }: { details: TableDetails; database: Dat
         <ArrowLeft aria-hidden="true" className="size-4" />
         All tables
       </Link>
-      <h1 className="mt-2 text-2xl break-all">{table.name}</h1>
-      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-fg-muted">
-        <span>
-          {businessLabel(table.business)}
-          {businessDescription && `: ${businessDescription}`}
+      {/* Signal Lab (U8.5): a mono label, then the name in mono, as it is written in SQL. */}
+      <p aria-hidden="true" className="label-mono mt-4">
+        TABLE
+      </p>
+      <h1 className="mt-1 font-mono text-3xl font-semibold tracking-tight break-all">
+        {table.name}
+      </h1>
+      <p className="mt-2 max-w-3xl text-fg-muted">
+        {businessLabel(table.business)}
+        {businessDescription && `: ${businessDescription}`}
+      </p>
+      <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="rounded-full border bg-surface px-2.5 py-0.5 font-mono text-fg-muted tabular-nums">
+          {formatRowCount(table.row_count)}, approximately
         </span>
-        <span>{formatRowCount(table.row_count)}, approximately</span>
         {piiCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-warn">
+          <span className="inline-flex items-center gap-1 rounded-full border border-warn/50 bg-surface px-2.5 py-0.5 text-warn">
             <ShieldAlert aria-hidden="true" className="size-4" />
             {piiCount} PII {piiCount === 1 ? 'column' : 'columns'}
           </span>
         )}
       </p>
 
-      <div className="mt-8 space-y-8">
+      {/* counter-reset: the sections number themselves (01, 02…) in their headings, below. */}
+      <div className="mt-8 space-y-4 [counter-reset:part]">
         <About details={details} />
         <Columns details={details} />
         <Joins relations={details.relations} />
@@ -99,9 +108,15 @@ function TableView({ details, database }: { details: TableDetails; database: Dat
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section aria-label={title}>
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <div className="mt-2">{children}</div>
+    <section
+      aria-label={title}
+      className="rounded-cell border bg-surface p-5 [counter-increment:part]"
+    >
+      {/* The number is CSS with empty alt text (`/ ''`): seen, not read out, not in the heading's name. */}
+      <h2 className="text-base font-semibold tracking-tight before:mr-2.5 before:font-mono before:text-xs before:font-normal before:text-fg-muted before:content-[counter(part,decimal-leading-zero)_/_'']">
+        {title}
+      </h2>
+      <div className="mt-3">{children}</div>
     </section>
   )
 }
@@ -161,7 +176,7 @@ function Columns({ details: { table, meaning } }: { details: TableDetails }) {
         className="overflow-x-auto rounded-lg border outline-none focus-visible:ring-3 focus-visible:ring-ring"
       >
         <table className="w-full min-w-xl text-sm">
-          <thead className="bg-muted text-left">
+          <thead className="bg-muted text-left font-mono text-xs text-fg-muted">
             <tr>
               <th scope="col" className="px-3 py-2 font-medium">
                 Column
@@ -194,7 +209,7 @@ function Columns({ details: { table, meaning } }: { details: TableDetails }) {
                       )}
                     </span>
                   </th>
-                  <td className="px-3 py-2 text-fg-muted">{type}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-fg-muted">{type}</td>
                   <td className="space-y-1 px-3 py-2">
                     {written && <p>{written}</p>}
                     {note?.dictionary_note && (
@@ -239,17 +254,21 @@ function RelationRow({ relation }: { relation: Relation }) {
   const { from, to, other, preferred, note } = relation
   const href = useExplorerHref()
   return (
-    <li className="flex flex-wrap items-center gap-x-2 text-sm">
-      <code className="font-mono break-all">{from}</code>
-      <ArrowRight aria-label="points to" className="size-3.5 shrink-0 text-fg-muted" />
-      <code className="font-mono break-all">{to}</code>
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs break-all">{from}</code>
+      <ArrowRight aria-label="points to" className="size-3.5 shrink-0 text-signal" />
+      <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs break-all">{to}</code>
       <Link
         to={href(`/explore/tables/${encodeURIComponent(other)}`)}
         className="inline-flex min-h-8 items-center rounded-lg text-info underline underline-offset-4 pointer-coarse:min-h-11"
       >
         Open {other}
       </Link>
-      {preferred && <span className="text-xs text-fg-muted">preferred join</span>}
+      {preferred && (
+        <span className="rounded-full border px-2 py-0.5 font-mono text-[11px] text-fg-muted">
+          preferred join
+        </span>
+      )}
       {note && <span className="text-xs text-fg-muted">({note})</span>}
     </li>
   )
@@ -262,12 +281,12 @@ function Terms({ details: { metrics } }: { details: TableDetails }) {
       {metrics.length === 0 ? (
         <p className="text-fg-muted">No business term is defined on this table.</p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {metrics.map((metric) => (
-            <li key={metric.name}>
+            <li key={metric.name} className="rounded-lg border bg-bg p-4">
               <p className="font-medium">
                 {termName(metric.name)}{' '}
-                <span className="text-xs font-normal text-fg-muted">
+                <span className="ml-1 rounded-full border px-2 py-0.5 align-middle font-mono text-[11px] font-normal text-fg-muted">
                   {metric.kind === 'measure' ? 'a measure' : 'a condition'}
                 </span>
               </p>
@@ -301,15 +320,19 @@ function Questions({ questions }: { questions: readonly string[] }) {
             Each one opens a new conversation with the question ready: nothing is sent until you
             send it.
           </p>
-          <ul className="space-y-1.5">
+          <ul className="grid gap-2 sm:grid-cols-2">
             {questions.map((question) => (
               <li key={question}>
+                {/* Like the canvas's example questions: a card that lifts a little under the pointer. */}
                 <button
                   type="button"
                   onClick={() => draftNew(question)}
-                  className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-input px-3 py-2 text-left text-sm hover:bg-muted"
+                  className="lift flex min-h-11 w-full items-start gap-2 rounded-lg border bg-bg px-3 py-2.5 text-left text-sm"
                 >
-                  <MessageSquarePlus aria-hidden="true" className="size-4 shrink-0 text-fg-muted" />
+                  <MessageSquarePlus
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-signal"
+                  />
                   {question}
                 </button>
               </li>

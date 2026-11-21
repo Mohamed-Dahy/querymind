@@ -1,10 +1,12 @@
 import {
+  getBezierPath,
   Handle,
   Position,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from '@xyflow/react'
@@ -14,6 +16,7 @@ import { useMemo } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { DrawPath } from '@/motion'
 
 import {
   businessLabel,
@@ -29,20 +32,36 @@ import { layoutTables, NODE_HEIGHT, NODE_WIDTH, type Layout } from './layout'
 type Emphasis = 'focused' | 'near' | 'used' | 'shown' | 'dimmed' | 'plain'
 type TableNode = Node<{ table: ExplorerTable; emphasis: Emphasis }, 'table'>
 type BlockNode = Node<{ label: string }, 'block'>
+/** A join line: its colour says why it is lit, its width whether the semantic layer prefers it. */
+type JoinEdge = Edge<{ stroke: string; width: number; lit: boolean }, 'join'>
 
 const HANDLE = 'pointer-events-none !size-px !min-w-0 !border-0 !bg-transparent'
+
+/** The small light in a card's corner: lime for the chosen or used table, blue for its neighbours. */
+const DOT: Record<Emphasis, string> = {
+  focused: 'bg-signal',
+  used: 'bg-signal',
+  near: 'bg-info',
+  shown: 'bg-info',
+  dimmed: 'bg-border',
+  plain: 'bg-input',
+}
 
 function TableCard({ data: { table, emphasis } }: NodeProps<TableNode>) {
   return (
     <div
       className={cn(
-        'flex size-full cursor-pointer flex-col justify-center rounded-lg border bg-surface px-3 shadow-sm',
-        emphasis === 'focused' && 'border-2 border-signal',
-        emphasis === 'near' && 'border-2 border-info',
-        emphasis === 'used' && 'border-2 border-signal',
-        emphasis === 'shown' && 'border-2 border-dashed border-info',
-        // A faint frame, not lower opacity: the text has to stay readable.
-        emphasis === 'dimmed' && 'border-border bg-transparent shadow-none',
+        // Signal Lab (U8.5): a hairline instrument card. Colour, border and glow change smoothly;
+        // size and position never do (the cards must not move or overlap).
+        'relative flex size-full cursor-pointer flex-col justify-center rounded-[10px] border bg-surface px-3',
+        'transition-[border-color,box-shadow,background-color] duration-200 ease-out-expo hover:border-fg-muted',
+        // The chosen table and the answer's tables are lit: a lime frame with a soft glow.
+        emphasis === 'focused' && 'glow border-2 border-signal hover:border-signal',
+        emphasis === 'near' && 'border-2 border-info hover:border-info',
+        emphasis === 'used' && 'glow border-2 border-signal hover:border-signal',
+        emphasis === 'shown' && 'border-2 border-dashed border-info hover:border-info',
+        // A faint frame on the page's own colour, not lower opacity: the text has to stay readable.
+        emphasis === 'dimmed' && 'border-border bg-bg',
         emphasis === 'plain' && 'border-input',
       )}
       style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
@@ -52,14 +71,18 @@ function TableCard({ data: { table, emphasis } }: NodeProps<TableNode>) {
       <Handle type="source" position={Position.Left} className={HANDLE} isConnectable={false} />
       <Handle type="target" position={Position.Right} className={HANDLE} isConnectable={false} />
       <span
+        aria-hidden="true"
+        className={cn('absolute top-2 right-2 size-1.5 rounded-full', DOT[emphasis])}
+      />
+      <span
         className={cn(
-          'truncate text-sm font-medium',
+          'truncate pr-3 text-sm font-medium tracking-tight',
           emphasis === 'dimmed' && 'font-normal text-fg-muted',
         )}
       >
         {table.name}
       </span>
-      <span className="flex items-center gap-1.5 text-xs text-fg-muted">
+      <span className="flex items-center gap-1.5 font-mono text-[11px] text-fg-muted tabular-nums">
         {formatRowCount(table.rowCount)}
         {table.piiColumns.length > 0 && (
           <span className="inline-flex items-center gap-0.5 text-warn">
@@ -77,12 +100,57 @@ function TableCard({ data: { table, emphasis } }: NodeProps<TableNode>) {
 function BusinessFrame({ data: { label } }: NodeProps<BlockNode>) {
   return (
     <div className="pointer-events-none size-full rounded-cell border border-dashed border-input">
-      <p className="px-4 pt-2 text-xs tracking-wide text-fg-muted uppercase">{label}</p>
+      {/* CSS capitals: the text itself stays "Chinook", which is what the graph's tests look for. */}
+      <p className="label-mono px-4 pt-2.5 uppercase">{label}</p>
     </div>
   )
 }
 
+/**
+ * A join line that draws itself in when the graph first appears (U8.5), like a signal being traced.
+ * It is the curve React Flow draws by default (`getBezierPath`), so nothing moves. Its id never
+ * changes, so choosing a table recolours the line without drawing it again. The dimming sits on the
+ * group, not on the path: `DrawPath` animates the path's own opacity to 1, and the two would fight.
+ */
+function JoinLine({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  data,
+}: EdgeProps<JoinEdge>) {
+  const [path] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  })
+  return (
+    <g
+      className="transition-opacity duration-200 ease-out-expo"
+      style={{ opacity: data?.lit === false ? 0.2 : 1 }}
+    >
+      <DrawPath
+        d={path}
+        delay={0.15}
+        fill="none"
+        className="react-flow__edge-path"
+        style={{
+          stroke: data?.stroke,
+          strokeWidth: data?.width,
+          transition: 'stroke 200ms var(--ease-out-expo)',
+        }}
+      />
+    </g>
+  )
+}
+
 const NODE_TYPES = { table: TableCard, block: BusinessFrame }
+const EDGE_TYPES = { join: JoinLine }
 const FIT = { padding: 0.02 }
 
 function aspectRatioOf({ blocks }: Layout): string {
@@ -142,23 +210,27 @@ function buildEdges(
   preferredJoins: ReadonlySet<string>,
   focused: ExplorerTable | undefined,
   { used }: Highlights,
-): Edge[] {
+): JoinEdge[] {
   return tables.flatMap((table) =>
-    table.references.map((target): Edge => {
+    table.references.map((target): JoinEdge => {
       const preferred = preferredJoins.has(joinKey(table.name, target))
       // A chosen table's own lines; or, with none chosen, the lines between tables the SQL read.
       const lit =
         focused !== undefined
           ? focused.name === table.name || focused.name === target
           : used.size === 0 || (used.has(table.name) && used.has(target))
+      // Lime when a choice lit the line (a table, or an answer's tables). Otherwise a quiet line,
+      // a little brighter when the semantic layer prefers the join.
+      const chosen = lit && (focused !== undefined || used.size > 0)
       return {
         id: `${table.name}->${target}`,
+        type: 'join',
         source: table.name,
         target,
-        style: {
-          stroke: preferred ? 'var(--info)' : 'var(--input)',
-          strokeWidth: preferred ? 2 : 1,
-          opacity: lit ? 1 : 0.2,
+        data: {
+          stroke: chosen ? 'var(--signal)' : preferred ? 'var(--fg-muted)' : 'var(--input)',
+          width: preferred ? 2 : 1,
+          lit,
         },
       }
     }),
@@ -185,10 +257,10 @@ function describe(
 function ZoomButtons() {
   const { zoomIn, zoomOut, fitView } = useReactFlow()
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-0.5 rounded-lg border bg-surface p-0.5">
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="icon-sm"
         aria-label="Zoom in"
         title="Zoom in"
@@ -198,7 +270,7 @@ function ZoomButtons() {
       </Button>
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="icon-sm"
         aria-label="Zoom out"
         title="Zoom out"
@@ -208,7 +280,7 @@ function ZoomButtons() {
       </Button>
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="icon-sm"
         aria-label="Fit the graph to its area"
         title="Fit the graph to its area"
@@ -262,12 +334,15 @@ export function Constellation({ data, focused, highlights, onFocus }: Constellat
           style={{ aspectRatio: aspectRatioOf(layout) }}
           // React Flow's credit stays, as its authors ask, in colours that pass the contrast check. With
           // `!`, because its stylesheet is outside Tailwind's layers, and so beats them otherwise.
-          className="rounded-cell border bg-bg [&_.react-flow\_\_attribution]:bg-transparent! [&_.react-flow\_\_attribution_a]:text-fg-muted!"
+          // `canvas-grid`: the canvas's hairline grid. The e2e axe check removes it, since it can't
+          // measure text over a pattern; every card has a solid background of its own.
+          className="canvas-grid rounded-cell border [&_.react-flow\_\_attribution]:bg-transparent! [&_.react-flow\_\_attribution_a]:text-fg-muted!"
         >
           <ReactFlow
             nodes={nodes}
             edges={edges}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             fitView
             fitViewOptions={FIT}
             minZoom={0.2}

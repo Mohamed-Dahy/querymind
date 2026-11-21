@@ -1,3 +1,4 @@
+import { BookOpen } from 'lucide-react'
 import { lazy, Suspense, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
@@ -44,7 +45,11 @@ export default function ExplorePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
-      <h1 className="text-2xl">Data explorer</h1>
+      {/* Signal Lab (U8.5): a mono label over the title, as on the other pages. */}
+      <p aria-hidden="true" className="label-mono">
+        SCHEMA MAP
+      </p>
+      <h1 className="mt-1 text-3xl font-semibold tracking-tight">Data explorer</h1>
       <div className="mt-3">
         <DatabaseSwitcher place="page" />
       </div>
@@ -55,15 +60,19 @@ export default function ExplorePage() {
       <p className="mt-1">
         <Link
           to={href('/explore/glossary')}
-          className="inline-flex min-h-8 items-center rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
+          className="inline-flex min-h-8 items-center gap-1.5 rounded-lg text-sm text-info underline underline-offset-4 pointer-coarse:min-h-11"
         >
+          <BookOpen aria-hidden="true" className="size-4" />
           Business glossary: what each term means
         </Link>
       </p>
 
       {/* A saved database's meanings come from its onboarding (U7.1c): until then, tables only. */}
       {database !== null && semantic?.businesses.length === 0 && (
-        <p role="note" className="mt-4 rounded-lg border bg-muted px-3 py-2 text-sm">
+        <p
+          role="note"
+          className="mt-4 rounded-cell border bg-surface px-4 py-2.5 text-sm shadow-[inset_2px_0_0_var(--info)]"
+        >
           No descriptions yet: they appear once this database has been onboarded (QueryMind drafts
           what each table and column means, with your own LLM key).
         </p>
@@ -72,14 +81,14 @@ export default function ExplorePage() {
       <div className="mt-6">
         {pending ? (
           <div aria-hidden="true" className="space-y-3">
-            <Skeleton className="h-96 w-full motion-reduce:animate-none" />
+            <Skeleton className="h-96 w-full rounded-cell motion-reduce:animate-none" />
           </div>
         ) : data === undefined ? (
           <LoadError error={error} onRetry={retry} />
         ) : (
           <>
             {lit && (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-surface px-3 py-2 text-sm">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-cell border bg-surface px-4 py-2 text-sm shadow-[inset_2px_0_0_var(--signal)]">
                 <p>
                   One answer&apos;s tables: <span className="font-medium text-signal">used</span>{' '}
                   means its SQL read them, <span className="text-info">shown</span> means the AI saw
@@ -98,7 +107,9 @@ export default function ExplorePage() {
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
               {wide && (
                 <Suspense
-                  fallback={<Skeleton className="h-96 w-full motion-reduce:animate-none" />}
+                  fallback={
+                    <Skeleton className="h-96 w-full rounded-cell motion-reduce:animate-none" />
+                  }
                 >
                   <Constellation
                     data={data}

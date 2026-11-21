@@ -15,7 +15,7 @@ export function LoadError({
   message = "The tables can't be listed right now. Questions on the canvas may not work either.",
 }: LoadErrorProps) {
   return (
-    <div className="rounded-lg border bg-surface p-4">
+    <div className="rounded-cell border bg-surface p-4 shadow-[inset_2px_0_0_var(--danger)]">
       <p className="font-semibold">
         {errorTitle(error instanceof ApiError ? error.code : 'unexpected')}
       </p>

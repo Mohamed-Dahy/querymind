@@ -5,6 +5,7 @@ import { Link, useLocation } from 'react-router'
 import type { MetricMeaning } from '@/api/explorer'
 import { SqlCode } from '@/canvas/SqlView'
 import { useDraftNew } from '@/canvas/useConversation'
+import { SEARCH_FIELD } from '@/components/field'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -48,13 +49,20 @@ export default function GlossaryPage() {
         <ArrowLeft aria-hidden="true" className="size-4" />
         All tables
       </Link>
-      <h1 className="mt-2 text-2xl">Business glossary</h1>
-      <p className="mt-2 text-fg-muted">
+      {/* Signal Lab (U8.5): a mono label over the title. */}
+      <p aria-hidden="true" className="label-mono mt-4">
+        GLOSSARY
+      </p>
+      <h1 className="mt-1 text-3xl font-semibold tracking-tight">Business glossary</h1>
+      <p className="mt-2 max-w-2xl text-fg-muted">
         Every term QueryMind knows, with the exact SQL it uses. A person wrote and checked these, so
         &ldquo;revenue&rdquo; always means the same thing.
       </p>
       {database !== null && (
-        <p role="note" className="mt-4 rounded-lg border bg-muted px-3 py-2 text-sm">
+        <p
+          role="note"
+          className="mt-4 rounded-cell border bg-surface px-4 py-2.5 text-sm shadow-[inset_2px_0_0_var(--info)]"
+        >
           Business terms are written by hand, and so far only for the demo databases. Your own
           database has none yet: questions about it use the meanings of its tables and columns.
         </p>
@@ -62,7 +70,10 @@ export default function GlossaryPage() {
 
       <div className="mt-6">
         {isPending ? (
-          <Skeleton aria-hidden="true" className="h-64 w-full motion-reduce:animate-none" />
+          <Skeleton
+            aria-hidden="true"
+            className="h-64 w-full rounded-cell motion-reduce:animate-none"
+          />
         ) : data === undefined ? (
           <LoadError
             error={error}
@@ -75,17 +86,20 @@ export default function GlossaryPage() {
               Search terms, other words for them, and their meanings
             </label>
             <div className="relative max-w-md">
-              <Search aria-hidden="true" className="absolute top-2 left-2 size-4 text-fg-muted" />
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-muted"
+              />
               <input
                 id={searchId}
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Term, other word, or meaning"
-                className="h-8 w-full rounded-lg border border-input bg-muted pr-2 pl-7 text-sm outline-none placeholder:text-fg-muted focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:h-11"
+                className={SEARCH_FIELD}
               />
             </div>
-            <p aria-live="polite" className="mt-2 text-xs text-fg-muted">
+            <p aria-live="polite" className="mt-2 font-mono text-xs text-fg-muted tabular-nums">
               {found === total ? `${total} terms` : `${found} of ${total} terms`}
             </p>
 
@@ -97,8 +111,11 @@ export default function GlossaryPage() {
                   .filter(({ metrics }) => metrics.length > 0)
                   .map(({ database, metrics }) => (
                     <section key={database} aria-label={businessLabel(database)}>
-                      <h2 className="text-lg font-semibold">{businessLabel(database)}</h2>
-                      <ul className="mt-3 space-y-4">
+                      <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+                        <span aria-hidden="true" className="size-1.5 rounded-full bg-signal" />
+                        {businessLabel(database)}
+                      </h2>
+                      <ul className="mt-3 grid gap-3 lg:grid-cols-2">
                         {metrics.map((metric) => (
                           <Term key={metric.name} metric={metric} />
                         ))}
@@ -124,15 +141,16 @@ function Term({ metric }: { metric: MetricMeaning }) {
     <li
       id={termAnchor(name)}
       aria-label={title}
-      className="scroll-mt-4 rounded-cell border bg-surface p-4"
+      // A link to this term (from a table's page) lights it up: `:target` is the term in the address.
+      className="flex scroll-mt-4 flex-col rounded-cell border bg-surface p-5 transition-[border-color,box-shadow] duration-200 target:border-signal target:glow"
     >
-      <h3 id={headingId} className="font-semibold">
+      <h3 id={headingId} className="font-semibold tracking-tight">
         {title}{' '}
-        <span className="text-xs font-normal text-fg-muted">
+        <span className="ml-1 rounded-full border px-2 py-0.5 align-middle font-mono text-[11px] font-normal text-fg-muted">
           {kind === 'measure' ? 'a measure' : 'a condition'}
         </span>
       </h3>
-      <p className="mt-1">{description}</p>
+      <p className="mt-1.5 text-sm">{description}</p>
       <div className="mt-2">
         <SqlCode sql={sql} />
       </div>
@@ -140,7 +158,7 @@ function Term({ metric }: { metric: MetricMeaning }) {
         <span className="text-fg-muted">On the table:</span>{' '}
         <Link
           to={href(`/explore/tables/${encodeURIComponent(table)}`)}
-          className="text-info underline underline-offset-4"
+          className="font-mono text-info underline underline-offset-4"
         >
           {table}
         </Link>
@@ -150,10 +168,12 @@ function Term({ metric }: { metric: MetricMeaning }) {
           <span className="text-fg-muted">Other words for it:</span> {synonyms.join(', ')}
         </p>
       )}
+      {/* Grows, so the buttons line up at the bottom across a row of two terms. */}
+      <div aria-hidden="true" className="min-h-3 flex-1" />
       <Button
         type="button"
         variant="outline"
-        className="mt-3"
+        className="self-start"
         // Every term has this button, so the description says which term it is for.
         aria-describedby={headingId}
         onClick={() => draftNew(metricQuestion(metric))}
