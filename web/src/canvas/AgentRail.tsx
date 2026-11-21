@@ -82,6 +82,8 @@ type AgentRailProps = {
   onStop: () => void
   /** The heading of the cell, to say which question Stop is for. */
   describedBy: string
+  /** False for a replay (the landing page's demo): there is no run to stop. */
+  canStop?: boolean
 }
 
 /**
@@ -89,7 +91,14 @@ type AgentRailProps = {
  * line fills up to the step at work, a failed try flashes its node and the repair arc draws itself.
  * What is running, what is done and how long it took, and any repair, in words too.
  */
-export function AgentRail({ trace, status, stopped, onStop, describedBy }: AgentRailProps) {
+export function AgentRail({
+  trace,
+  status,
+  stopped,
+  onStop,
+  describedBy,
+  canStop = true,
+}: AgentRailProps) {
   const ended = status !== 'running'
   const { steps, tries, repairs } = useMemo(
     () => railFrom(trace, { ended, stopped }),
@@ -117,7 +126,7 @@ export function AgentRail({ trace, status, stopped, onStop, describedBy }: Agent
             ))}
           </ol>
         </div>
-        {!ended && (
+        {!ended && canStop && (
           <Button
             type="button"
             variant="outline"

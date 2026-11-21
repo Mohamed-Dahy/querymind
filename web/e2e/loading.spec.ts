@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 
 import { expect, test } from './fixtures.ts'
-import { apiStatusLoaded, ROUTES } from './helpers.ts'
+import { apiStatusLoaded, NO_SHELL, ROUTES } from './helpers.ts'
 
 // "No screen is ever blank or frozen" (U6.2): with a page's own code and every API reply held back,
 // the page still shows something, and then the real page arrives.
@@ -24,9 +24,9 @@ async function holdCode(page: Page, file: string) {
   return release
 }
 
-/** Where the page is drawn: <main>, or the whole page for the style guide, which has no shell. */
+/** Where the page is drawn: <main>, or the whole page for the pages without the shell. */
 const pageArea = (page: Page, path: string) =>
-  path === '/styleguide' ? page.locator('body') : page.getByRole('main')
+  NO_SHELL.has(path) ? page.locator('body') : page.getByRole('main')
 
 for (const { path, heading, code } of ROUTES) {
   test(`${path} is never blank while its code and data load`, async ({ page }) => {

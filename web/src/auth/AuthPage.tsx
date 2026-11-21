@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ScanSearch, TriangleAlert } from 'lucide-react'
+import { Check, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
@@ -8,8 +8,10 @@ import { asApiError, type ApiError } from '@/api/client'
 import { safeNext, takeSessionEnded, useAuthStatus } from '@/api/session'
 import { formatWait } from '@/canvas/wait'
 import { FIELD } from '@/components/field'
+import { LogoMark } from '@/components/LogoMark'
 import { SubmitButton } from '@/components/SubmitButton'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
+import { DrawPath, Reveal } from '@/motion'
 
 type Mode = 'login' | 'signup'
 
@@ -87,20 +89,25 @@ export function AuthPage({ mode }: { mode: Mode }) {
 
   return (
     <div className="canvas-grid flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between gap-4 border-b bg-surface px-4 py-2">
+      <header className="flex items-center justify-between gap-4 border-b bg-bg px-4 py-2">
+        {/* The front page (U8.4): what QueryMind is, for someone who isn't sure yet. */}
         <Link
-          to="/evals"
-          className="flex min-h-11 items-center gap-2 rounded-lg font-heading text-lg font-semibold"
+          to="/welcome"
+          className="flex min-h-11 items-center gap-2.5 rounded-lg font-heading text-[1.0625rem] font-semibold tracking-tight"
         >
-          <ScanSearch aria-hidden="true" className="size-5 text-signal" />
+          <LogoMark />
           QueryMind
         </Link>
         <ThemeSwitcher compact />
       </header>
 
-      <main className="flex flex-1 items-start justify-center px-4 py-10 sm:items-center">
-        <div className="w-full max-w-sm rounded-cell border bg-surface p-6 shadow-sm">
-          <h1 className="font-heading text-2xl font-semibold">{text.title}</h1>
+      {/* Signal Lab (U8.4): the form, and from 1024 px a panel beside it saying what you get. */}
+      <main className="mx-auto grid w-full max-w-5xl flex-1 items-start gap-10 px-4 py-10 sm:items-center lg:grid-cols-2">
+        <Reveal className="mx-auto w-full max-w-sm rounded-cell border bg-surface p-6 shadow-lg">
+          <p aria-hidden="true" className="label-mono">
+            {mode === 'login' ? 'WELCOME BACK' : 'NEW WORKSPACE'}
+          </p>
+          <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight">{text.title}</h1>
           <p className="mt-1 text-sm text-fg-muted">{text.intro}</p>
 
           {ended && (
@@ -193,8 +200,48 @@ export function AuthPage({ mode }: { mode: Mode }) {
               See the evals lab without an account
             </Link>
           </p>
-        </div>
+        </Reveal>
+        <AuthAside />
       </main>
     </div>
+  )
+}
+
+/** What an account gets, beside the form on wide screens: the signal line, and three true facts. */
+function AuthAside() {
+  return (
+    <Reveal delay={0.1} className="hidden lg:block">
+      <svg viewBox="0 0 320 80" aria-hidden="true" className="w-full max-w-md text-signal">
+        <path d="M 0 60 L 320 60" stroke="currentColor" strokeOpacity={0.15} />
+        <DrawPath
+          d="M 0 60 L 70 60 L 95 20 L 125 70 L 150 40 L 320 40"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="320" cy="40" r="4" fill="currentColor" />
+      </svg>
+      <p className="mt-6 text-3xl leading-tight font-semibold tracking-tight">
+        Questions in plain words.
+        <br />
+        <span className="text-fg-muted">Answers you can check.</span>
+      </p>
+      <ul className="mt-6 space-y-3 text-sm">
+        {[
+          'Every answer shows its steps, its SQL and how sure it is.',
+          'Your database is only ever read, never changed.',
+          'Your conversations stay in your own workspace.',
+        ].map((fact) => (
+          <li key={fact} className="flex items-start gap-2.5">
+            <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border border-signal/50">
+              <Check aria-hidden="true" className="size-3 text-signal" />
+            </span>
+            {fact}
+          </li>
+        ))}
+      </ul>
+    </Reveal>
   )
 }

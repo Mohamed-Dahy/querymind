@@ -19,10 +19,20 @@ const DictionaryReview = lazy(() => import('@/settings/DictionaryReview'))
 const MembersSettings = lazy(() => import('@/settings/MembersSettings'))
 const PermissionsSettings = lazy(() => import('@/settings/PermissionsSettings'))
 const AuditSettings = lazy(() => import('@/settings/AuditSettings'))
+// The public front page (U8.4): visitors only, so the app's users never download it.
+const LandingPage = lazy(() => import('@/landing/LandingPage'))
 
 /** While a page's code downloads, the page's shape shows, not an empty screen. */
 function Page({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
+}
+
+export function LazyLandingPage() {
+  return (
+    <Page>
+      <LandingPage />
+    </Page>
+  )
 }
 
 export function LazyExplorePage() {

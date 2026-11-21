@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures.ts'
-import { apiStatusLoaded, ROUTES, a11yIssues, THEMES, useTheme } from './helpers.ts'
+import { apiStatusLoaded, NO_SHELL, ROUTES, a11yIssues, THEMES, useTheme } from './helpers.ts'
 
 test('the page loads and shows the API version from the mock API', async ({ page }) => {
   const health = page.waitForResponse('**/api/health')
@@ -120,7 +120,7 @@ for (const theme of THEMES) {
         await page.goto(path)
         await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-        if (path !== '/styleguide') await apiStatusLoaded(page)
+        if (!NO_SHELL.has(path)) await apiStatusLoaded(page)
 
         expect(await a11yIssues(page)).toEqual([])
       })

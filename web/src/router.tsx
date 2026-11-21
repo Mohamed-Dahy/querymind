@@ -17,6 +17,7 @@ import {
   LazyPermissionsSettings,
   LazyGlossaryPage,
   LazyKeySettings,
+  LazyLandingPage,
   LazyModelsPage,
   LazyQuestionPage,
   LazyQuestionsPage,
@@ -48,9 +49,11 @@ const styleguideRoutes: RouteObject[] = Styleguide
 /**
  * Every screen has a URL, so it can be bookmarked, shared, and reached with the back button.
  * Logins (U7.1): the canvas and the explorer need one (RequireLogin); the evals lab is public on
- * purpose (our own eval data, the portfolio page); /login and /signup are outside the shell.
+ * purpose (our own eval data, the portfolio page); /welcome, /login and /signup are outside the shell.
  */
 export const routes: RouteObject[] = [
+  // The public front page (U8.4, ADR 026), outside the shell like the login page.
+  { path: '/welcome', element: <LazyLandingPage /> },
   { path: '/login', element: <AuthPage mode="login" /> },
   { path: '/signup', element: <AuthPage mode="signup" /> },
   {

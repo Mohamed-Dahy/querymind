@@ -39,8 +39,9 @@ test('a reload keeps you logged in, and "Log out" keeps you out', async ({ page 
   await expect(page).toHaveURL(/\/login$/)
   await page.reload()
   await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible()
+  // Opening the site itself shows the front page (U8.4); deeper links still go to the login.
   await page.goto('/')
-  await expect(page).toHaveURL(/\/login\?next=%2F$/)
+  await expect(page).toHaveURL(/\/welcome$/)
 })
 
 test('a wrong password is said in words, next to the form', async ({ page }) => {

@@ -103,6 +103,14 @@ export function resetAuth() {
   emit()
 }
 
+/**
+ * Whether a session ended without "Log out", without using the note up (takeSessionEnded does): the
+ * front-page redirect (RequireLogin) must send such a user to the login, which explains it.
+ */
+export function sessionEnded(): boolean {
+  return ended
+}
+
 /** True once, after a session ended without "Log out" (the login page says so). */
 export function takeSessionEnded(): boolean {
   const was = ended

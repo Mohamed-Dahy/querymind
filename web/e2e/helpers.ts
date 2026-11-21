@@ -81,12 +81,22 @@ export const ROUTES: { path: string; heading: string; title: string; code?: stri
   },
   { path: '/no/such/page', heading: 'Page not found', title: 'Page not found · QueryMind' },
   {
+    // The public front page (U8.4): outside the shell, like the style guide.
+    path: '/welcome',
+    heading: 'Ask your database. See every step it takes.',
+    title: 'QueryMind · Ask your database in plain words',
+    code: 'src/landing/LandingPage.tsx',
+  },
+  {
     path: '/styleguide',
     heading: 'QueryMind · style guide',
     title: 'QueryMind',
     code: 'src/pages/Styleguide.tsx',
   },
 ]
+
+/** Pages drawn without the app shell (no top bar, no API status line, no <main> from the shell). */
+export const NO_SHELL = new Set(['/styleguide', '/welcome'])
 
 /**
  * Every problem axe finds under WCAG 2.1 A and AA, at every impact level (minor and moderate

@@ -2,7 +2,7 @@ import { AxeBuilder } from '@axe-core/playwright'
 import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from './fixtures.ts'
-import { apiStatusLoaded, ROUTES, THEMES, useTheme } from './helpers.ts'
+import { apiStatusLoaded, NO_SHELL, ROUTES, THEMES, useTheme } from './helpers.ts'
 
 // U6.4: the accessibility checks that belong to the whole app, not to one page. axe itself runs
 // after every test (fixtures.ts); these cover what axe cannot see: the keyboard, focus, motion and
@@ -140,7 +140,7 @@ for (const { path, heading } of ROUTES) {
     test.slow() // a long page has 100+ stops
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
-    if (path !== '/styleguide') await apiStatusLoaded(page)
+    if (!NO_SHELL.has(path)) await apiStatusLoaded(page)
 
     // Tab until focus leaves the page after its last stop (the browser then reports <body>).
     let stops = 0
@@ -278,7 +278,7 @@ for (const theme of THEMES) {
       test(`on ${path}`, async ({ page }) => {
         await page.goto(path)
         await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
-        if (path !== '/styleguide') await apiStatusLoaded(page)
+        if (!NO_SHELL.has(path)) await apiStatusLoaded(page)
         await page.addStyleTag({ content: '.canvas-grid { background-image: none !important; }' })
 
         const results = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze()
