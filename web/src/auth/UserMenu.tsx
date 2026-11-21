@@ -10,6 +10,7 @@ import { useSession } from '@/api/session'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { Pop } from '@/motion'
 
 const ROLE_NAMES = { admin: 'Admin', analyst: 'Analyst', viewer: 'Viewer' } as const
 
@@ -46,7 +47,7 @@ export function UserMenu() {
       </p>
       {/* The role in words, never colour alone. From 640 px: a phone's top bar has no room for it
           (the account menu says it there). */}
-      <Badge variant="outline" className="hidden sm:inline-flex">
+      <Badge variant="secondary" className="hidden sm:inline-flex">
         <span className="sr-only">Role: </span>
         {ROLE_NAMES[role]}
       </Badge>
@@ -121,13 +122,14 @@ function AccountMenu({
         <ChevronDown aria-hidden="true" className="hidden sm:block" />
       </Button>
       {open && (
-        <div
+        // Pops out of the account button's corner (U8.2); closes at once.
+        <Pop
           id={panelId}
-          className="absolute top-full right-0 z-50 mt-1 w-64 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+          className="absolute top-full right-0 z-50 mt-1.5 w-64 rounded-cell border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
         >
           <div className="px-2 py-1.5 text-sm">
             <p className="truncate font-medium">{email}</p>
-            <p className="truncate text-xs text-fg-muted">
+            <p className="truncate font-mono text-xs text-fg-muted">
               {role} · {workspace}
             </p>
           </div>
@@ -159,7 +161,7 @@ function AccountMenu({
               </button>
             </li>
           </ul>
-        </div>
+        </Pop>
       )}
     </div>
   )
@@ -194,7 +196,7 @@ function WorkspaceList({
 
   return (
     <>
-      <p id={headingId} className="px-2 pt-1 pb-0.5 text-xs font-medium text-fg-muted">
+      <p id={headingId} className="label-mono px-2 pt-1 pb-0.5">
         Workspaces
       </p>
       <ul aria-labelledby={headingId}>

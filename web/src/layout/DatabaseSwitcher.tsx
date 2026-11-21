@@ -66,7 +66,7 @@ export function DatabaseSwitcher({ place }: DatabaseSwitcherProps) {
         id={selectId}
         value={id ?? DEMO}
         onChange={(event) => choose(event.target.value)}
-        className="h-8 max-w-56 min-w-0 truncate rounded-lg border border-input bg-muted px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:h-11"
+        className="h-8 max-w-56 min-w-0 truncate rounded-lg border border-input bg-muted px-2.5 text-sm font-medium transition-colors outline-none hover:border-fg-muted focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:h-11"
       >
         <option value={DEMO}>Demo: {DEMO_NAME}</option>
         {connections.map((connection) => (

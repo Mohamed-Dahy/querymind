@@ -65,7 +65,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        'p-1 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:text-fg-muted',
+        'p-1 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-[0.6875rem] **:[[cmdk-group-heading]]:tracking-[0.08em] **:[[cmdk-group-heading]]:text-fg-muted',
         className,
       )}
       {...props}
@@ -78,9 +78,10 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        // The selected item: background and an outline, so it shows without colour alone.
-        'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 text-sm outline-none select-none',
-        'data-[selected=true]:bg-muted data-[selected=true]:ring-1 data-[selected=true]:ring-input',
+        // The selected item: background, an outline and a lime edge, so it shows without colour alone.
+        'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-sm outline-none select-none',
+        'data-[selected=true]:bg-muted data-[selected=true]:ring-1 data-[selected=true]:ring-input data-[selected=true]:shadow-[inset_2px_0_0_var(--signal)]',
+        'data-[selected=true]:[&_svg]:text-signal',
         "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:text-fg-muted [&_svg:not([class*='size-'])]:size-4",
         className,
       )}

@@ -3,12 +3,12 @@ import {
   Gauge,
   LayoutGrid,
   Network,
-  ScanSearch,
   History,
   Search,
   SquarePen,
   type LucideIcon,
 } from 'lucide-react'
+import { LayoutGroup, m } from 'motion/react'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 
@@ -17,11 +17,13 @@ import { UserMenu } from '@/auth/UserMenu'
 import { CanvasProvider } from '@/canvas/CanvasProvider'
 import { useNewConversation } from '@/canvas/useConversation'
 import { Kbd } from '@/components/Kbd'
+import { LogoMark } from '@/components/LogoMark'
 import { OverlayLoading } from '@/components/OverlayLoading'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Button } from '@/components/ui/button'
 import { isPaletteShortcut, MODIFIER } from '@/lib/keys'
 import { cn } from '@/lib/utils'
+import { spring } from '@/motion'
 
 import { ApiStatus } from './ApiStatus'
 import { DatabaseSwitcher } from './DatabaseSwitcher'
@@ -79,14 +81,15 @@ function Frame() {
       <div className="flex min-h-dvh flex-col">
         <SkipLink target={main} />
 
-        {/* On a phone: two short rows (logo and the two actions; status and theme), with the
+        {/* Signal Lab's command bar (U8.2): graphite with a hairline, the mark, then the controls.
+            On a phone: two short rows (logo and the two actions; status and theme), with the
             buttons' words kept for screen readers only. From 640 px: the words come back. */}
-        <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b bg-surface px-4 py-2 sm:gap-y-2">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b bg-bg px-4 py-2 sm:gap-y-2">
           <Link
             to="/"
-            className="flex min-h-11 items-center gap-2 rounded-lg font-heading text-lg font-semibold"
+            className="flex min-h-11 items-center gap-2.5 rounded-lg font-heading text-[1.0625rem] font-semibold tracking-tight"
           >
-            <ScanSearch aria-hidden="true" className="size-5 text-signal" />
+            <LogoMark />
             QueryMind
           </Link>
           {/* Which database (U7.1b). Not on a phone: there it's at the top of the page. Logged
@@ -101,18 +104,20 @@ function Frame() {
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-4">
             {loggedIn && (
+              // Looks like a search field (a pill with the shortcut at its end) but is a button: the
+              // palette is where the typing happens.
               <Button
                 type="button"
                 variant="outline"
                 aria-haspopup="dialog"
                 aria-keyshortcuts="Control+K Meta+K"
-                className="pointer-coarse:min-w-11"
+                className="border-border bg-muted text-fg-muted hover:text-fg pointer-coarse:min-w-11 sm:w-44 sm:justify-start lg:w-56"
                 onClick={(event) => palette.show(event.currentTarget)}
               >
                 <Search aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only">Search</span>
                 {/* Not read out: aria-keyshortcuts says it. Hidden on phones, which have no Ctrl key. */}
-                <span aria-hidden="true" className="hidden sm:inline">
+                <span aria-hidden="true" className="hidden sm:ml-auto sm:inline">
                   <Kbd>{`${MODIFIER} K`}</Kbd>
                 </span>
               </Button>
@@ -224,54 +229,57 @@ function NavRail({ deletes, loggedIn }: { deletes: DeleteWithUndo; loggedIn: boo
   const historyButton = useRef<HTMLButtonElement>(null)
 
   return (
-    <nav
-      aria-label="Main"
-      className="border-b bg-surface md:w-56 md:shrink-0 md:border-r md:border-b-0"
-    >
-      <ul className="flex flex-wrap gap-0.5 p-2 sm:gap-1 md:flex-col md:flex-nowrap">
-        {NAV_ITEMS.map(({ to, label, Icon, matches }) => {
-          const current = matches(pathname)
-          return (
-            <li key={to}>
-              <Link
-                to={to === '/explore' ? explorerPath(to, database) : to}
-                // Tells screen readers which page this is; the look follows it (not colour alone: weight too).
-                aria-current={current ? 'page' : undefined}
-                className={cn(
-                  'flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm sm:px-3 transition-colors',
-                  current
-                    ? 'bg-muted font-medium text-fg'
-                    : 'text-fg-muted hover:bg-muted hover:text-fg',
-                )}
+    <nav aria-label="Main" className="border-b bg-bg md:w-58 md:shrink-0 md:border-r md:border-b-0">
+      {/* One LayoutGroup: the indicator slides from the old page's link to the new one. */}
+      <LayoutGroup id="nav">
+        <ul className="flex flex-wrap gap-0.5 p-2 sm:gap-1 md:flex-col md:flex-nowrap">
+          {NAV_ITEMS.map(({ to, label, Icon, matches }) => {
+            const current = matches(pathname)
+            return (
+              <li key={to}>
+                <Link
+                  to={to === '/explore' ? explorerPath(to, database) : to}
+                  // Tells screen readers which page this is; the look follows it (not colour alone:
+                  // weight and the indicator too).
+                  aria-current={current ? 'page' : undefined}
+                  className={cn(
+                    'relative flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm transition-colors sm:px-3',
+                    current ? 'font-medium text-fg' : 'text-fg-muted hover:bg-muted hover:text-fg',
+                  )}
+                >
+                  {current && <NavIndicator />}
+                  <Icon
+                    aria-hidden="true"
+                    className={cn('relative size-4', current && 'text-signal')}
+                  />
+                  <span className="relative">{label}</span>
+                </Link>
+              </li>
+            )
+          })}
+          {loggedIn && (
+            <li className="ml-auto md:hidden">
+              <button
+                ref={historyButton}
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() => {
+                  setSheetLoaded(true)
+                  setSheetOpen(true)
+                }}
+                className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm sm:px-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
               >
-                <Icon aria-hidden="true" className="size-4" />
-                {label}
-              </Link>
+                <History aria-hidden="true" className="size-4" />
+                History
+              </button>
             </li>
-          )
-        })}
-        {loggedIn && (
-          <li className="ml-auto md:hidden">
-            <button
-              ref={historyButton}
-              type="button"
-              aria-haspopup="dialog"
-              onClick={() => {
-                setSheetLoaded(true)
-                setSheetOpen(true)
-              }}
-              className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm sm:px-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
-            >
-              <History aria-hidden="true" className="size-4" />
-              History
-            </button>
-          </li>
-        )}
-      </ul>
+          )}
+        </ul>
+      </LayoutGroup>
 
       {loggedIn && (
-        <section aria-labelledby="history-heading" className="hidden px-3 py-3 md:block">
-          <h2 id="history-heading" className="px-2 text-xs tracking-wide text-fg-muted uppercase">
+        <section aria-labelledby="history-heading" className="hidden border-t px-3 py-3 md:block">
+          <h2 id="history-heading" className="label-mono px-2">
             History
           </h2>
           <HistoryRail deletes={deletes} />
@@ -297,5 +305,22 @@ function NavRail({ deletes, loggedIn }: { deletes: DeleteWithUndo; loggedIn: boo
         </p>
       )}
     </nav>
+  )
+}
+
+/**
+ * The current page's mark in the rail: a raised pill with a lime edge. Motion's `layoutId` makes it
+ * slide from the old link to the new one (U8.2); under reduced motion it simply appears there.
+ */
+function NavIndicator() {
+  return (
+    <m.span
+      aria-hidden="true"
+      layoutId="nav-indicator"
+      transition={spring.snappy}
+      className="absolute inset-0 rounded-lg border border-border bg-muted"
+    >
+      <span className="absolute top-2.5 bottom-2.5 left-0 hidden w-0.5 rounded-full bg-signal md:block" />
+    </m.span>
   )
 }

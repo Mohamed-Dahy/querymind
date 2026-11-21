@@ -30,6 +30,9 @@ export function HistorySheet({ open, onOpenChange, deletes, opener }: HistoryShe
         }}
       >
         <SheetHeader className="pb-0">
+          <p aria-hidden="true" className="label-mono">
+            QUERYMIND
+          </p>
           <SheetTitle>History</SheetTitle>
           <SheetDescription>Your saved conversations.</SheetDescription>
         </SheetHeader>

@@ -3,6 +3,7 @@
 export { CountUp } from './CountUp'
 export { DrawPath } from './DrawPath'
 export { MotionProvider } from './MotionProvider'
+export { Pop } from './Pop'
 export { Reveal, type RevealTag } from './Reveal'
 export { Stagger, StaggerItem } from './Stagger'
 export { Swap } from './Swap'

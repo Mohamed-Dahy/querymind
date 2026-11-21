@@ -1,8 +1,10 @@
 import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
+import { LayoutGroup, m } from 'motion/react'
+import { useId } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { useTheme, type ThemeChoice } from '@/lib/theme'
 import { cn } from '@/lib/utils'
+import { spring } from '@/motion'
 
 const OPTIONS: { choice: ThemeChoice; label: string; Icon: LucideIcon }[] = [
   { choice: 'dark', label: 'Dark', Icon: Moon },
@@ -15,25 +17,52 @@ type ThemeSwitcherProps = {
   compact?: boolean
 }
 
-/** Three toggle buttons; the pressed one is the current choice (aria-pressed, not colour alone). */
+/**
+ * Three toggle buttons in one segmented control; the pressed one is the current choice (aria-pressed,
+ * not colour alone). Signal Lab (U8.2): a raised pill slides to the chosen button (motion's
+ * `layoutId`, one LayoutGroup per switcher so two on a page never share it).
+ */
 export function ThemeSwitcher({ compact = false }: ThemeSwitcherProps) {
   const { choice, setChoice } = useTheme()
+  const group = useId()
 
   return (
-    <div role="group" aria-label="Theme" className="inline-flex gap-1 rounded-lg bg-muted p-1">
-      {OPTIONS.map(({ choice: option, label, Icon }) => (
-        <Button
-          key={option}
-          size="sm"
-          variant={choice === option ? 'outline' : 'ghost'}
-          aria-pressed={choice === option}
-          className={cn(compact && 'pointer-coarse:min-w-11')}
-          onClick={() => setChoice(option)}
-        >
-          <Icon aria-hidden="true" />
-          <span className={cn(compact && 'sr-only sm:not-sr-only')}>{label}</span>
-        </Button>
-      ))}
-    </div>
+    <LayoutGroup id={group}>
+      <div
+        role="group"
+        aria-label="Theme"
+        className="inline-flex gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+      >
+        {OPTIONS.map(({ choice: option, label, Icon }) => {
+          const pressed = choice === option
+          return (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={pressed}
+              className={cn(
+                'relative isolate inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-[0.8rem] font-medium transition-colors outline-none',
+                'focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:min-h-11 [&_svg]:size-3.5',
+                pressed ? 'text-fg' : 'text-fg-muted hover:text-fg',
+                compact && 'pointer-coarse:min-w-11',
+              )}
+              onClick={() => setChoice(option)}
+            >
+              {pressed && (
+                <m.span
+                  aria-hidden="true"
+                  layoutId="theme-pill"
+                  transition={spring.snappy}
+                  // Behind the icon and words: -z-10 inside the button's own layer (isolate).
+                  className="absolute inset-0 -z-10 rounded-md border border-input bg-surface"
+                />
+              )}
+              <Icon aria-hidden="true" />
+              <span className={cn(compact && 'sr-only sm:not-sr-only')}>{label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </LayoutGroup>
   )
 }

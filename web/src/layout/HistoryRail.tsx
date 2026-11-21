@@ -71,7 +71,7 @@ export function HistoryRail({ deletes, onOpen }: HistoryRailProps) {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search"
-          className="h-8 w-full rounded-lg border border-input bg-muted pr-2 pl-7 text-sm outline-none placeholder:text-fg-muted focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:h-11"
+          className="h-8 w-full rounded-lg border border-border bg-muted pr-2 pl-7 text-sm transition-colors outline-none placeholder:text-fg-muted hover:border-input focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:h-11"
         />
       </div>
 
@@ -99,7 +99,7 @@ export function HistoryRail({ deletes, onOpen }: HistoryRailProps) {
           {groupConversations(visible, new Date(conversations.dataUpdatedAt)).map(
             ({ title, items }) => (
               <section key={title} className="mt-3">
-                <h3 className="px-2 text-xs text-fg-muted">{title}</h3>
+                <h3 className="label-mono px-2">{title}</h3>
                 <ul className="mt-1 space-y-0.5">
                   {items.map((conversation) => (
                     <HistoryItem
@@ -134,7 +134,7 @@ export function HistoryRail({ deletes, onOpen }: HistoryRailProps) {
 const ACTIONS =
   // Out of the way until wanted, but still reachable: width 0 keeps them in the Tab order, so
   // focus reveals them. Touch screens have no hover, so there they always show.
-  'flex w-0 shrink-0 overflow-hidden opacity-0 group-focus-within:w-auto group-focus-within:opacity-100 group-hover:w-auto group-hover:opacity-100 pointer-coarse:w-auto pointer-coarse:opacity-100'
+  'flex w-0 shrink-0 overflow-hidden opacity-0 transition-opacity duration-150 group-focus-within:w-auto group-focus-within:opacity-100 group-hover:w-auto group-hover:opacity-100 pointer-coarse:w-auto pointer-coarse:opacity-100'
 
 /** Questions kept to ask again. Nothing at all until the first one, or with history off. */
 function SavedQuestions({
@@ -149,7 +149,7 @@ function SavedQuestions({
 
   return (
     <section className="mt-3">
-      <h3 className="px-2 text-xs text-fg-muted">Saved</h3>
+      <h3 className="label-mono px-2">Saved</h3>
       <ul className="mt-1 space-y-0.5">
         {questions.map((saved) => (
           <SavedQuestionItem
@@ -253,7 +253,14 @@ function HistoryItem({
   }
 
   return (
-    <li className={cn('group flex items-center rounded-lg hover:bg-muted', current && 'bg-muted')}>
+    // The open conversation: raised, with a lime edge on its left (not colour alone: aria-current
+    // and the weight too).
+    <li
+      className={cn(
+        'group flex items-center rounded-lg transition-colors hover:bg-muted',
+        current && 'bg-muted shadow-[inset_2px_0_0_var(--signal)]',
+      )}
+    >
       <Link
         to={path}
         title={title}
@@ -267,7 +274,7 @@ function HistoryItem({
         {pinned && <Pin aria-label="Pinned" className="size-3 shrink-0" />}
         <span className="truncate">{title}</span>
         {database && (
-          <span className="max-w-24 shrink-0 truncate rounded border px-1 text-xs text-fg-muted">
+          <span className="max-w-24 shrink-0 truncate rounded-full border px-1.5 font-mono text-[0.6875rem] text-fg-muted">
             <span className="sr-only">, about </span>
             {database.name}
           </span>
@@ -366,7 +373,7 @@ function RenameBox({
       onChange={(event) => setText(event.target.value)}
       onKeyDown={onKeyDown}
       onBlur={onCancel}
-      className="h-8 w-full rounded-lg border border-input bg-muted px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:h-11"
+      className="h-8 w-full rounded-lg border border-ring bg-muted px-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring pointer-coarse:h-11"
     />
   )
 }

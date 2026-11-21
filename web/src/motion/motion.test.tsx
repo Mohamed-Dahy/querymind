@@ -4,7 +4,7 @@ import { MotionGlobalConfig } from 'motion/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { CountUp, DrawPath, MotionProvider, Reveal, Stagger, StaggerItem, Swap } from '.'
+import { CountUp, DrawPath, MotionProvider, Pop, Reveal, Stagger, StaggerItem, Swap } from '.'
 import { exitDuration } from './tokens'
 
 // src/test/setup.ts switches animations off for every test: the primitives must then render their
@@ -64,6 +64,14 @@ describe('with animations off (unit tests, reduced motion)', () => {
     expect(screen.queryByText('The answer')).not.toBeInTheDocument()
   })
 
+  it('Pop is a plain panel, already open', () => {
+    render(<Pop data-testid="panel">Settings</Pop>)
+    const panel = screen.getByTestId('panel')
+    expect(panel.style.opacity).toBe('')
+    expect(panel.style.transform).toBe('')
+    expect(panel).toBeVisible()
+  })
+
   it('DrawPath draws the whole path, with no dash trick left on it', () => {
     const { container } = render(
       <svg>
@@ -87,6 +95,14 @@ describe('with animations on', () => {
     const element = screen.getByTestId('reveal')
     expect(element.style.opacity).toBe('0')
     expect(element.style.transform).toContain('translateY(10px)')
+  })
+
+  it('Pop grows from the corner of its button', () => {
+    MotionGlobalConfig.skipAnimations = false
+    render(<Pop data-testid="panel">Settings</Pop>)
+    const panel = screen.getByTestId('panel')
+    expect(panel.style.opacity).toBe('0')
+    expect(panel.style.transformOrigin).toBe('top right')
   })
 
   it('CountUp falls back to the value where there is no IntersectionObserver (jsdom)', () => {
