@@ -32,7 +32,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-bg': 'var(--popover)',
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'var(--input)',
-          '--border-radius': 'var(--radius)',
+          // Signal Lab: the readouts' 14 px corners
+          '--border-radius': '14px',
         } as CSSProperties
       }
       toastOptions={{

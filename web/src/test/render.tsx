@@ -4,15 +4,24 @@ import type { ReactElement } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 
 import { Toaster } from '@/components/ui/sonner'
+import { MotionProvider } from '@/motion'
 import { routes } from '@/router'
 
 /**
  * Render inside a fresh query cache, so tests never share data, and failures aren't retried.
  * Returns the cache too, so a test can ask again now instead of waiting for a poll.
+ * Inside the app's MotionProvider too, as in main.tsx (animations are off in tests: setup.ts).
  */
 export function renderWithQueryClient(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return { ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>), client }
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        <MotionProvider>{ui}</MotionProvider>
+      </QueryClientProvider>,
+    ),
+    client,
+  }
 }
 
 /**

@@ -1,6 +1,7 @@
 // Runs before every test file (vite.config.ts → test.setupFiles).
 import '@testing-library/jest-dom/vitest' // adds matchers like toBeInTheDocument()
 import { cleanup, configure } from '@testing-library/react'
+import { MotionGlobalConfig } from 'motion/react'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
 
@@ -73,6 +74,11 @@ Object.defineProperties(HTMLElement.prototype, {
 // first time a test file loads them, and the whole suite at once keeps every core busy. A test that
 // is really failing only takes longer to say so.
 configure({ asyncUtilTimeout: 5000 })
+
+// No animations in unit tests: every animated part renders its end state at once, as under reduced
+// motion (src/motion/useMotionSafe.ts). Tests check what the page shows, not how it moves there.
+// A test about the animated path sets it to false and back (src/motion/motion.test.tsx).
+MotionGlobalConfig.skipAnimations = true
 
 // Unmount what each test rendered, so tests don't see each other's DOM.
 afterEach(() => cleanup())

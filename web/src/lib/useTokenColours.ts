@@ -3,7 +3,8 @@ import { useMemo } from 'react'
 import { useTheme } from './theme'
 
 // Our tokens for the series, in order (src/styles/tokens.css): never a colour picked by hand.
-const SERIES_TOKENS = ['--signal', '--info', '--warn'] as const
+// --warn is not a series any more: it means "warning" (Signal Lab, ADR 026).
+const SERIES_TOKENS = ['--signal', '--info', '--data-3', '--data-4'] as const
 
 export type Colours = {
   series: string[]

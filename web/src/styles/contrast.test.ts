@@ -9,7 +9,17 @@ type Theme = 'dark' | 'light'
 
 const BACKGROUNDS = ['--bg', '--surface', '--muted']
 // Every token used as text (or as an icon next to text) must be readable on every background.
-const TEXT = ['--fg', '--fg-muted', '--signal', '--warn', '--danger', '--info']
+// The data series too: chart labels and legends are drawn in them.
+const TEXT = [
+  '--fg',
+  '--fg-muted',
+  '--signal',
+  '--warn',
+  '--danger',
+  '--info',
+  '--data-3',
+  '--data-4',
+]
 // Control outlines and the focus ring are UI parts: 3:1 against what is next to them (WCAG 1.4.11).
 const UI_PARTS = ['--input', '--ring']
 const UI_BACKGROUNDS = ['--bg', '--surface']

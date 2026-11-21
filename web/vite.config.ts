@@ -19,11 +19,11 @@ const apiProxy = {
 }
 
 // Fonts to download alongside the JS instead of after it. Without a preload the browser only finds a
-// font once the CSS has loaded and the page has rendered. Only Fira Sans 400 (latin), the body text
-// and the canvas's largest text: on a slow phone every preload shares bandwidth with the JS, and
-// preloading all four first-screen fonts made the page slower (docs/lighthouse/README.md). The other
-// weights, Fira Code and other alphabets still load on demand, only if a page uses them.
-const PRELOAD_FONTS = [/^assets\/fira-sans-latin-400-normal-[\w-]+\.woff2$/]
+// font once the CSS has loaded and the page has rendered. Only Geist (latin), the body text and the
+// canvas's largest text: it is a variable font, so this one file serves every weight. On a slow phone
+// every preload shares bandwidth with the JS (docs/lighthouse/README.md), so Geist Mono and other
+// alphabets still load on demand, only if a page uses them.
+const PRELOAD_FONTS = [/^assets\/geist-latin-wght-normal-[\w-]+\.woff2$/]
 
 // Adds a <link rel="preload"> to dist/index.html for each font above. Build only: the dev server
 // has no hashed file names to point at. The file names change with each font release, so they are

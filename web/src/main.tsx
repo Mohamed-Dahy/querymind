@@ -7,6 +7,7 @@ import { createQueryClient } from './api/queryClient.ts'
 import { Toaster } from './components/ui/sonner.tsx'
 import './index.css'
 import { initTheme } from './lib/theme.ts'
+import { MotionProvider } from './motion/MotionProvider.tsx'
 import { createAppRouter } from './router.tsx'
 
 const root = document.getElementById('root')
@@ -31,7 +32,10 @@ const router = createAppRouter()
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      {/* One motion set-up for the whole app: lazy engine, shared timing, reduced motion (ADR 026) */}
+      <MotionProvider>
+        <RouterProvider router={router} />
+      </MotionProvider>
       <Toaster />
     </QueryClientProvider>
   </StrictMode>,

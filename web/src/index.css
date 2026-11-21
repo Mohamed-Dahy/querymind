@@ -7,13 +7,12 @@
 @import './styles/shadcn-variants.css';
 @import './styles/tokens.css';
 
-/* Self-hosted fonts (no request to Google at runtime), font-display: swap */
-@import '@fontsource/fira-sans/400.css';
-@import '@fontsource/fira-sans/500.css';
-@import '@fontsource/fira-sans/600.css';
-@import '@fontsource/fira-code/400.css';
-@import '@fontsource/fira-code/500.css';
-@import '@fontsource/fira-code/600.css';
+/*
+ * Self-hosted fonts (no request to Google at runtime), font-display: swap. Variable fonts: one file per
+ * alphabet covers every weight (100–900), so 400, 500 and 600 cost a single download.
+ */
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 
 /* `dark:` classes follow the resolved theme on <html> (prefer tokens; shadcn's components use a few) */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
@@ -23,9 +22,10 @@
  * `inline` = the class uses var(--surface) directly, so switching data-theme switches every class.
  */
 @theme inline {
-  --font-sans: 'Fira Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Fira Code', ui-monospace, 'Cascadia Code', monospace;
-  --font-heading: var(--font-mono);
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'Cascadia Code', monospace;
+  /* Signal Lab: headings in Geist (tight), mono only for SQL, numbers and the small labels */
+  --font-heading: var(--font-sans);
 
   /* Ours */
   --color-bg: var(--bg);
@@ -37,6 +37,9 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-info: var(--info);
+  --color-data-3: var(--data-3);
+  --color-data-4: var(--data-4);
+  --color-glow: var(--glow);
   --color-overlay: var(--overlay);
 
   /* shadcn/ui's names (mapped onto ours in tokens.css) */
@@ -59,13 +62,32 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Radii: controls 8 px (rounded-lg), cells 12 px (rounded-cell) */
+  /* Radii: controls 10 px (rounded-lg), readouts and panels 14 px (rounded-cell) */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-cell: 12px;
+  --radius-cell: 14px;
+}
+
+/* Animations used as Tailwind classes (animate-sweep). The CSS kill switch at the end stops them. */
+@theme {
+  /* The ease-out curve of src/motion/tokens.ts, for CSS transitions (class ease-out-expo, or
+     var(--ease-out-expo)). In this block, not the inline one, so it exists as a real CSS variable. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-sweep: sweep 1.6s var(--ease-out-expo) infinite;
+
+  /* A band of light passing over a skeleton: "loading", without the whole block blinking */
+  @keyframes sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
 }
 
 @layer base {
@@ -77,8 +99,15 @@
     background: var(--bg);
     color: var(--fg);
     font-family: var(--font-sans);
-    line-height: 1.5;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--signal);
+    color: var(--on-signal);
   }
 
   body {
@@ -92,8 +121,8 @@
   h4 {
     font-family: var(--font-heading);
     font-weight: 600;
-    line-height: 1.25;
-    letter-spacing: -0.01em;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
   }
 
   code,
@@ -115,11 +144,49 @@
   }
 }
 
-/* The canvas background: a faint dot grid, like graph paper */
+/* The canvas background: a faint 24 px hairline grid, like an instrument's graticule */
 @utility canvas-grid {
   background-color: var(--bg);
-  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
-  background-size: 16px 16px;
+  background-image:
+    linear-gradient(var(--grid-dot) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+
+/*
+ * The small mono labels: "READOUT 01", "STEP 3/6", "Today". Labels only, never body text.
+ * No text-transform: in Chrome it can change an element's accessible name, which the tests find
+ * elements by. A label meant to be in capitals is written in capitals.
+ */
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+}
+
+/* Lights the one active thing (the running step, the focused composer): a lime hairline and a soft halo */
+@utility glow {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--glow) 55%, transparent),
+    0 0 28px -6px color-mix(in srgb, var(--glow) 40%, transparent);
+}
+
+/* A card that lifts a little under the pointer (transform only; the CSS kill switch below stops it) */
+@utility lift {
+  transition:
+    transform 150ms var(--ease-out-expo),
+    border-color 150ms var(--ease-out-expo);
+  /* Only on devices that really hover, so a tap on a phone doesn't leave the card lifted */
+  @media (hover: hover) {
+    &:hover {
+      transform: translateY(-2px);
+      border-color: var(--input);
+    }
+  }
 }
 
 /* People who ask their system for less motion get (almost) none */

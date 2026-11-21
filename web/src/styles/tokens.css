@@ -1,65 +1,76 @@
 /*
- * QueryMind design tokens: the only place colours, radii and the grid are defined.
+ * QueryMind design tokens ("Signal Lab", ADR 026): the only place colours, radii and the grid are defined.
  * The rules behind them are in docs/ui-design-system.md.
  *
  * - Dark is the default. The theme is the data-theme attribute on <html>: index.html sets it before the
  *   first paint, then src/lib/theme.ts keeps it in sync.
  * - Components never use raw hex values, only these tokens through Tailwind classes (bg-surface, text-fg...).
- * - src/styles/contrast.test.ts checks every text colour against every background, in both themes.
+ * - src/styles/contrast.test.ts checks every text colour against every background, in both themes. It only
+ *   reads 6-digit hex values inside the two theme blocks: keep text colours in that form.
  */
 
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  /* Surfaces, darkest to lightest */
-  --bg: #0f172a; /* the page and the canvas */
-  --surface: #1b2336; /* cells, panels, dialogs */
-  --muted: #272f42; /* inputs, table stripes, hover */
+  /* Surfaces, darkest to lightest: graphite */
+  --bg: #0a0b0d; /* the page and the canvas */
+  --surface: #121418; /* readouts, panels, dialogs */
+  --muted: #1c1f25; /* inputs, table stripes, hover, tab list */
 
   /* Text */
-  --fg: #f8fafc;
-  --fg-muted: #94a3b8;
+  --fg: #edeef0;
+  --fg-muted: #9aa1ac; /* secondary text and the small mono labels */
 
   /* Lines */
-  --border: rgb(255 255 255 / 0.08); /* decorative hairlines only */
-  --input: #64748b; /* outlines of inputs and outline buttons (3:1, WCAG 1.4.11) */
-  --ring: #22d3ee; /* keyboard focus */
+  --border: #252930; /* decorative hairlines: card edges, dividers */
+  --input: #5e6570; /* outlines of inputs and outline buttons (3:1, WCAG 1.4.11) */
+  --ring: #c6f432; /* keyboard focus */
 
   /* Meaning: always shown with an icon or text too, never by colour alone */
-  --signal: #22c55e; /* the one accent: the running agent, success, high confidence */
-  --on-signal: #0f172a; /* text on a --signal fill (primary buttons) */
-  --warn: #f59e0b; /* warnings, medium confidence */
-  --danger: #f87171; /* errors, refusals, low confidence */
-  --info: #22d3ee; /* agent trace steps, links */
+  --signal: #c6f432; /* the one accent (electric lime): the running step, the primary button, high confidence */
+  --on-signal: #0a0b0d; /* text on a --signal fill */
+  --warn: #ffb547; /* warnings, medium confidence */
+  --danger: #ff6b5e; /* errors, refusals, low confidence, a failed try */
+  --info: #8b9cff; /* the second data series, links, trace details */
 
-  /* Effects */
-  --grid-dot: rgb(255 255 255 / 0.06); /* the canvas dot grid */
-  --overlay: rgb(2 6 23 / 0.6); /* behind dialogs and sheets */
+  /* More data series (charts), after --signal and --info */
+  --data-3: #ff8a65;
+  --data-4: #4fd1c5;
+
+  /* Effects: decorative only, never text */
+  --glow: #c6f432; /* soft light behind the active thing */
+  --grid-dot: rgb(255 255 255 / 0.035); /* the canvas's hairline grid */
+  --overlay: rgb(5 6 8 / 0.65); /* behind dialogs and sheets */
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --bg: #f8fafc;
+  /* Warm paper */
+  --bg: #f4f4f1;
   --surface: #ffffff;
-  --muted: #e9eef6;
+  --muted: #e9e9e4;
 
-  --fg: #0f172a;
-  --fg-muted: #475569;
+  --fg: #0e1012;
+  --fg-muted: #545a63;
 
-  --border: #dbe3ee;
-  --input: #64748b;
-  --ring: #0e7490;
+  --border: #dcdcd6;
+  --input: #7a808a;
+  --ring: #3f6212;
 
-  --signal: #166534;
+  --signal: #3f6212; /* deep lime: lime itself is unreadable on paper */
   --on-signal: #ffffff;
-  --warn: #92400e;
-  --danger: #b91c1c;
-  --info: #0e7490;
+  --warn: #8a5200;
+  --danger: #b42318;
+  --info: #3f4fd1;
 
-  --grid-dot: rgb(15 23 42 / 0.07);
-  --overlay: rgb(15 23 42 / 0.45);
+  --data-3: #b4441e;
+  --data-4: #0d6b63;
+
+  --glow: #c6f432;
+  --grid-dot: rgb(14 16 18 / 0.05);
+  --overlay: rgb(14 16 18 / 0.45);
 }
 
 /*
@@ -82,8 +93,8 @@
   --accent-foreground: var(--fg);
   --destructive: var(--danger);
 
-  /* 8 px: controls. Cells use --radius-cell (12 px, in index.css). */
-  --radius: 0.5rem;
+  /* 10 px: controls. Readouts and panels use --radius-cell (14 px, in index.css). */
+  --radius: 0.625rem;
 }
 
 /*
