@@ -47,11 +47,11 @@ export default function PermissionsSettings() {
 
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} className="text-xl">
+      <h2 id={headingId} className="text-xl font-semibold tracking-tight">
         Permissions
       </h2>
       {!admin ? (
-        <p className="mt-3 rounded-cell border bg-surface p-4 text-sm">
+        <p className="mt-3 rounded-cell border bg-surface px-4 py-2.5 text-sm shadow-[inset_2px_0_0_var(--info)]">
           Only an admin of this workspace can see and change who may use which tables.
         </p>
       ) : (
@@ -170,7 +170,7 @@ function Grid({ database, info }: { database: DatabaseId; info: TableAccessInfo 
           <caption id={captionId} className="sr-only">
             Tables each role may use
           </caption>
-          <thead className="bg-muted text-left">
+          <thead className="bg-muted text-left font-mono text-xs text-fg-muted">
             <tr>
               <th scope="col" className="px-3 py-2 font-medium">
                 Table

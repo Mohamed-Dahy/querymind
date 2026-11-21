@@ -52,7 +52,7 @@ export default function DictionaryReview() {
         <ArrowLeft aria-hidden="true" className="size-4" />
         Back to databases
       </Link>
-      <h2 id={headingId} className="mt-1 text-xl">
+      <h2 id={headingId} className="mt-1 text-xl font-semibold tracking-tight">
         Descriptions of {name}
       </h2>
 
@@ -147,7 +147,10 @@ function Review({ id, dictionary, editable, running, onRunning }: ReviewProps) {
         kept as it is when the database is onboarded again.
       </p>
       {running && (
-        <p role="note" className="rounded-lg border bg-muted px-3 py-2 text-sm">
+        <p
+          role="note"
+          className="rounded-cell border bg-surface px-4 py-2.5 text-sm shadow-[inset_2px_0_0_var(--info)]"
+        >
           Onboarding is running: the descriptions can be edited once it has finished.
         </p>
       )}

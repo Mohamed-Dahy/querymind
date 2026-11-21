@@ -68,11 +68,16 @@ export default function MembersSettings() {
 
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} ref={heading} tabIndex={-1} className="rounded-lg text-xl outline-none">
+      <h2
+        id={headingId}
+        ref={heading}
+        tabIndex={-1}
+        className="rounded-lg text-xl font-semibold tracking-tight outline-none"
+      >
         Members
       </h2>
       {!admin ? (
-        <p className="mt-3 rounded-cell border bg-surface p-4 text-sm">
+        <p className="mt-3 rounded-cell border bg-surface px-4 py-2.5 text-sm shadow-[inset_2px_0_0_var(--info)]">
           Only an admin of this workspace can see and change its members.
         </p>
       ) : (

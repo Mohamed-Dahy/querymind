@@ -44,7 +44,12 @@ export default function KeySettings() {
 
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} ref={heading} tabIndex={-1} className="rounded-lg text-xl outline-none">
+      <h2
+        id={headingId}
+        ref={heading}
+        tabIndex={-1}
+        className="rounded-lg text-xl font-semibold tracking-tight outline-none"
+      >
         LLM key
       </h2>
       <p className="mt-1 text-sm text-fg-muted">
@@ -100,7 +105,7 @@ function CurrentKey({ info, admin, focusAfterRemove }: CurrentKeyProps) {
     )
   }
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 rounded-cell border bg-surface p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-cell border bg-surface p-4 shadow-[inset_2px_0_0_var(--signal)]">
       <div className="min-w-0">
         <p className="font-medium">Your own {info.provider_label} key</p>
         <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">

@@ -176,6 +176,8 @@ function Progress({ info }: { info: OnboardingInfo }) {
                 'flex items-center gap-1.5',
                 state === 'todo' ? 'text-fg-muted' : 'text-fg',
                 state === 'current' && 'font-medium',
+                // The stage running now: a lime pill around it (U8.7).
+                state === 'current' && '-mx-2 rounded-full bg-muted px-2 py-0.5',
               )}
             >
               {state === 'done' ? (
@@ -213,9 +215,11 @@ function Progress({ info }: { info: OnboardingInfo }) {
             aria-valuenow={done}
             className="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-muted"
           >
+            {/* Full width, scaled down to the share drafted (U8.7): moving `scale` instead of
+                `width` changes no layout, so each new count only redraws the bar. */}
             <div
-              className="h-full rounded-full bg-signal transition-[width] motion-reduce:transition-none"
-              style={{ width: `${(100 * done) / info.tables_total}%` }}
+              className="h-full w-full origin-left rounded-full bg-signal transition-[scale] duration-500 ease-out-expo motion-reduce:transition-none"
+              style={{ scale: `${done / info.tables_total} 1` }}
             />
           </div>
           <p className="text-fg-muted tabular-nums">

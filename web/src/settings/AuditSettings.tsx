@@ -47,11 +47,11 @@ export default function AuditSettings() {
 
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} className="text-xl">
+      <h2 id={headingId} className="text-xl font-semibold tracking-tight">
         Audit log
       </h2>
       {!admin ? (
-        <p className="mt-3 rounded-cell border bg-surface p-4 text-sm">
+        <p className="mt-3 rounded-cell border bg-surface px-4 py-2.5 text-sm shadow-[inset_2px_0_0_var(--info)]">
           Only an admin of this workspace can read its audit log.
         </p>
       ) : (
@@ -335,7 +335,12 @@ function Line({ line, databaseName }: { line: AuditLine; databaseName: string })
         />
       </button>
       {open && (
-        <div id={detailsId} className="border-t bg-muted/40 px-3 py-3 text-sm">
+        // Slides down a little as it opens (U8.7). Only movement: its text is never see-through, so
+        // contrast checks always measure it, and no height animates. Off under reduced motion.
+        <div
+          id={detailsId}
+          className="border-t bg-muted/40 px-3 py-3 text-sm shadow-[inset_2px_0_0_var(--signal)] animate-in duration-200 ease-out-expo slide-in-from-top-1 motion-reduce:animate-none"
+        >
           <Details line={line} databaseName={databaseName} />
         </div>
       )}

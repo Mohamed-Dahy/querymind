@@ -67,7 +67,12 @@ export default function DatabasesSettings() {
 
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} ref={heading} tabIndex={-1} className="rounded-lg text-xl outline-none">
+      <h2
+        id={headingId}
+        ref={heading}
+        tabIndex={-1}
+        className="rounded-lg text-xl font-semibold tracking-tight outline-none"
+      >
         Databases
       </h2>
       <p className="mt-1 text-sm text-fg-muted">
@@ -88,7 +93,7 @@ export default function DatabasesSettings() {
           <>
             {/* Asking needs the workspace's own key (5.11): say so before anyone tries. */}
             {key.data === null && connections.data.length > 0 && (
-              <p className="rounded-lg border bg-muted px-3 py-2 text-sm">
+              <p className="rounded-cell border bg-surface px-4 py-2.5 text-sm shadow-[inset_2px_0_0_var(--info)]">
                 Questions about your own databases run on your own LLM key.{' '}
                 <Link to="/settings/key" className="text-info underline underline-offset-4">
                   {admin ? 'Save one' : 'An admin can save one'} in the LLM key tab
