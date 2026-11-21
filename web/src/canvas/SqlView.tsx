@@ -40,7 +40,7 @@ export function SqlCode({ sql }: { sql: string }) {
   const lines = useSqlTokens(sql)
   return (
     // Plain text first, the same size: no jump when the colours arrive.
-    <pre className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm leading-relaxed break-words whitespace-pre-wrap">
+    <pre className="overflow-x-auto rounded-lg border bg-muted p-4 font-mono text-sm leading-relaxed break-words whitespace-pre-wrap">
       <code>
         {lines
           ? lines.map((line, lineIndex) => (

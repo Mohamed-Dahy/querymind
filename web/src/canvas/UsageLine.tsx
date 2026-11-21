@@ -10,7 +10,7 @@ import { usageParts, type LLMUsage } from './usage'
 export function UsageLine({ usage }: { usage: LLMUsage | null | undefined }) {
   if (!usage) return null
   return (
-    <p className="flex items-start gap-1.5 text-xs text-fg-muted">
+    <p className="flex items-start gap-1.5 font-mono text-xs text-fg-muted">
       <Cpu aria-hidden="true" className="mt-px size-3.5 shrink-0" />
       <span>
         <span className="sr-only">Answered by </span>

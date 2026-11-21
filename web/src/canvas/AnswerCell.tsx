@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { csvFileName, downloadCsv, toCsv } from '@/lib/csv'
+import { Reveal } from '@/motion'
 
 import { CertaintyMeter } from './CertaintyMeter'
 import { pickChart } from './pickChart'
@@ -26,6 +27,10 @@ import type { SavedInfo } from './state'
 const ResultChart = lazy(() =>
   import('./ResultChart').then(({ ResultChart }) => ({ default: ResultChart })),
 )
+
+// A tab panel fades in as it opens (CSS, tw-animate-css; instant under reduced motion). Radix mounts
+// a panel only when its tab is chosen, so this runs on every switch.
+const PANEL_IN = 'animate-in fade-in-0 duration-200'
 
 // Most answers never open it, so it downloads on the first click.
 const ShowYourWork = lazy(() =>
@@ -79,11 +84,18 @@ export function AnswerCell({
 
   return (
     <div className="space-y-3">
-      <p className="text-base">{reply.answer}</p>
+      {/* Signal Lab (U8.3): the answer, the dial, then the evidence arrive in that order (about
+          a tenth of a second apart), so the eye reads them in that order too. */}
+      <Reveal as="p" className="text-lg leading-relaxed">
+        {reply.answer}
+      </Reveal>
       <SourceLine sources={reply.sources} />
       <UsageLine usage={reply.usage} />
 
-      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+      <Reveal
+        delay={0.08}
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-bg/50 px-3 py-2"
+      >
         <CertaintyMeter level={reply.confidence} reasons={reply.confidence_reasons} />
         <RowsChip tags={reply.row_scope} />
         {!reply.answer_from_llm && <TemplateBadge />}
@@ -101,7 +113,7 @@ export function AnswerCell({
           <ListChecks aria-hidden="true" />
           Show your work
         </Button>
-      </div>
+      </Reveal>
       {workLoaded && (
         <Suspense fallback={<OverlayLoading />}>
           <ShowYourWork
@@ -131,61 +143,63 @@ export function AnswerCell({
 
       {/* The chart first when one fits; otherwise the table opens (one row, no numbers…). The key:
           after a re-run the Chart tab may appear, and it should open on it. */}
-      <Tabs
-        key={saved?.freshAt ?? 'first'}
-        defaultValue={chart.kind === 'none' ? 'table' : 'chart'}
-      >
-        <TabsList aria-label="Evidence">
-          {chart.kind !== 'none' && <TabsTrigger value="chart">Chart</TabsTrigger>}
-          <TabsTrigger value="table">Table</TabsTrigger>
-          <TabsTrigger value="sql">SQL</TabsTrigger>
-        </TabsList>
-        {chart.kind !== 'none' && (
-          <TabsContent value="chart" className="pt-2">
-            <Suspense fallback={<Skeleton className="h-64 w-full motion-reduce:animate-none" />}>
-              <ResultChart spec={chart} />
-            </Suspense>
+      <Reveal delay={0.16}>
+        <Tabs
+          key={saved?.freshAt ?? 'first'}
+          defaultValue={chart.kind === 'none' ? 'table' : 'chart'}
+        >
+          <TabsList aria-label="Evidence">
+            {chart.kind !== 'none' && <TabsTrigger value="chart">Chart</TabsTrigger>}
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger value="sql">SQL</TabsTrigger>
+          </TabsList>
+          {chart.kind !== 'none' && (
+            <TabsContent value="chart" className={`pt-2 ${PANEL_IN}`}>
+              <Suspense fallback={<Skeleton className="h-64 w-full motion-reduce:animate-none" />}>
+                <ResultChart spec={chart} />
+              </Suspense>
+            </TabsContent>
+          )}
+          <TabsContent value="table" className={`space-y-3 pt-2 ${PANEL_IN}`}>
+            {rowsNotStored ? (
+              <RerunPanel reply={reply} n={saved?.n ?? 0} onRerun={onRerun} />
+            ) : (
+              <RowsNote rowCount={reply.row_count} truncated={reply.truncated} />
+            )}
+            <HiddenColumnsNote columns={reply.columns} masked={reply.masked_columns} />
+            {reply.rows.length > 0 && (
+              <ResultTable
+                columns={reply.columns}
+                rows={reply.rows}
+                question={reply.question}
+                masked={reply.masked_columns}
+              />
+            )}
+            {!rowsNotStored && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={reply.rows.length === 0}
+                onClick={() => {
+                  const name = csvFileName(reply.question)
+                  downloadCsv(name, toCsv(reply.columns, reply.rows))
+                  // A download gives no sign in the page itself; this one is polite and goes by itself.
+                  toast(`Downloaded ${name}`, {
+                    description: `${reply.rows.length.toLocaleString('en')} ${reply.rows.length === 1 ? 'row' : 'rows'}`,
+                  })
+                }}
+              >
+                <Download aria-hidden="true" />
+                Download CSV
+              </Button>
+            )}
           </TabsContent>
-        )}
-        <TabsContent value="table" className="space-y-3 pt-2">
-          {rowsNotStored ? (
-            <RerunPanel reply={reply} n={saved?.n ?? 0} onRerun={onRerun} />
-          ) : (
-            <RowsNote rowCount={reply.row_count} truncated={reply.truncated} />
-          )}
-          <HiddenColumnsNote columns={reply.columns} masked={reply.masked_columns} />
-          {reply.rows.length > 0 && (
-            <ResultTable
-              columns={reply.columns}
-              rows={reply.rows}
-              question={reply.question}
-              masked={reply.masked_columns}
-            />
-          )}
-          {!rowsNotStored && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={reply.rows.length === 0}
-              onClick={() => {
-                const name = csvFileName(reply.question)
-                downloadCsv(name, toCsv(reply.columns, reply.rows))
-                // A download gives no sign in the page itself; this one is polite and goes by itself.
-                toast(`Downloaded ${name}`, {
-                  description: `${reply.rows.length.toLocaleString('en')} ${reply.rows.length === 1 ? 'row' : 'rows'}`,
-                })
-              }}
-            >
-              <Download aria-hidden="true" />
-              Download CSV
-            </Button>
-          )}
-        </TabsContent>
-        {/* Radix mounts a tab's content only when it opens, so Shiki loads on the first SQL click. */}
-        <TabsContent value="sql" className="pt-2">
-          <SqlView sql={reply.sql} explanation={reply.explanation} />
-        </TabsContent>
-      </Tabs>
+          {/* Radix mounts a tab's content only when it opens, so Shiki loads on the first SQL click. */}
+          <TabsContent value="sql" className={`pt-2 ${PANEL_IN}`}>
+            <SqlView sql={reply.sql} explanation={reply.explanation} />
+          </TabsContent>
+        </Tabs>
+      </Reveal>
     </div>
   )
 }
@@ -197,7 +211,7 @@ function TemplateBadge() {
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-input px-2 text-sm text-fg-muted pointer-coarse:min-h-11"
+          className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-input px-2.5 text-xs text-fg-muted pointer-coarse:min-h-11"
         >
           <Info aria-hidden="true" className="size-4" />
           Answer from a template

@@ -69,11 +69,15 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
         }}
       >
         <SheetHeader className="pb-0">
+          <p aria-hidden="true" className="label-mono">
+            SHOW YOUR WORK
+          </p>
           <SheetTitle>How this answer was made</SheetTitle>
           <SheetDescription>{reply.question}</SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-5 px-4 pb-6">
+        {/* counter-reset: the sections number themselves (01, 02…) in their headings, below. */}
+        <div className="space-y-5 px-4 pb-6 [counter-reset:work]">
           {(reply.duration_ms != null || reply.sql_attempts != null) && (
             <p className="text-fg-muted tabular-nums">
               {reply.duration_ms != null && `Took ${formatDuration(reply.duration_ms)}`}
@@ -88,7 +92,7 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
               <p>{schemaSentence(selection)}</p>
               <ul aria-label="Tables shown" className="mt-2 flex flex-wrap gap-1.5">
                 {selection.tables.map((table) => (
-                  <li key={table} className="rounded border px-1.5 py-0.5 font-mono text-xs">
+                  <li key={table} className="rounded-full border px-2 py-0.5 font-mono text-xs">
                     {table}
                   </li>
                 ))}
@@ -101,7 +105,7 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
               {used.length > 0 ? (
                 <ul aria-label="Tables read" className="flex flex-wrap gap-1.5">
                   {used.map((table) => (
-                    <li key={table} className="rounded border px-1.5 py-0.5 font-mono text-xs">
+                    <li key={table} className="rounded-full border px-2 py-0.5 font-mono text-xs">
                       {table}
                     </li>
                   ))}
@@ -184,8 +188,12 @@ export function ShowYourWork({ reply, open, onOpenChange, opener }: ShowYourWork
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section>
-      <h3 className="mb-1.5 font-medium">{title}</h3>
+    // Signal Lab (U8.3): a hairline between sections, and a mono step number before each heading,
+    // made by CSS with empty alt text (after the slash): not read out, not part of the name.
+    <section className="border-t pt-4 [counter-increment:work]">
+      <h3 className="mb-2 font-medium before:mr-2 before:font-mono before:text-xs before:text-fg-muted before:content-[counter(work,decimal-leading-zero)_/_'']">
+        {title}
+      </h3>
       {children}
     </section>
   )

@@ -43,18 +43,27 @@ export function ResultChart({ spec }: { spec: DrawnSpec }) {
       })),
     [spec],
   )
-  const axis = { stroke: colours.grid, tick: { fill: colours.muted, fontSize: 12 } }
+  // Signal Lab (U8.3): hairline axes and grid, mono tick labels (the figure's font), an instrument-
+  // style tooltip. The data keeps the strongest colour on the page.
+  const axis = { stroke: colours.hairline, tick: { fill: colours.muted, fontSize: 11 } }
   const tooltip = (
     <Tooltip
       formatter={formatNumber}
-      contentStyle={{ background: colours.surface, borderColor: colours.grid, color: colours.text }}
-      labelStyle={{ color: colours.text }}
-      cursor={{ fill: colours.grid, fillOpacity: 0.2 }}
+      contentStyle={{
+        background: colours.surface,
+        borderColor: colours.grid,
+        borderRadius: 10,
+        color: colours.text,
+        fontSize: 12,
+      }}
+      labelStyle={{ color: colours.muted }}
+      cursor={{ fill: colours.grid, fillOpacity: 0.15 }}
     />
   )
 
   return (
-    <figure role="img" aria-label={describeChart(spec)} className="w-full">
+    // font-mono: SVG text inherits the font, so every axis label and value reads like a gauge.
+    <figure role="img" aria-label={describeChart(spec)} className="w-full font-mono">
       {spec.kind === 'bar' ? (
         <ResponsiveContainer width="100%" height={spec.points.length * BAR_HEIGHT + 56}>
           {/* layout="vertical": the bars lie down, so long category names stay readable. */}
@@ -64,7 +73,7 @@ export function ResultChart({ spec }: { spec: DrawnSpec }) {
             margin={{ top: 4, right: 64, bottom: 20, left: 8 }}
             accessibilityLayer={false}
           >
-            <CartesianGrid horizontal={false} stroke={colours.grid} strokeOpacity={0.4} />
+            <CartesianGrid horizontal={false} stroke={colours.hairline} strokeDasharray="2 4" />
             <XAxis
               type="number"
               {...axis}
@@ -82,7 +91,8 @@ export function ResultChart({ spec }: { spec: DrawnSpec }) {
               dataKey="v0"
               name={spec.seriesNames[0]}
               fill={colours.series[0]}
-              radius={[0, 4, 4, 0]}
+              radius={[0, 6, 6, 0]}
+              maxBarSize={22}
             >
               {spec.points.length <= MAX_LABELLED_BARS && (
                 <LabelList
@@ -90,7 +100,7 @@ export function ResultChart({ spec }: { spec: DrawnSpec }) {
                   position="right"
                   formatter={formatNumber}
                   fill={colours.text}
-                  fontSize={12}
+                  fontSize={11}
                 />
               )}
             </Bar>
@@ -103,7 +113,7 @@ export function ResultChart({ spec }: { spec: DrawnSpec }) {
             margin={{ top: 8, right: 24, bottom: 20, left: 8 }}
             accessibilityLayer={false}
           >
-            <CartesianGrid vertical={false} stroke={colours.grid} strokeOpacity={0.4} />
+            <CartesianGrid vertical={false} stroke={colours.hairline} strokeDasharray="2 4" />
             <XAxis
               dataKey="label"
               // Room at both ends, so the first and last labels aren't cut by the edge.
@@ -129,7 +139,7 @@ export function ResultChart({ spec }: { spec: DrawnSpec }) {
                 // Not colour alone: each line also has its own dash pattern (the legend shows it).
                 strokeDasharray={DASHES[index]}
                 // Dots too: the points stay visible where a line is short or broken by a gap.
-                dot={{ r: 3, fill: colours.series[index] }}
+                dot={{ r: 3, fill: colours.surface, stroke: colours.series[index], strokeWidth: 2 }}
                 connectNulls={false}
               />
             ))}

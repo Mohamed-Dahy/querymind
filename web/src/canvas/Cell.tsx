@@ -6,6 +6,7 @@ import type { TraceEvent } from '@/api/stream'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { DrawPath, Reveal } from '@/motion'
 
 import { AgentRail } from './AgentRail'
 import { ClarificationCell } from './ClarificationCell'
@@ -24,6 +25,8 @@ const NO_EVENTS: readonly TraceEvent[] = []
 
 type CellProps = {
   cell: CellData
+  /** Its place in the conversation (0 = first), for the "READOUT 01" label. */
+  index?: number
   /** The conversation's first question: its words make sense on their own. */
   first: boolean
   /** The question of the cell this one follows up on, if there is one. */
@@ -45,31 +48,54 @@ type CellProps = {
 }
 
 /**
- * One question on the canvas, and whatever came back for it. The frame (the question as a heading)
- * is shared; the body depends on the status and the reply's `kind`.
+ * One question on the canvas, and whatever came back for it: a "readout" (Signal Lab, U8.3). The
+ * frame (a mono index, the question as a heading) is shared; the body depends on the status and the
+ * reply's `kind`. It rises into place when it is added, and glows softly while the agent works.
  */
 export function Cell(props: CellProps) {
-  const { cell, parentQuestion, onStop } = props
+  const { cell, index, parentQuestion, onStop } = props
   const headingId = `${cell.id}-question`
   const isFollowUp = parentQuestion !== undefined
+  const running = cell.status === 'running'
   return (
-    <article
+    <Reveal
+      as="article"
       aria-labelledby={headingId}
       aria-describedby={isFollowUp ? `${cell.parentId}-question` : undefined}
-      aria-busy={cell.status === 'running'}
+      aria-busy={running}
       className={cn(
-        'rounded-cell border bg-surface p-4 shadow-sm',
-        isFollowUp && 'relative ml-5 sm:ml-8',
+        'relative rounded-cell border bg-surface p-4 transition-[box-shadow,border-color] duration-500 sm:p-5',
+        running && 'glow border-transparent',
+        isFollowUp && 'ml-5 sm:ml-8',
       )}
     >
       {isFollowUp && (
         // Screen readers already hear the parent question, through aria-describedby above.
         <div aria-hidden="true">
-          <span className="absolute -top-4 -left-3 h-8 w-3 rounded-bl-md border-b border-l border-input sm:-left-5 sm:w-5" />
+          {/* An elbow from the question above into this one, drawn when the follow-up appears. */}
+          <svg
+            viewBox="0 0 20 32"
+            className="absolute -top-4 -left-3.5 h-8 w-3 overflow-visible text-input sm:-left-6 sm:w-5"
+            preserveAspectRatio="none"
+          >
+            <DrawPath
+              d="M 1 0 L 1 22 Q 1 31 10 31 L 20 31"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
           <p className="mb-1 truncate text-xs text-fg-muted">Following up on: {parentQuestion}</p>
         </div>
       )}
-      <h2 id={headingId} className="mb-3 text-base font-semibold">
+      {index !== undefined && (
+        <p aria-hidden="true" className="label-mono mb-1.5 flex items-center gap-2">
+          <span className={cn('size-1.5 rounded-full', running ? 'bg-signal' : 'bg-input')} />
+          {`READOUT ${String(index + 1).padStart(2, '0')}`}
+        </p>
+      )}
+      <h2 id={headingId} className="mb-4 text-lg leading-snug font-semibold">
         {cell.question}
       </h2>
       {/* Not after a fallback to POST /ask, which sends no steps: the answer is complete anyway. */}
@@ -83,7 +109,7 @@ export function Cell(props: CellProps) {
         />
       )}
       <CellBody {...props} />
-    </article>
+    </Reveal>
   )
 }
 
@@ -123,7 +149,7 @@ function CellBody({
             onRerun={(result) => onRerun(cell.id, result)}
           />
           {/* Every cell has this button, so the description says which question it is for. */}
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
             <Button
               type="button"
               variant="outline"

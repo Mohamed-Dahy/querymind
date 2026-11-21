@@ -34,7 +34,7 @@ export function ClarificationCell({ reply, busy, onAnswer }: ClarificationCellPr
   }
 
   return (
-    <div className="flex items-start gap-2 text-sm">
+    <div className="flex items-start gap-2 rounded-lg border border-l-2 border-info/30 border-l-info bg-info/5 p-3 text-sm">
       <MessageCircleQuestion aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
       <div className="min-w-0 flex-1">
         <p id={questionId} className="font-medium">

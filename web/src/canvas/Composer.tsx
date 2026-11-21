@@ -96,8 +96,16 @@ export function Composer({
   }
 
   return (
-    <form onSubmit={onFormSubmit} className="rounded-cell border bg-surface p-3 shadow-sm">
-      <label htmlFor={inputId} className="text-sm font-medium">
+    // Signal Lab (U8.3): a command line. The whole box lights up (lime hairline and halo) while
+    // the question field has focus, so it is clear where typing goes.
+    <form
+      onSubmit={onFormSubmit}
+      className="rounded-cell border bg-surface p-3 shadow-lg transition-[box-shadow,border-color] duration-300 focus-within:glow focus-within:border-transparent"
+    >
+      <label htmlFor={inputId} className="flex items-center gap-2 text-sm font-medium">
+        <span aria-hidden="true" className="font-mono text-signal">
+          {'>_'}
+        </span>
         Your question
       </label>
       <textarea
@@ -116,13 +124,13 @@ export function Composer({
         // field-sizing-content: the box grows with the text, up to max-h-60, then scrolls.
         className={cn(
           'mt-1.5 field-sizing-content max-h-60 min-h-16 w-full resize-none overflow-y-auto rounded-lg border',
-          'border-input bg-muted px-3 py-2 text-base placeholder:text-fg-muted',
+          'border-input bg-bg px-3 py-2 text-base placeholder:text-fg-muted',
           'outline-none focus-visible:ring-3 focus-visible:ring-ring aria-invalid:border-danger',
         )}
       />
 
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <p id={hintId} className="text-xs text-fg-muted">
+        <p id={hintId} className="font-mono text-xs text-fg-muted">
           <Kbd>{MODIFIER}</Kbd> + <Kbd>Enter</Kbd> to send · <Kbd>Enter</Kbd> for a new line
         </p>
         <span

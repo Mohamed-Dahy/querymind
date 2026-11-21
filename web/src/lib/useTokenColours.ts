@@ -11,6 +11,8 @@ export type Colours = {
   text: string
   muted: string
   grid: string
+  /** Decorative hairlines (--border): chart grid lines that shouldn't compete with the data. */
+  hairline: string
   surface: string
 }
 
@@ -30,6 +32,7 @@ export function useTokenColours(): Colours {
       text: read('--fg', 'currentColor'),
       muted: read('--fg-muted', 'currentColor'),
       grid: read('--input', 'currentColor'),
+      hairline: read('--border', 'currentColor'),
       surface: read('--surface', 'Canvas'),
     }
   }, [theme])

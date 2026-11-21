@@ -11,7 +11,7 @@ import { UsageLine } from './UsageLine'
  */
 export function RefusalCell({ reply }: { reply: RefusalResponse }) {
   return (
-    <div className="flex items-start gap-2 text-sm">
+    <div className="flex items-start gap-2 rounded-lg border border-l-2 border-l-input p-3 text-sm">
       <ShieldBan aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-muted" />
       <div>
         <p>{reply.message}</p>

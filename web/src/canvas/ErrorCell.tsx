@@ -29,7 +29,7 @@ export function ErrorCell({ error, busy, onRetry, onRephrase }: ErrorCellProps) 
   const waiting = secondsLeft > 0
 
   return (
-    <div className="flex items-start gap-2 text-sm">
+    <div className="flex items-start gap-2 rounded-lg border border-l-2 border-danger/30 border-l-danger bg-danger/5 p-3 text-sm">
       <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
       <div className="min-w-0 flex-1">
         <p className="font-medium">{errorTitle(error.code, error.limit)}</p>

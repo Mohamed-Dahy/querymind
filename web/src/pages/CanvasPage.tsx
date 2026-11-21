@@ -128,7 +128,10 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
 
   return (
     <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 pt-10">
-      <h1 className="text-2xl">Ask about your data</h1>
+      <p aria-hidden="true" className="label-mono">
+        CANVAS · LIVE AGENT
+      </p>
+      <h1 className="mt-2 text-3xl">Ask about your data</h1>
       <div className="mt-3">
         <DatabaseSwitcher place="page" />
       </div>
@@ -164,6 +167,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
                 <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
                   <Cell
                     cell={cell}
+                    index={index}
                     first={index === 0}
                     parentQuestion={cells.find(({ id }) => id === cell.parentId)?.question}
                     busy={busy}
@@ -198,7 +202,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
           {announcement(cells.at(-1))}
         </p>
         {followingUp && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border bg-surface px-3 py-1.5 text-sm">
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-signal/40 bg-surface px-3 py-1.5 text-sm">
             <CornerDownRight aria-hidden="true" className="size-4 shrink-0 text-signal" />
             <p id={followUpNoteId} className="min-w-0 flex-1 truncate">
               Following up on: {followingUp.question}
@@ -234,7 +238,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
 function NotLoadedNotice({ error }: { error: Error }) {
   const gone = error instanceof ApiError && error.code === 'conversation_not_found'
   return (
-    <p className="mb-4 flex items-start gap-2 rounded-lg border bg-surface px-3 py-2 text-sm">
+    <p className="mb-4 flex items-start gap-2 rounded-cell border bg-surface px-3 py-2 text-sm">
       <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
       {gone
         ? "This conversation wasn't found. It may have been deleted, or it was never saved. A question here starts it again."
@@ -249,7 +253,10 @@ function NotLoadedNotice({ error }: { error: Error }) {
  */
 function OwnDatabaseStart({ name, id }: { name: string; id: string }) {
   return (
-    <div className="rounded-cell border bg-surface p-4 text-sm">
+    <div className="rounded-cell border bg-surface p-5 text-sm">
+      <p aria-hidden="true" className="label-mono mb-1.5">
+        YOUR DATABASE
+      </p>
       <p className="font-medium">Ask anything about {name}</p>
       <p className="mt-1 text-fg-muted">
         Not sure what&rsquo;s in it?{' '}

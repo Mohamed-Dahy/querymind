@@ -17,7 +17,7 @@ export function FirstRunHint() {
   if (!firstRun) return null
 
   return (
-    <p className="mb-4 flex items-start gap-2 rounded-lg border border-info/40 bg-info/10 px-3 py-2 text-sm">
+    <p className="mb-4 flex items-start gap-2 rounded-cell border border-info/30 bg-info/5 px-3 py-2.5 text-sm">
       <Lightbulb aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
       <span>
         New here? Pick a question below, or type your own. Each answer shows its steps, the SQL it
