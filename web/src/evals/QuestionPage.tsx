@@ -122,7 +122,7 @@ function RunsTable({ study, columns, chosen, question }: RunsTableProps) {
       >
         <table className="w-full text-sm">
           <caption className="sr-only">What each run made of this question</caption>
-          <thead className="text-fg-muted">
+          <thead className="bg-muted font-mono text-xs text-fg-muted">
             <tr>
               <th scope="col" className={TEXT}>
                 Run

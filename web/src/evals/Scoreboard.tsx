@@ -2,10 +2,15 @@ import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router'
 
 import type { EvalsReply, Milestone, QualityPanel, SpeedUp } from '@/api/evals'
+import { CountUp } from '@/motion'
 
 import { headlineTiles, newestRun, type Tile } from './format'
+import { TileValue } from './TileValue'
 
-const SOURCE = 'break-words text-xs text-fg-muted'
+const SOURCE = 'break-words font-mono text-xs text-fg-muted'
+/** A section's title: a small lime light before it, as in the glossary. */
+const SECTION_TITLE =
+  'flex items-center gap-2 text-lg font-semibold tracking-tight before:size-1.5 before:rounded-full before:bg-signal'
 
 /** The evals lab's first view: the headline numbers, and where each came from. */
 export function Scoreboard({ data }: { data: EvalsReply }) {
@@ -37,9 +42,12 @@ export function Scoreboard({ data }: { data: EvalsReply }) {
 function HeadlineTile({ tile }: { tile: Tile }) {
   const { title, value, caption, details, sources, date, model, link, questions } = tile
   return (
-    <li aria-label={title} className="flex flex-col rounded-cell border bg-surface p-4">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="mt-1 text-3xl font-semibold tabular-nums">{value}</p>
+    <li aria-label={title} className="flex flex-col rounded-cell border bg-surface p-5">
+      <h3 className="text-sm font-semibold text-fg-muted">{title}</h3>
+      {/* A score counts up the first time it is seen (U8.6); the text it lands on is the report's. */}
+      <p className="mt-2 text-4xl font-semibold tracking-tight">
+        <TileValue value={value} />
+      </p>
       <p className="mt-1 text-sm">{caption}</p>
       {details.map((detail) => (
         <p key={detail} className="mt-2 text-sm text-fg-muted">
@@ -66,7 +74,7 @@ function HeadlineTile({ tile }: { tile: Tile }) {
           <span className="sr-only">(opens in a new tab)</span>
         </a>
       )}
-      <dl className={`${SOURCE} mt-auto grid grid-cols-[auto_1fr] gap-x-2 pt-3`}>
+      <dl className={`${SOURCE} mt-auto grid grid-cols-[auto_1fr] gap-x-3 border-t pt-3`}>
         <dt>Model</dt>
         <dd>{model}</dd>
         <dt>Date</dt>
@@ -85,7 +93,7 @@ function HeadlineTile({ tile }: { tile: Tile }) {
 function Timeline({ milestones }: { milestones: Milestone[] }) {
   return (
     <section aria-labelledby="timeline">
-      <h2 id="timeline" className="text-lg font-semibold">
+      <h2 id="timeline" className={SECTION_TITLE}>
         Phase by phase
       </h2>
       <p className="mt-1 text-sm text-fg-muted">
@@ -100,13 +108,14 @@ function Timeline({ milestones }: { milestones: Milestone[] }) {
         {milestones.map((point) => (
           <li
             key={`${point.phase}-${point.title}`}
-            className="flex flex-col rounded-cell border bg-surface p-3"
+            className="flex flex-col rounded-cell border bg-surface p-4"
           >
-            <p className="text-xs text-fg-muted">Phase {point.phase}</p>
-            <h3 className="font-semibold">{point.title}</h3>
+            <p className="label-mono">Phase {point.phase}</p>
+            <h3 className="mt-0.5 font-semibold tracking-tight">{point.title}</h3>
             <p className="mt-1">
-              <span className="text-xl font-semibold tabular-nums">
-                {point.passed}/{point.total}
+              <span className="text-2xl font-semibold tracking-tight tabular-nums">
+                {/* One piece of text ("9/13"), as before, that counts up its first number. */}
+                <CountUp value={point.passed} format={(n) => `${Math.round(n)}/${point.total}`} />
               </span>{' '}
               <span className="text-sm">on {point.question_set}</span>
             </p>
@@ -133,7 +142,7 @@ function Quality({ quality }: { quality: QualityPanel }) {
   const notes = [...new Set(warned.map(({ note }) => note))]
   return (
     <section aria-labelledby="quality">
-      <h2 id="quality" className="text-lg font-semibold">
+      <h2 id="quality" className={SECTION_TITLE}>
         Answer quality
       </h2>
       <p className="mt-1 text-sm text-fg-muted">
@@ -145,7 +154,7 @@ function Quality({ quality }: { quality: QualityPanel }) {
       <div className="mt-3 overflow-x-auto rounded-cell border bg-surface">
         <table className="w-full text-sm">
           <caption className="sr-only">DeepEval's answer scores</caption>
-          <thead className="text-fg-muted">
+          <thead className="bg-muted font-mono text-xs text-fg-muted">
             <tr>
               <th scope="col" className={TEXT}>
                 DeepEval metric
@@ -216,15 +225,17 @@ function Quality({ quality }: { quality: QualityPanel }) {
 function SpeedUps({ speedUps }: { speedUps: SpeedUp[] }) {
   return (
     <section aria-labelledby="speed">
-      <h2 id="speed" className="text-lg font-semibold">
+      <h2 id="speed" className={SECTION_TITLE}>
         Parallel runs with Ray
       </h2>
       <ul className="mt-3 grid gap-3 md:grid-cols-2">
         {speedUps.map(({ title, before, after, factor, note, report }) => (
-          <li key={title} className="flex flex-col rounded-cell border bg-surface p-3">
+          <li key={title} className="flex flex-col rounded-cell border bg-surface p-4">
             <h3 className="text-sm font-semibold">{title}</h3>
             <p className="mt-1">
-              <span className="text-xl font-semibold tabular-nums">{factor}</span>{' '}
+              <span className="text-2xl font-semibold tracking-tight text-signal tabular-nums">
+                {factor}
+              </span>{' '}
               <span className="text-sm tabular-nums">
                 faster: {before} to {after}
               </span>

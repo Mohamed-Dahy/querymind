@@ -42,7 +42,8 @@ export default function ModelScatter({ points }: { points: ScatterPoint[] }) {
           margin={{ top: 28, right: 16, bottom: 24, left: 0 }}
           accessibilityLayer={false}
         >
-          <CartesianGrid stroke={colours.grid} strokeOpacity={0.4} />
+          {/* Signal Lab (U8.6): the canvas chart's dashed hairline grid. */}
+          <CartesianGrid stroke={colours.hairline} strokeDasharray="3 4" />
           <XAxis
             type="number"
             dataKey="cost"
@@ -76,8 +77,8 @@ export default function ModelScatter({ points }: { points: ScatterPoint[] }) {
               const point = payload?.[0]?.payload as ScatterPoint | undefined
               if (!active || !point) return null
               return (
-                <div className="rounded-lg border bg-surface px-3 py-2 text-xs tabular-nums">
-                  <p className="font-semibold">{point.name}</p>
+                <div className="rounded-lg border bg-surface px-3 py-2 font-mono text-xs tabular-nums shadow-lg">
+                  <p className="font-sans font-semibold">{point.name}</p>
                   <p>
                     {point.passed}/{point.questions} correct ({point.accuracy.toFixed(1)}%)
                   </p>
@@ -86,7 +87,14 @@ export default function ModelScatter({ points }: { points: ScatterPoint[] }) {
               )
             }}
           />
-          <Scatter data={points} fill={colours.series[0]} isAnimationActive={false}>
+          {/* A ring in the card's colour around each point, so points near each other stay apart. */}
+          <Scatter
+            data={points}
+            fill={colours.series[0]}
+            stroke={colours.surface}
+            strokeWidth={2}
+            isAnimationActive={false}
+          >
             <LabelList dataKey="name" position="top" fill={colours.text} fontSize={12} />
           </Scatter>
         </ScatterChart>

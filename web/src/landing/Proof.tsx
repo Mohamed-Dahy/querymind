@@ -3,8 +3,9 @@ import { Link } from 'react-router'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { headlineTiles, type Tile } from '@/evals/format'
+import { TileValue } from '@/evals/TileValue'
 import { useEvals } from '@/evals/useEvals'
-import { CountUp, Stagger, StaggerItem } from '@/motion'
+import { Stagger, StaggerItem } from '@/motion'
 
 /**
  * The landing page's numbers (U8.4): the evals lab's own headline tiles, from the public GET /evals.
@@ -67,18 +68,6 @@ export function Proof() {
         </Link>
       </li>
     </Stagger>
-  )
-}
-
-/** "57/100" counts up its first number; other values (a price, a percentage) are shown as they are. */
-function TileValue({ value }: { value: string }) {
-  const score = /^(\d+)\/(\d+)$/.exec(value)
-  if (!score) return <span className="tabular-nums">{value}</span>
-  return (
-    <>
-      <CountUp value={Number(score[1])} />
-      <span className="text-fg-muted">/{score[2]}</span>
-    </>
   )
 }
 

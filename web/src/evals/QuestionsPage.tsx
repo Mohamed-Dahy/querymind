@@ -92,7 +92,10 @@ function Matrix({ data }: { data: EvalsReply }) {
               aria-current={name === study ? 'true' : undefined}
               className={cn(
                 FILTERS_CLASS,
-                name === study ? 'border-input bg-muted font-semibold' : 'hover:bg-muted',
+                // The open study: a lime edge, like the chosen row elsewhere (U8.6).
+                name === study
+                  ? 'border-input bg-muted font-semibold shadow-[inset_0_-2px_0_var(--signal)]'
+                  : 'transition-colors duration-150 hover:bg-muted',
               )}
             >
               {name === 'bird' ? `BIRD-${count}` : `Golden ${count}`}

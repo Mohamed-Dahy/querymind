@@ -2,6 +2,7 @@
 // '@/motion', not from 'motion/react', unless you are building a new primitive here.
 export { CountUp } from './CountUp'
 export { DrawPath } from './DrawPath'
+export { Grow } from './Grow'
 export { MotionProvider } from './MotionProvider'
 export { Pop } from './Pop'
 export { Reveal, type RevealTag } from './Reveal'

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 
 import type { EvalsReply, ModelRow, ModelStudy } from '@/api/evals'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Grow } from '@/motion'
 
 import { EvalsFrame } from './EvalsFrame'
 import { dollars } from './format'
@@ -143,8 +144,8 @@ function SpeedBar({ name, seconds, top, className }: SpeedBarProps) {
       <span>
         {name} {seconds.toFixed(1)} s
       </span>
-      <div aria-hidden="true" className="h-2 overflow-hidden rounded bg-muted">
-        <div
+      <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-muted">
+        <Grow
           className={`h-full ${className}`}
           style={{ width: `${top ? (100 * seconds) / top : 0}%` }}
         />
@@ -167,7 +168,7 @@ function ModelTable({ study }: { study: ModelStudy }) {
     >
       <table className="w-full text-sm">
         <caption className="sr-only">What each model scored, how fast, and what it cost</caption>
-        <thead className="text-fg-muted">
+        <thead className="bg-muted font-mono text-xs text-fg-muted">
           <tr>
             <th scope="col" className={TEXT}>
               Model

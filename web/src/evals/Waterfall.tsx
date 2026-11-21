@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { Grow } from '@/motion'
 
 import { percentText, scoreText } from './format'
 import { changeText, type WaterfallRow } from './waterfallRows'
@@ -30,17 +31,21 @@ function Row({ row }: { row: WaterfallRow }) {
       </p>
       <div>
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-          <span className="text-base font-semibold tabular-nums">{scoreText(score)}</span>
+          <span className="font-mono text-base font-semibold tabular-nums">{scoreText(score)}</span>
           <span className="tabular-nums">{percentText(score)}</span>
           {words && <span className="font-semibold tabular-nums">{words}</span>}
           {withinNoise && <span className="text-fg-muted">within noise</span>}
           {arm.not_scored > 0 && <span className="text-fg-muted">{arm.not_scored} not scored</span>}
         </p>
-        <div aria-hidden="true" className="relative mt-1 h-3 overflow-hidden rounded bg-muted">
-          {/* What the arms before it already reached. */}
-          <div className="absolute inset-y-0 left-0 bg-input" style={{ width: `${low}%` }} />
-          {/* What this arm changed; a thin mark when nothing did, so the row still has a point. */}
-          <div
+        <div
+          aria-hidden="true"
+          className="relative mt-1.5 h-3 overflow-hidden rounded-full bg-muted"
+        >
+          {/* What the arms before it already reached. It grows in first (U8.6)… */}
+          <Grow className="absolute inset-y-0 left-0 bg-input" style={{ width: `${low}%` }} />
+          {/* …then what this arm changed; a thin mark when nothing did, so the row still has a point. */}
+          <Grow
+            delay={0.25}
             className={cn(
               'absolute inset-y-0 min-w-0.5',
               change === 'loss' ? 'bg-danger' : 'bg-signal',

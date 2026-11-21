@@ -128,7 +128,7 @@ function ArmTable({ study, arms }: { study: AblationStudy; arms: AblationArm[] }
     >
       <table className="w-full text-sm">
         <caption className="sr-only">What each arm scored, and what it cost</caption>
-        <thead className="text-fg-muted">
+        <thead className="bg-muted font-mono text-xs text-fg-muted">
           <tr>
             <th scope="col" className={TEXT}>
               Arm
