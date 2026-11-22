@@ -1,79 +1,78 @@
-import {
-  ArrowRight,
-  Database,
-  EyeOff,
-  FileSearch,
-  KeyRound,
-  ListChecks,
-  Lock,
-  ScrollText,
-  ShieldCheck,
-  Timer,
-  Users,
-  type LucideIcon,
-} from 'lucide-react'
-import { useEffect } from 'react'
+import { ArrowRight } from 'lucide-react'
+import { useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { useAuthStatus } from '@/api/session'
+import { Plate } from '@/components/Instrument'
 import { LogoMark } from '@/components/LogoMark'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Button } from '@/components/ui/button'
-import { Reveal, Stagger, StaggerItem } from '@/motion'
+import { DrawPath, Reveal, Stagger, StaggerItem } from '@/motion'
 
+import { Circuit } from './Circuit'
 import { LiveDemo } from './LiveDemo'
 import { Proof } from './Proof'
 
-/** The seven steps, as the rail shows them, in a sentence each (what the agent really does). */
-const STEPS = [
-  ['Retrieve', 'Finds the tables that matter for the question, from your data dictionary.'],
-  ['Write SQL', 'Drafts one query, guided by similar questions it has solved before.'],
-  ['Validate', 'Parses it first: a single read-only SELECT, on tables you may see.'],
-  ['Run', 'Runs it as a read-only database role, with a time limit and a row limit.'],
-  ['Check', 'Looks at the result for signs it went wrong, like no rows at all.'],
-  ['Repair', 'If the database or the check says no, it fixes the SQL and tries again.'],
-  ['Summarize', 'Answers in plain words, with a chart, the rows, the SQL and how sure it is.'],
-] as const
-
-/** What protects the data: each one is a rule the backend enforces (docs/CLAUDE.md §8, Phase 5). */
-const SAFETY: { Icon: LucideIcon; title: string; text: string }[] = [
+/**
+ * What protects the data, as a stack of guards a question passes through. Each is a rule the backend
+ * enforces (docs/CLAUDE.md §8, Phase 5); `stops` are real examples of what it refuses or limits, with
+ * the limits at their default settings (config.py: query_timeout_seconds, max_rows).
+ */
+const GUARDS: { title: string; text: string; stops: string[] }[] = [
   {
-    Icon: Lock,
     title: 'Read-only by design',
     text: 'Questions run as a database role that can only read. A saved database is checked to be read-only before it is kept.',
+    stops: ['INSERT', 'UPDATE', 'DELETE'],
   },
   {
-    Icon: ShieldCheck,
     title: 'Every query checked first',
     text: 'One SELECT only: no writes, no schema changes, no system catalogs, no functions outside an allowlist.',
+    stops: ['DROP · ALTER', 'pg_catalog', 'pg_sleep()', '; a second statement'],
   },
   {
-    Icon: Timer,
     title: 'Limits on every run',
     text: 'A statement timeout and a row limit on every query, and rate limits on every account.',
+    stops: ['10 s timeout', '1,000 rows', 'rate limits'],
   },
   {
-    Icon: EyeOff,
     title: 'Personal data hidden',
     text: 'Columns marked as personal come back as “hidden” unless your role may see them.',
+    // Real columns marked personal in semantic_layer/ (Northwind's and Chinook's customers).
+    stops: ['contact_name → hidden', 'phone → hidden'],
   },
   {
-    Icon: Users,
     title: 'Tables and rows per role',
     text: 'Admins choose which tables each role sees, and which rows each member may read.',
+    stops: ['tables per role', 'rows per member'],
   },
   {
-    Icon: ScrollText,
     title: 'Everything audited',
     text: 'Every question, its SQL, who asked, the outcome and the cost go to an audit log.',
+    stops: ['question', 'SQL', 'user', 'outcome', 'cost'],
+  },
+]
+
+/** Your own data, in three steps, in the order they happen. */
+const OWN = [
+  {
+    title: 'Start on the demo',
+    text: 'Northwind (a shop) and Chinook (a music store) are ready to ask, free.',
+  },
+  {
+    title: 'Bring your own key',
+    text: 'Use your own LLM key from a fixed list of providers, Groq and Gemini among them. It is encrypted, and shown back only as its last four characters.',
+  },
+  {
+    title: 'Connect your PostgreSQL',
+    text: 'QueryMind reads your tables, drafts a data dictionary for you to review, then answers about your own data.',
   },
 ]
 
 /**
- * The public front page (U8.4, ADR 026): what QueryMind is, a live replay of a real run, how it
- * works, what keeps data safe, measured results, and how to start. Outside the app shell, like the
- * login page. Logged-out visitors opening `/` land here (RequireLogin); logged-in ones see a way back
- * into the canvas instead of "Create account".
+ * The public front page (U8.4; rebuilt as an instrument's spec sheet in U9.1, ADR 027): a split hero
+ * with the product working on the right, the agent as a circuit, the guards, the measured results,
+ * and how to start. Outside the app shell, like the login page. Logged-out visitors opening `/` land
+ * here (RequireLogin); logged-in ones see a way back into the canvas instead of "Create account".
  */
 export default function LandingPage() {
   const loggedIn = useAuthStatus() === 'in'
@@ -85,7 +84,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-dvh bg-bg">
       <header className="sticky top-0 z-20 border-b bg-bg">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2">
           <Link
             to="/welcome"
             className="flex min-h-11 items-center gap-2.5 rounded-lg font-heading text-[1.0625rem] font-semibold tracking-tight"
@@ -93,8 +92,14 @@ export default function LandingPage() {
             <LogoMark />
             QueryMind
           </Link>
+          <span
+            aria-hidden="true"
+            className="hidden border-l pl-4 font-mono text-[0.6875rem] tracking-[0.08em] text-fg-muted xl:inline"
+          >
+            QM-1 · DATA ANALYST AGENT
+          </span>
           <nav aria-label="On this page" className="hidden md:block">
-            <ul className="flex gap-1 text-sm text-fg-muted">
+            <ul className="flex gap-1 font-mono text-xs text-fg-muted">
               {[
                 ['#how', 'How it works'],
                 ['#safety', 'Safety'],
@@ -127,160 +132,188 @@ export default function LandingPage() {
       </header>
 
       <main>
-        {/* Hero, on the instrument grid. No glow or blur behind text: the contrast test must be
-            able to measure every word (e2e/a11y.spec.ts); the demo card's glow is a box-shadow. */}
-        <section aria-labelledby="hero-heading" className="canvas-grid relative">
-          <div className="relative mx-auto max-w-6xl px-4 pt-16 pb-12 text-center sm:pt-24">
-            <Reveal as="p" className="label-mono">
-              AI DATA ANALYST FOR POSTGRESQL · READ-ONLY BY DESIGN
-            </Reveal>
-            <Reveal delay={0.06}>
-              <h1
-                id="hero-heading"
-                className="mx-auto mt-5 max-w-4xl text-4xl leading-[1.05] font-semibold tracking-tight sm:text-6xl"
+        {/* The hero: the claim on the left, the product working on the right, on the instrument
+            grid. No glow or blur behind text: the contrast test must be able to measure every word
+            (e2e/a11y.spec.ts). */}
+        <section aria-labelledby="hero-heading" className="canvas-grid relative border-b">
+          <div className="mx-auto grid max-w-7xl items-start gap-x-12 gap-y-14 px-4 pt-12 pb-16 sm:pt-16 lg:grid-cols-12 lg:pt-20 lg:pb-24">
+            <div className="lg:col-span-5 lg:pt-4">
+              <Reveal>
+                <Plate code="QM-1">AI DATA ANALYST · POSTGRESQL · READ-ONLY</Plate>
+              </Reveal>
+              <Reveal delay={0.06}>
+                <h1
+                  id="hero-heading"
+                  className="mt-7 text-5xl leading-[0.95] font-semibold tracking-[-0.035em] sm:text-6xl xl:text-7xl"
+                >
+                  Ask your database.{' '}
+                  <span className="mt-2 block text-signal">See every step it takes.</span>
+                </h1>
+              </Reveal>
+              <Reveal
+                as="p"
+                delay={0.12}
+                className="mt-7 max-w-xl text-lg leading-relaxed text-fg-muted"
               >
-                Ask your database. <span className="text-signal">See every step it takes.</span>
-              </h1>
-            </Reveal>
-            <Reveal
-              as="p"
-              delay={0.12}
-              className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-fg-muted"
-            >
-              QueryMind turns a plain-language question into checked, read-only SQL, runs it, and
-              answers with a chart, the rows, the SQL and how sure it is. It shows its work, repairs
-              its own mistakes, and asks back when a question is unclear.
-            </Reveal>
-            <Reveal delay={0.18} className="mt-8 flex flex-wrap justify-center gap-3">
-              <StartButtons loggedIn={loggedIn} />
-              <Button asChild size="lg" variant="ghost">
-                <Link to="/evals">See the evals lab</Link>
-              </Button>
-            </Reveal>
-            <Reveal
-              as="p"
-              delay={0.24}
-              className="mx-auto mt-8 flex max-w-3xl flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-xs text-fg-muted"
-            >
-              {[
-                'Read-only role',
-                'SQL validated before it runs',
-                'Personal data hidden',
-                'Every question audited',
-              ].map((fact) => (
-                <span key={fact} className="inline-flex items-center gap-1.5">
-                  <span aria-hidden="true" className="size-1 rounded-full bg-signal" />
-                  {fact}
-                </span>
-              ))}
-            </Reveal>
-          </div>
+                QueryMind turns a plain-language question into checked, read-only SQL, runs it, and
+                answers with a chart, the rows, the SQL and how sure it is. It shows its work,
+                repairs its own mistakes, and asks back when a question is unclear.
+              </Reveal>
+              <Reveal delay={0.18} className="mt-9 flex flex-wrap gap-3">
+                <StartButtons loggedIn={loggedIn} />
+                <Button asChild size="lg" variant="ghost">
+                  <Link to="/evals">See the evals lab</Link>
+                </Button>
+              </Reveal>
+              {/* A readout of what is always true, as an instrument's fixed settings. */}
+              <Reveal delay={0.24}>
+                <dl className="mt-12 grid grid-cols-2 border-t border-l text-sm">
+                  {[
+                    ['MODE', 'Read-only role'],
+                    ['SQL', 'Validated before it runs'],
+                    ['PII', 'Hidden by role'],
+                    ['AUDIT', 'Every question'],
+                  ].map(([term, value]) => (
+                    <div key={term} className="border-r border-b bg-bg px-3 py-2.5">
+                      <dt className="label-mono">{term}</dt>
+                      <dd className="mt-0.5 font-medium">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Reveal>
+            </div>
 
-          <div className="relative mx-auto max-w-5xl px-4 pb-20">
-            <Reveal delay={0.3}>
+            <Reveal delay={0.2} className="min-w-0 px-2 lg:col-span-7">
               <LiveDemo />
             </Reveal>
           </div>
         </section>
 
-        <Band id="how" label="01 · HOW IT WORKS" title="Seven steps, all on screen">
-          <p className="max-w-2xl text-fg-muted">
-            Most AI tools hand you an answer and ask you to trust it. QueryMind shows the path: the
-            tables it chose, the SQL it wrote, every try that failed and why, and how sure it is.
-          </p>
-          <Stagger as="ol" className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
-            {STEPS.map(([name, text], index) => (
+        <Band
+          id="how"
+          index="01"
+          label="THE CIRCUIT"
+          title="Seven steps, all on screen"
+          intro="Most AI tools hand you an answer and ask you to trust it. QueryMind shows the path: the tables it chose, the SQL it wrote, every try that failed and why, and how sure it is."
+        >
+          <Circuit />
+        </Band>
+
+        <Band
+          id="safety"
+          index="02"
+          label="GUARD STACK"
+          title="Built so it can't change your data"
+          intro="Every question passes through the same guards, in this order, before a single row comes back."
+        >
+          <Stagger as="ol" className="border-t">
+            {GUARDS.map(({ title, text, stops }, index) => (
               <StaggerItem
                 as="li"
-                key={name}
-                className="relative rounded-cell border bg-surface p-4 lg:p-3.5"
+                key={title}
+                className="grid gap-x-8 gap-y-3 border-b py-6 md:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] md:items-baseline"
               >
-                <p aria-hidden="true" className="label-mono">
-                  {String(index + 1).padStart(2, '0')}
+                <p aria-hidden="true" className="font-mono text-3xl font-semibold text-signal">
+                  G{index + 1}
                 </p>
-                <h3 className="mt-2 font-semibold">{name}</h3>
-                <p className="mt-1.5 text-sm text-fg-muted">{text}</p>
+                <div>
+                  <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
+                  <p className="mt-1 text-fg-muted">{text}</p>
+                </div>
+                <div>
+                  <p className="label-mono">{index === 2 ? 'LIMITS' : 'STOPS'}</p>
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {stops.map((stop) => (
+                      <li
+                        key={stop}
+                        className="rounded-[4px] border bg-surface px-2 py-0.5 font-mono text-xs"
+                      >
+                        {stop}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </StaggerItem>
             ))}
           </Stagger>
         </Band>
 
-        <Band id="safety" label="02 · SAFETY" title="Built so it can't change your data">
-          <Stagger as="ul" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {SAFETY.map(({ Icon, title, text }) => (
-              <StaggerItem as="li" key={title} className="lift rounded-cell border bg-surface p-5">
-                <span className="grid size-9 place-items-center rounded-lg border border-signal/40 bg-muted">
-                  <Icon aria-hidden="true" className="size-4 text-signal" />
-                </span>
-                <h3 className="mt-4 font-semibold">{title}</h3>
-                <p className="mt-1.5 text-sm text-fg-muted">{text}</p>
-              </StaggerItem>
-            ))}
-          </Stagger>
-        </Band>
-
-        <Band id="proof" label="03 · RESULTS" title="Measured, not promised">
-          <p className="mb-8 max-w-2xl text-fg-muted">
-            Every number below comes from a saved evaluation run, and says which report it is from.
-          </p>
+        <Band
+          id="proof"
+          index="03"
+          label="SPEC SHEET"
+          title="Measured, not promised"
+          intro="Every number below comes from a saved evaluation run, and says which report it is from."
+        >
           <Proof />
         </Band>
 
-        <Band id="own" label="04 · YOUR DATA" title="Your key, your database">
-          <ul className="grid gap-4 md:grid-cols-3">
-            {[
-              {
-                Icon: Database,
-                title: 'Start on the demo',
-                text: 'Northwind (a shop) and Chinook (a music store) are ready to ask, free.',
-              },
-              {
-                Icon: KeyRound,
-                title: 'Bring your own key',
-                text: 'Use your own LLM key from a fixed list of providers, Groq and Gemini among them. It is encrypted, and shown back only as its last four characters.',
-              },
-              {
-                Icon: FileSearch,
-                title: 'Connect your PostgreSQL',
-                text: 'QueryMind reads your tables, drafts a data dictionary for you to review, then answers about your own data.',
-              },
-            ].map(({ Icon, title, text }) => (
-              <li key={title} className="flex gap-3 rounded-cell border bg-surface p-5">
-                <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-info" />
-                <div>
-                  <h3 className="font-semibold">{title}</h3>
-                  <p className="mt-1.5 text-sm text-fg-muted">{text}</p>
-                </div>
+        <Band id="own" index="04" label="YOUR DATA" title="Your key, your database">
+          <ol className="grid gap-px overflow-hidden rounded-[6px] border bg-border md:grid-cols-3">
+            {OWN.map(({ title, text }, index) => (
+              <li key={title} className="bg-surface p-6">
+                <p aria-hidden="true" className="flex items-center gap-3 label-mono">
+                  STEP {String.fromCharCode(65 + index)}
+                  {index < OWN.length - 1 && (
+                    <ArrowRight className="hidden size-3.5 text-signal md:block" />
+                  )}
+                </p>
+                <h3 className="mt-6 text-xl font-semibold tracking-tight">{title}</h3>
+                <p className="mt-2 text-sm text-fg-muted">{text}</p>
               </li>
             ))}
-          </ul>
+          </ol>
         </Band>
 
         <section aria-labelledby="start-heading" className="border-t">
-          <Reveal inView className="mx-auto max-w-3xl px-4 py-24 text-center">
-            <ListChecks aria-hidden="true" className="mx-auto size-8 text-signal" />
-            <h2
-              id="start-heading"
-              className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl"
-            >
-              An assistant for data teams, not a replacement
-            </h2>
-            <p className="mx-auto mt-4 max-w-xl text-fg-muted">
-              QueryMind takes the routine questions, so analysts can spend their time on the deep
-              ones. Every answer comes with the SQL behind it, ready to check.
-            </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <div className="mx-auto grid max-w-7xl gap-10 px-4 py-24 lg:grid-cols-12">
+            <Reveal inView className="lg:col-span-8">
+              <p aria-hidden="true" className="label-mono">
+                <span className="text-signal">05</span> · READY WHEN YOU ARE
+              </p>
+              <h2
+                id="start-heading"
+                className="mt-5 text-4xl leading-[1.02] font-semibold tracking-[-0.025em] sm:text-5xl"
+              >
+                An assistant for data teams, not a replacement
+              </h2>
+              <p className="mt-5 max-w-xl text-lg text-fg-muted">
+                QueryMind takes the routine questions, so analysts can spend their time on the deep
+                ones. Every answer comes with the SQL behind it, ready to check.
+              </p>
+            </Reveal>
+            <div className="flex flex-wrap content-end gap-3 lg:col-span-4 lg:justify-end">
               <StartButtons loggedIn={loggedIn} />
             </div>
-          </Reveal>
+          </div>
         </section>
       </main>
 
       <footer className="border-t">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 text-sm text-fg-muted">
-          <span className="flex items-center gap-2">
+        {/* The mark's signal line, drawn across the whole page as the last thing on it. */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 1200 120"
+          preserveAspectRatio="none"
+          className="block h-24 w-full text-signal sm:h-32"
+        >
+          <DrawPath
+            inView
+            d="M 0 90 L 420 90 L 500 20 L 600 110 L 680 50 L 1200 50"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 border-t px-4 py-6 text-sm text-fg-muted">
+          <span className="flex items-center gap-2 font-medium text-fg">
             <LogoMark className="size-5" />
             QueryMind
+          </span>
+          <span aria-hidden="true" className="font-mono text-xs">
+            QM-1
           </span>
           <Link to="/evals" className="hover:text-fg">
             Evals lab
@@ -329,31 +362,48 @@ function StartButtons({ loggedIn, compact = false }: { loggedIn: boolean; compac
   )
 }
 
-/** One section of the page: a mono label, a heading, then its content, revealed when scrolled to. */
+/**
+ * One section of the page, on a Swiss grid: its number and label in the left third, the heading
+ * and intro in the right two thirds, then the content across the full width.
+ */
 function Band({
   id,
+  index,
   label,
   title,
+  intro,
   children,
 }: {
   id: string
+  index: string
   label: string
   title: string
-  children: React.ReactNode
+  intro?: string
+  children: ReactNode
 }) {
   const headingId = `${id}-heading`
   return (
-    <section id={id} aria-labelledby={headingId} className="scroll-mt-20 border-t">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:py-24">
-        <Reveal inView>
-          <p aria-hidden="true" className="label-mono">
-            {label}
-          </p>
-          <h2 id={headingId} className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            {title}
-          </h2>
-        </Reveal>
-        <div className="mt-6">{children}</div>
+    <section id={id} aria-labelledby={headingId} className="scroll-mt-16 border-t">
+      <div className="mx-auto max-w-7xl px-4 py-20 sm:py-28">
+        <div className="grid gap-x-12 gap-y-5 lg:grid-cols-12">
+          <Reveal inView className="lg:col-span-4">
+            <p aria-hidden="true" className="label-mono flex items-center gap-3 lg:pt-3">
+              <span className="text-signal">{index}</span>
+              <span className="h-px w-10 bg-border" />
+              {label}
+            </p>
+          </Reveal>
+          <Reveal inView delay={0.06} className="lg:col-span-8">
+            <h2
+              id={headingId}
+              className="text-4xl leading-[1.02] font-semibold tracking-[-0.025em] sm:text-5xl"
+            >
+              {title}
+            </h2>
+            {intro && <p className="mt-5 max-w-2xl text-lg text-fg-muted">{intro}</p>}
+          </Reveal>
+        </div>
+        <div className="mt-14">{children}</div>
       </div>
     </section>
   )
