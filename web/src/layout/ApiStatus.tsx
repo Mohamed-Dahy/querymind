@@ -3,6 +3,7 @@ import { Loader2, OctagonX } from 'lucide-react'
 
 import { ApiError, getHealth } from '@/api/client'
 import { errorTitle } from '@/api/errors'
+import { cn } from '@/lib/utils'
 
 /** The pill the status lines share: mono, small, a hairline (Signal Lab, U8.2). */
 const PILL =
@@ -27,15 +28,19 @@ export function ApiStatus() {
   }
 
   if (health.isError) {
+    const title = errorTitle(health.error instanceof ApiError ? health.error.code : '')
+    // The same one-line pill as "Checking the API…", so the top bar keeps its height when the API is
+    // down (U8.8): the old two-line notice pushed the whole page down (Lighthouse CLS 0.31). The
+    // title shows; the details are read out with it and shown on hover, but take no room.
     return (
-      <div role="alert" className="flex max-w-md items-start gap-1.5 text-sm">
-        <OctagonX aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
-        <p>
-          <span className="font-medium">
-            {errorTitle(health.error instanceof ApiError ? health.error.code : '')}
-          </span>{' '}
-          <span className="text-fg-muted">{health.error.message}</span>
-        </p>
+      <div
+        role="alert"
+        title={`${title} ${health.error.message}`}
+        className={cn(PILL, 'max-w-full min-w-0 border-danger/60 text-fg sm:max-w-72')}
+      >
+        <OctagonX aria-hidden="true" className="size-3.5 shrink-0 text-danger" />
+        <span className="truncate">{title}</span>
+        <span className="sr-only"> {health.error.message}</span>
       </div>
     )
   }

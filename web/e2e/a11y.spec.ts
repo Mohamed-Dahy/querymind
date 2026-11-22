@@ -2,7 +2,7 @@ import { AxeBuilder } from '@axe-core/playwright'
 import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from './fixtures.ts'
-import { apiStatusLoaded, NO_SHELL, ROUTES, THEMES, useTheme } from './helpers.ts'
+import { apiStatusLoaded, motionSettled, NO_SHELL, ROUTES, THEMES, useTheme } from './helpers.ts'
 
 // U6.4: the accessibility checks that belong to the whole app, not to one page. axe itself runs
 // after every test (fixtures.ts); these cover what axe cannot see: the keyboard, focus, motion and
@@ -276,10 +276,15 @@ for (const theme of THEMES) {
 
     for (const { path, heading } of ROUTES) {
       test(`on ${path}`, async ({ page }) => {
+        // Reduced motion (U8.8): every block is drawn at once, in its final colours. Otherwise the
+        // landing page's sections below the fold wait, invisible, to be scrolled to, and axe would
+        // skip their text without saying so.
+        await page.emulateMedia({ reducedMotion: 'reduce' })
         await page.goto(path)
         await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
         if (!NO_SHELL.has(path)) await apiStatusLoaded(page)
         await page.addStyleTag({ content: '.canvas-grid { background-image: none !important; }' })
+        await motionSettled(page) // no text caught halfway through a fade-in (U8.8)
 
         const results = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze()
         const failed = results.violations.flatMap((v) => v.nodes.map((n) => n.target.join(' ')))

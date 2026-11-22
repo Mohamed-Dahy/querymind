@@ -99,10 +99,38 @@ export const ROUTES: { path: string; heading: string; title: string; code?: stri
 export const NO_SHELL = new Set(['/styleguide', '/welcome'])
 
 /**
+ * Wait until what is entering the page has arrived (U8.8). Signal Lab fades some text in over about
+ * 0.3 s (the canvas answer, the landing page), and axe measures contrast with the opacity it finds:
+ * text caught halfway would fail, though people only ever read it whole.
+ *
+ * Done means: no finite CSS or Web Animation running (spinners and skeletons loop forever, so they
+ * don't count), and no element mid-way through one of motion's JS fades, which write `opacity` into
+ * the style attribute as they go. SVG is skipped: the explorer dims its join lines on purpose. Never
+ * fails a test by itself: after 3 s axe runs anyway and reports what it sees.
+ */
+export async function motionSettled(page: Page) {
+  // A string, like the other in-browser code here: the e2e TypeScript setup has no DOM types.
+  const settled = `(() => {
+    const moving = document.getAnimations().some((animation) => {
+      const timing = animation.effect && animation.effect.getComputedTiming()
+      return animation.playState === 'running' && timing && Number.isFinite(timing.endTime)
+    })
+    if (moving) return false
+    return [...document.querySelectorAll('[style*="opacity"]')].every((element) => {
+      if (!(element instanceof HTMLElement)) return true
+      const opacity = parseFloat(getComputedStyle(element).opacity)
+      return opacity === 0 || opacity === 1
+    })
+  })()`
+  await page.waitForFunction(settled, undefined, { timeout: 3000 }).catch(() => undefined)
+}
+
+/**
  * Every problem axe finds under WCAG 2.1 A and AA, at every impact level (minor and moderate
- * too, not only serious and critical: U6.4).
+ * too, not only serious and critical: U6.4). It waits for entrances to finish first.
  */
 export async function a11yIssues(page: Page) {
+  await motionSettled(page)
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze()

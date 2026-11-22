@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- QueryMind's mark (src/components/LogoMark.tsx), with the dark theme's colours written in:
+       a browser tab can't read the app's CSS tokens. Lime --signal tile, --on-signal trace. -->
+  <rect width="32" height="32" rx="8" fill="#c6f432"/>
+  <path d="M6 21 L11 21 L14 11 L18 23 L21 15 L26 15" fill="none" stroke="#0a0b0d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="26" cy="15" r="2" fill="#0a0b0d"/>
+</svg>
