@@ -118,6 +118,22 @@ describe('EmptyCanvas', () => {
     expect(onAsk).toHaveBeenCalledExactlyOnceWith('How many key accounts do we have?')
   })
 
+  it('numbers the questions straight through the groups, without the number in their names', () => {
+    render(<EmptyCanvas onAsk={() => {}} />)
+
+    const buttons = screen.getAllByRole('button')
+    const questions = EXAMPLE_GROUPS.flatMap((group) => group.questions)
+    // Named by the question alone (the tests and screen readers find them that way)…
+    expect(buttons.map((button) => button.textContent?.slice(2))).toEqual(questions)
+    for (const [index, question] of questions.entries()) {
+      expect(screen.getByRole('button', { name: question })).toBe(buttons[index])
+    }
+    // …while the number shows in front: 01 to 11, the second group going on from the first.
+    expect(buttons.map((button) => button.textContent?.slice(0, 2))).toEqual(
+      questions.map((_, index) => String(index + 1).padStart(2, '0')),
+    )
+  })
+
   it('does not ask while busy', async () => {
     const onAsk = vi.fn<(question: string) => void>()
     const user = userEvent.setup()

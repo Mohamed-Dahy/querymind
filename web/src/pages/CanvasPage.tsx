@@ -9,6 +9,7 @@ import { getConversation } from '@/api/conversations'
 import { errorTitle } from '@/api/errors'
 import { Cell } from '@/canvas/Cell'
 import { Composer, type ComposerHandle } from '@/canvas/Composer'
+import { ConsoleStatus } from '@/canvas/ConsoleStatus'
 import { ConversationDatabase } from '@/canvas/conversationDatabase'
 import { EmptyCanvas } from '@/canvas/EmptyCanvas'
 import { FirstRunHint } from '@/canvas/FirstRunHint'
@@ -18,9 +19,11 @@ import { useConversation, type DraftState } from '@/canvas/useConversation'
 import { formatWait } from '@/canvas/wait'
 import { Button } from '@/components/ui/button'
 import { DatabaseSwitcher } from '@/layout/DatabaseSwitcher'
-import { explorerPath, useDatabase } from '@/layout/useDatabase'
+import { DEMO_NAME, explorerPath, useDatabase } from '@/layout/useDatabase'
 import { KEEP_FOCUS } from '@/layout/useFocusOnRouteChange'
+import { ChannelBar, CropMarks, Plate } from '@/components/Instrument'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -126,78 +129,105 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
     })
   }, [cells.length, lastStatus])
 
+  // The home console (U9.3, ADR 027): a new conversation with nothing asked yet. Not a saved one
+  // that is still loading or failed to load: that keeps the canvas layout, so the box doesn't jump
+  // from the middle to the bottom bar when its cells arrive.
+  const home = conversationId === undefined && cells.length === 0
+  const ownDatabase = database.id === null ? null : database.name
+
   return (
-    <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 pt-10">
-      <p aria-hidden="true" className="label-mono">
-        CANVAS · LIVE AGENT
-      </p>
-      <h1 className="mt-2 text-3xl">Ask about your data</h1>
-      <div className="mt-3">
-        <DatabaseSwitcher place="page" />
-      </div>
-      <p className="mt-2 text-fg-muted">
-        {database.id === null
-          ? 'Questions about the Northwind shop and the Chinook music store, in plain language.'
-          : `Questions about ${database.name}, your own database, in plain language.`}{' '}
-        Every answer shows the SQL that produced it.
-      </p>
-
-      <div className="mt-8 flex-1">
-        {cells.length === 0 && saved.isFetching ? (
-          <div aria-hidden="true" className="space-y-3">
-            <Skeleton className="h-24 w-full motion-reduce:animate-none" />
-            <Skeleton className="h-24 w-full motion-reduce:animate-none" />
+    <div
+      className={cn('mx-auto flex min-h-full max-w-5xl flex-col px-4', home ? 'py-12' : 'pt-10')}
+    >
+      {home ? (
+        <ConsoleHeader ownDatabase={ownDatabase} />
+      ) : (
+        <>
+          <p aria-hidden="true" className="label-mono">
+            CANVAS · LIVE AGENT
+          </p>
+          <h1 className="mt-2 text-3xl">Ask about your data</h1>
+          <div className="mt-3">
+            <DatabaseSwitcher place="page" />
           </div>
-        ) : cells.length === 0 ? (
-          <>
-            {saved.error && <NotLoadedNotice error={saved.error} />}
-            <FirstRunHint />
-            {database.id === null ? (
-              <EmptyCanvas onAsk={ask} busy={busy} />
-            ) : (
-              <OwnDatabaseStart name={database.name} id={database.id} />
-            )}
-          </>
-        ) : (
-          // scroll-mb: when the browser scrolls a cell or a focused control into view, it stops
-          // above the sticky composer (about 200 px tall on a phone) instead of behind it.
-          <ConversationDatabase value={connectionId ?? database.id}>
-            <ol aria-label="Questions and answers" className="space-y-4 [&_*]:scroll-mb-56">
-              {cells.map((cell, index) => (
-                <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
-                  <Cell
-                    cell={cell}
-                    index={index}
-                    first={index === 0}
-                    parentQuestion={cells.find(({ id }) => id === cell.parentId)?.question}
-                    busy={busy}
-                    onAsk={ask}
-                    onRetry={(cellId) => {
-                      retry(cellId)
-                      // The Retry button is about to go away: don't lose the keyboard focus with it.
-                      composer.current?.focus()
-                    }}
-                    onRephrase={(question) => composer.current?.fill(question)}
-                    onStop={(cellId) => {
-                      stop(cellId)
-                      // The Stop button goes away too.
-                      composer.current?.focus()
-                    }}
-                    onRerun={applyRerun}
-                    onFollowUp={(cellId) => {
-                      setFollowingUpId(cellId)
-                      composer.current?.focus()
-                    }}
-                  />
-                </li>
-              ))}
-            </ol>
-          </ConversationDatabase>
-        )}
-      </div>
+          <p className="mt-2 text-fg-muted">{intro(ownDatabase)}</p>
+        </>
+      )}
 
-      {/* Stays at the bottom of the screen while the cells above it scroll. */}
-      <div className="sticky bottom-0 mt-8 bg-linear-to-t from-bg from-70% pt-4 pb-4">
+      {/* Before the question box: on the home console, the way into your own database (its words
+          say "below"); on the canvas, the conversation's cells. */}
+      {home ? (
+        database.id !== null && (
+          <div className="mt-8">
+            <OwnDatabaseStart name={database.name} id={database.id} />
+          </div>
+        )
+      ) : (
+        <div className="mt-8 flex-1">
+          {cells.length === 0 && saved.isFetching ? (
+            <div aria-hidden="true" className="space-y-3">
+              <Skeleton className="h-24 w-full motion-reduce:animate-none" />
+              <Skeleton className="h-24 w-full motion-reduce:animate-none" />
+            </div>
+          ) : cells.length === 0 ? (
+            <>
+              {saved.error && <NotLoadedNotice error={saved.error} />}
+              <FirstRunHint />
+              {database.id === null ? (
+                <EmptyCanvas onAsk={ask} busy={busy} />
+              ) : (
+                <OwnDatabaseStart name={database.name} id={database.id} />
+              )}
+            </>
+          ) : (
+            // scroll-mb: when the browser scrolls a cell or a focused control into view, it stops
+            // above the sticky composer (about 200 px tall on a phone) instead of behind it.
+            <ConversationDatabase value={connectionId ?? database.id}>
+              <ol aria-label="Questions and answers" className="space-y-4 [&_*]:scroll-mb-56">
+                {cells.map((cell, index) => (
+                  <li key={cell.id} ref={index === cells.length - 1 ? lastCell : undefined}>
+                    <Cell
+                      cell={cell}
+                      index={index}
+                      first={index === 0}
+                      parentQuestion={cells.find(({ id }) => id === cell.parentId)?.question}
+                      busy={busy}
+                      onAsk={ask}
+                      onRetry={(cellId) => {
+                        retry(cellId)
+                        // The Retry button is about to go away: don't lose the keyboard focus with it.
+                        composer.current?.focus()
+                      }}
+                      onRephrase={(question) => composer.current?.fill(question)}
+                      onStop={(cellId) => {
+                        stop(cellId)
+                        // The Stop button goes away too.
+                        composer.current?.focus()
+                      }}
+                      onRerun={applyRerun}
+                      onFollowUp={(cellId) => {
+                        setFollowingUpId(cellId)
+                        composer.current?.focus()
+                      }}
+                    />
+                  </li>
+                ))}
+              </ol>
+            </ConversationDatabase>
+          )}
+        </div>
+      )}
+
+      {/* The question box. On the home console: the centrepiece, in a panel with a channel bar and
+          the status strip. On the canvas: it stays at the bottom of the screen while the cells
+          scroll. These two divs and the Composer are the same elements in both layouts (only their
+          classes change), so React never remounts the box: the text and the keyboard focus stay in
+          it when the first question turns the console into the canvas. */}
+      <div
+        className={
+          home ? 'relative mt-10' : 'sticky bottom-0 mt-8 bg-linear-to-t from-bg from-70% pt-4 pb-4'
+        }
+      >
         <p aria-live="polite" className="sr-only">
           {announcement(cells.at(-1))}
         </p>
@@ -220,15 +250,70 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
             </Button>
           </div>
         )}
-        <Composer
-          ref={composer}
-          describedBy={followingUp && followUpNoteId}
-          onSubmit={(question) => {
-            ask(question, followingUp?.id)
-            setFollowingUpId(null)
-          }}
-          busy={busy}
-        />
+        {home && <CropMarks />}
+        <div
+          className={cn(
+            home &&
+              'overflow-hidden rounded-cell border bg-surface shadow-lg transition-[box-shadow,border-color] duration-300 focus-within:glow focus-within:border-transparent',
+          )}
+        >
+          {home && (
+            <div aria-hidden="true">
+              <ChannelBar live={!busy} label="CH-1 · CONSOLE">
+                <span className="label-mono">{busy ? 'ANSWERING' : 'READY'}</span>
+              </ChannelBar>
+            </div>
+          )}
+          {home && <ConsoleStatus source={ownDatabase ?? DEMO_NAME} />}
+          <Composer
+            ref={composer}
+            framed={!home}
+            describedBy={followingUp && followUpNoteId}
+            onSubmit={(question) => {
+              ask(question, followingUp?.id)
+              setFollowingUpId(null)
+            }}
+            busy={busy}
+          />
+        </div>
+      </div>
+
+      {/* After the box, in reading and Tab order too: the first-visit hint and the examples. */}
+      {home && (
+        <div className="mt-12">
+          <FirstRunHint />
+          {database.id === null && <EmptyCanvas onAsk={ask} busy={busy} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** What the page says it is about, under the heading. */
+function intro(ownDatabase: string | null): string {
+  const about =
+    ownDatabase === null
+      ? 'Questions about the Northwind shop and the Chinook music store, in plain language.'
+      : `Questions about ${ownDatabase}, your own database, in plain language.`
+  return `${about} Every answer shows the SQL that produced it.`
+}
+
+/**
+ * The top of the home console (U9.3): the model plate, the heading at instrument scale, and what it
+ * is about. Left-aligned on the 12-column grid, with the text kept to a readable width.
+ */
+function ConsoleHeader({ ownDatabase }: { ownDatabase: string | null }) {
+  return (
+    <div className="grid gap-y-5 md:grid-cols-12">
+      <div aria-hidden="true" className="md:col-span-12">
+        <Plate code="QM-1">CANVAS · LIVE AGENT</Plate>
+      </div>
+      <h1 className="text-5xl leading-[0.95] font-semibold tracking-[-0.035em] sm:text-6xl md:col-span-10">
+        Ask about your data
+      </h1>
+      <div className="space-y-3 md:col-span-7">
+        <DatabaseSwitcher place="page" />
+        <p className="text-fg-muted">{intro(ownDatabase)}</p>
       </div>
     </div>
   )

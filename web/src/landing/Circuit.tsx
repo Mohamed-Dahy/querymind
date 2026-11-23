@@ -1,3 +1,4 @@
+import { TRIES_TEXT } from '@/lib/limits'
 import { cn } from '@/lib/utils'
 import { DrawPath, Grow } from '@/motion'
 
@@ -44,7 +45,7 @@ export function Circuit() {
         />
       </svg>
       <p className="absolute top-0 left-1/2 hidden -translate-x-1/2 bg-bg px-3 font-mono text-xs text-warn lg:block">
-        Repair loop · up to 3 tries a question, by default
+        Repair loop · up to {TRIES_TEXT} a question, by default
       </p>
 
       <ol className="grid gap-y-8 lg:grid-cols-7 lg:gap-y-0">

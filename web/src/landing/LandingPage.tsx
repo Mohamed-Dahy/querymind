@@ -7,6 +7,7 @@ import { Plate } from '@/components/Instrument'
 import { LogoMark } from '@/components/LogoMark'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Button } from '@/components/ui/button'
+import { ROWS_TEXT, TIMEOUT_TEXT } from '@/lib/limits'
 import { DrawPath, Reveal, Stagger, StaggerItem } from '@/motion'
 
 import { Circuit } from './Circuit'
@@ -16,7 +17,7 @@ import { Proof } from './Proof'
 /**
  * What protects the data, as a stack of guards a question passes through. Each is a rule the backend
  * enforces (docs/CLAUDE.md §8, Phase 5); `stops` are real examples of what it refuses or limits, with
- * the limits at their default settings (config.py: query_timeout_seconds, max_rows).
+ * the limits at their default settings (`lib/limits.ts`, from config.py).
  */
 const GUARDS: { title: string; text: string; stops: string[] }[] = [
   {
@@ -32,7 +33,7 @@ const GUARDS: { title: string; text: string; stops: string[] }[] = [
   {
     title: 'Limits on every run',
     text: 'A statement timeout and a row limit on every query, and rate limits on every account.',
-    stops: ['10 s timeout', '1,000 rows', 'rate limits'],
+    stops: [`${TIMEOUT_TEXT} timeout`, ROWS_TEXT, 'rate limits'],
   },
   {
     title: 'Personal data hidden',

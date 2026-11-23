@@ -32,6 +32,11 @@ type ComposerProps = {
   ref?: Ref<ComposerHandle>
   /** The id of text that says more about this question (e.g. what it follows up on). */
   describedBy?: string | undefined
+  /**
+   * `true` (the default): the box draws its own panel. `false`: it sits inside a panel that already
+   * has one (the home console, U9.3), which then lights up on focus instead.
+   */
+  framed?: boolean
 }
 
 /** The question box: grows as you type, Ctrl/⌘ + Enter sends, and it says why it won't send. */
@@ -41,6 +46,7 @@ export function Composer({
   placeholder = 'e.g. Which category sold the most in 1997?',
   ref,
   describedBy,
+  framed = true,
 }: ComposerProps) {
   const id = useId()
   const [text, setText] = useState('')
@@ -100,7 +106,11 @@ export function Composer({
     // the question field has focus, so it is clear where typing goes.
     <form
       onSubmit={onFormSubmit}
-      className="rounded-cell border bg-surface p-3 shadow-lg transition-[box-shadow,border-color] duration-300 focus-within:glow focus-within:border-transparent"
+      className={cn(
+        'p-3',
+        framed &&
+          'rounded-cell border bg-surface shadow-lg transition-[box-shadow,border-color] duration-300 focus-within:glow focus-within:border-transparent',
+      )}
     >
       <label htmlFor={inputId} className="flex items-center gap-2 text-sm font-medium">
         <span aria-hidden="true" className="font-mono text-signal">

@@ -94,6 +94,35 @@ describe('CanvasPage', () => {
     expect(box).toHaveFocus()
   })
 
+  it('home is a console: status strip, then the box, then the examples (in Tab order too)', async () => {
+    const user = userEvent.setup()
+    renderApp('/')
+
+    const box = screen.getByRole('textbox', { name: 'Your question' })
+    const terms = screen.getAllByRole('term')
+    expect(terms.map((term) => term.textContent)).toEqual(['SOURCE', 'ACCESS', 'LIMITS', 'REPAIRS'])
+    expect(terms[0]?.nextElementSibling).toHaveTextContent('Northwind + Chinook')
+
+    // The box comes before the examples in the page, so Tab reaches it first (keyboard order
+    // matches what you see), and Ask is the next stop before the first example.
+    const firstExample = screen.getByRole('button', { name: 'How many customers are there?' })
+    expect(
+      box.compareDocumentPosition(firstExample) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    box.focus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Ask' })).toHaveFocus()
+    await user.tab()
+    expect(firstExample).toHaveFocus()
+  })
+
+  it('a saved conversation keeps the canvas layout while it loads: no console', async () => {
+    renderApp('/c/3f2a9c1e-0000-4000-8000-000000000000')
+
+    expect(await screen.findByText(/This conversation wasn't found/)).toBeInTheDocument()
+    expect(screen.queryByRole('term')).not.toBeInTheDocument()
+  })
+
   it('sends the conversation id with a follow-up, and adds a second cell', async () => {
     const bodies = recordAsks()
     const user = userEvent.setup()
