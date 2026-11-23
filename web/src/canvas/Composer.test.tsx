@@ -103,6 +103,36 @@ describe('Composer', () => {
   })
 })
 
+describe('Composer variants', () => {
+  for (const variant of ['dock', 'console'] as const) {
+    it(`${variant}: Tab goes from the box to Ask, and the hint describes the box`, async () => {
+      const user = userEvent.setup()
+      render(<Composer onSubmit={() => {}} variant={variant} />)
+      const box = screen.getByRole('textbox', { name: 'Your question' })
+
+      // The dock places these on a grid with CSS only: the page order (and so Tab) is unchanged.
+      box.focus()
+      await user.tab()
+      expect(screen.getByRole('button', { name: 'Ask' })).toHaveFocus()
+      // On a phone the dock shows the hint to screen readers only, so it must stay in the page.
+      expect(box).toHaveAccessibleDescription(/to send · .*for a new line/)
+    })
+  }
+
+  it('switching variant keeps the same box, with its text and focus', async () => {
+    const user = userEvent.setup()
+    const view = render(<Composer onSubmit={() => {}} variant="console" />)
+    const box = screen.getByRole('textbox', { name: 'Your question' })
+    await user.type(box, 'half a question')
+
+    view.rerender(<Composer onSubmit={() => {}} variant="dock" />)
+
+    expect(screen.getByRole('textbox', { name: 'Your question' })).toBe(box)
+    expect(box).toHaveValue('half a question')
+    expect(box).toHaveFocus()
+  })
+})
+
 describe('EmptyCanvas', () => {
   it('shows each group with its questions, and a click asks one', async () => {
     const onAsk = vi.fn<(question: string) => void>()

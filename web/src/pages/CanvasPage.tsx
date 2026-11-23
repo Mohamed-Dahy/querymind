@@ -136,22 +136,23 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
   const ownDatabase = database.id === null ? null : database.name
 
   return (
-    <div
-      className={cn('mx-auto flex min-h-full max-w-5xl flex-col px-4', home ? 'py-12' : 'pt-10')}
-    >
+    <div className={cn('mx-auto flex min-h-full max-w-5xl flex-col px-4', home ? 'py-12' : 'pt-8')}>
       {home ? (
         <ConsoleHeader ownDatabase={ownDatabase} />
       ) : (
-        <>
-          <p aria-hidden="true" className="label-mono">
-            CANVAS · LIVE AGENT
-          </p>
-          <h1 className="mt-2 text-3xl">Ask about your data</h1>
+        // The notebook's masthead (U9.4): compact, so the entries start high on the screen.
+        <div className="border-b pb-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div aria-hidden="true">
+              <Plate code="QM-1">CANVAS · LIVE AGENT</Plate>
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">Ask about your data</h1>
+          </div>
           <div className="mt-3">
             <DatabaseSwitcher place="page" />
           </div>
-          <p className="mt-2 text-fg-muted">{intro(ownDatabase)}</p>
-        </>
+          <p className="mt-2 text-sm text-fg-muted">{intro(ownDatabase)}</p>
+        </div>
       )}
 
       {/* Before the question box: on the home console, the way into your own database (its words
@@ -181,7 +182,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
             </>
           ) : (
             // scroll-mb: when the browser scrolls a cell or a focused control into view, it stops
-            // above the sticky composer (about 200 px tall on a phone) instead of behind it.
+            // above the docked bar (about 110 px, 150 with a follow-up note) instead of behind it.
             <ConversationDatabase value={connectionId ?? database.id}>
               <ol aria-label="Questions and answers" className="space-y-4 [&_*]:scroll-mb-56">
                 {cells.map((cell, index) => (
@@ -225,14 +226,20 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
           it when the first question turns the console into the canvas. */}
       <div
         className={
-          home ? 'relative mt-10' : 'sticky bottom-0 mt-8 bg-linear-to-t from-bg from-70% pt-4 pb-4'
+          home
+            ? 'relative mt-10'
+            : // The docked command bar (U9.4): solid, edge to edge of the column, with a hairline on
+              // top. z-20: above the things on the page that have their own layer (the table's
+              // sticky header, the rail's dots and the tab labels are z-10, and used to paint over
+              // the box), below every menu, dialog, drawer and tooltip (z-50).
+              'sticky bottom-0 z-20 -mx-4 mt-8 border-t bg-bg px-4 pb-[env(safe-area-inset-bottom)]'
         }
       >
         <p aria-live="polite" className="sr-only">
           {announcement(cells.at(-1))}
         </p>
         {followingUp && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-signal/40 bg-surface px-3 py-1.5 text-sm">
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-signal/40 bg-surface px-3 py-1.5 text-sm">
             <CornerDownRight aria-hidden="true" className="size-4 shrink-0 text-signal" />
             <p id={followUpNoteId} className="min-w-0 flex-1 truncate">
               Following up on: {followingUp.question}
@@ -267,7 +274,7 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
           {home && <ConsoleStatus source={ownDatabase ?? DEMO_NAME} />}
           <Composer
             ref={composer}
-            framed={!home}
+            variant={home ? 'console' : 'dock'}
             describedBy={followingUp && followUpNoteId}
             onSubmit={(question) => {
               ask(question, followingUp?.id)

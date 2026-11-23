@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Database, Download, Info, ListChecks, RotateCw, TriangleAlert } from 'lucide-react'
-import { lazy, Suspense, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { ApiError, type AskResponse } from '@/api/client'
 import { rerunTurn, type RerunResult } from '@/api/conversations'
@@ -60,16 +60,25 @@ function SourceLine({ sources }: { sources: AskResponse['sources'] }) {
   )
 }
 
-/** An answer: the text, how sure it is, any warnings, then the rows and the SQL as evidence. */
+/**
+ * An answer, laid out like a lab notebook's page (U9.4, ADR 027): the answer across the top; under
+ * it, a margin of readings on the left (how sure, where from, what it cost, and what to do next) and
+ * the evidence on the right (warnings, then the chart, rows and SQL). Below 48rem of width the margin
+ * stacks above the evidence. Either way the page order is answer → readings → evidence, which is
+ * also the reading and Tab order.
+ */
 export function AnswerCell({
   reply,
   saved,
   onRerun,
+  actions,
 }: {
   reply: AskResponse
   /** Set when this answer came from the saved history. */
   saved?: SavedInfo | undefined
   onRerun?: (result: RerunResult) => void
+  /** What to do next with this answer (Follow up, Save question): at the foot of the readings. */
+  actions?: ReactNode
 }) {
   const chart = useMemo(
     () => pickChart(reply.columns, reply.rows, reply.masked_columns),
@@ -83,123 +92,134 @@ export function AnswerCell({
   const workButton = useRef<HTMLButtonElement>(null)
 
   return (
-    <div className="space-y-3">
-      {/* Signal Lab (U8.3): the answer, the dial, then the evidence arrive in that order (about
-          a tenth of a second apart), so the eye reads them in that order too. */}
+    <div className="space-y-5">
+      {/* Signal Lab (U8.3): the answer, the readings, then the evidence arrive in that order
+          (about a tenth of a second apart), so the eye reads them in that order too. */}
       <Reveal as="p" className="text-lg leading-relaxed">
         {reply.answer}
       </Reveal>
-      <SourceLine sources={reply.sources} />
-      <UsageLine usage={reply.usage} />
 
-      <Reveal
-        delay={0.08}
-        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-bg/50 px-3 py-2"
-      >
-        <CertaintyMeter level={reply.confidence} reasons={reply.confidence_reasons} />
-        <RowsChip tags={reply.row_scope} />
-        {!reply.answer_from_llm && <TemplateBadge />}
-        <Button
-          ref={workButton}
-          type="button"
-          variant="outline"
-          aria-haspopup="dialog"
-          className="ml-auto"
-          onClick={() => {
-            setWorkLoaded(true)
-            setWorkOpen(true)
-          }}
-        >
-          <ListChecks aria-hidden="true" />
-          Show your work
-        </Button>
-      </Reveal>
-      {workLoaded && (
-        <Suspense fallback={<OverlayLoading />}>
-          <ShowYourWork
-            reply={reply}
-            open={workOpen}
-            onOpenChange={setWorkOpen}
-            opener={workButton}
-          />
-        </Suspense>
-      )}
-
-      {reply.warnings.length > 0 && (
-        <ul aria-label="Warnings" className="space-y-1.5">
-          {reply.warnings.map((warning, index) => (
-            <li
-              key={`${warning.code}-${index}`}
-              className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm"
+      <div className="grid gap-5 border-t pt-5 @3xl:grid-cols-[15rem_minmax(0,1fr)] @3xl:gap-x-6">
+        {/* The readings margin. A hairline on its right from 48rem, like a notebook's margin
+            rule; a plain block above the evidence below that. */}
+        <Reveal delay={0.08} className="space-y-4 @3xl:border-r @3xl:pr-6">
+          <p aria-hidden="true" className="label-mono">
+            READINGS
+          </p>
+          <CertaintyMeter level={reply.confidence} reasons={reply.confidence_reasons} />
+          <RowsChip tags={reply.row_scope} />
+          {!reply.answer_from_llm && <TemplateBadge />}
+          <SourceLine sources={reply.sources} />
+          <UsageLine usage={reply.usage} />
+          <div className="flex flex-wrap gap-2 border-t pt-4">
+            <Button
+              ref={workButton}
+              type="button"
+              variant="outline"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setWorkLoaded(true)
+                setWorkOpen(true)
+              }}
             >
-              <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warn" />
-              {warning.message}
-            </li>
-          ))}
-        </ul>
-      )}
+              <ListChecks aria-hidden="true" />
+              Show your work
+            </Button>
+            {actions}
+          </div>
+        </Reveal>
 
-      {saved?.freshAt !== undefined && <FreshRowsNote saved={saved} freshAt={saved.freshAt} />}
-
-      {/* The chart first when one fits; otherwise the table opens (one row, no numbers…). The key:
-          after a re-run the Chart tab may appear, and it should open on it. */}
-      <Reveal delay={0.16}>
-        <Tabs
-          key={saved?.freshAt ?? 'first'}
-          defaultValue={chart.kind === 'none' ? 'table' : 'chart'}
-        >
-          <TabsList aria-label="Evidence">
-            {chart.kind !== 'none' && <TabsTrigger value="chart">Chart</TabsTrigger>}
-            <TabsTrigger value="table">Table</TabsTrigger>
-            <TabsTrigger value="sql">SQL</TabsTrigger>
-          </TabsList>
-          {chart.kind !== 'none' && (
-            <TabsContent value="chart" className={`pt-2 ${PANEL_IN}`}>
-              <Suspense fallback={<Skeleton className="h-64 w-full motion-reduce:animate-none" />}>
-                <ResultChart spec={chart} />
-              </Suspense>
-            </TabsContent>
-          )}
-          <TabsContent value="table" className={`space-y-3 pt-2 ${PANEL_IN}`}>
-            {rowsNotStored ? (
-              <RerunPanel reply={reply} n={saved?.n ?? 0} onRerun={onRerun} />
-            ) : (
-              <RowsNote rowCount={reply.row_count} truncated={reply.truncated} />
-            )}
-            <HiddenColumnsNote columns={reply.columns} masked={reply.masked_columns} />
-            {reply.rows.length > 0 && (
-              <ResultTable
-                columns={reply.columns}
-                rows={reply.rows}
-                question={reply.question}
-                masked={reply.masked_columns}
+        <div className="min-w-0 space-y-3">
+          {workLoaded && (
+            <Suspense fallback={<OverlayLoading />}>
+              <ShowYourWork
+                reply={reply}
+                open={workOpen}
+                onOpenChange={setWorkOpen}
+                opener={workButton}
               />
-            )}
-            {!rowsNotStored && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={reply.rows.length === 0}
-                onClick={() => {
-                  const name = csvFileName(reply.question)
-                  downloadCsv(name, toCsv(reply.columns, reply.rows))
-                  // A download gives no sign in the page itself; this one is polite and goes by itself.
-                  toast(`Downloaded ${name}`, {
-                    description: `${reply.rows.length.toLocaleString('en')} ${reply.rows.length === 1 ? 'row' : 'rows'}`,
-                  })
-                }}
-              >
-                <Download aria-hidden="true" />
-                Download CSV
-              </Button>
-            )}
-          </TabsContent>
-          {/* Radix mounts a tab's content only when it opens, so Shiki loads on the first SQL click. */}
-          <TabsContent value="sql" className={`pt-2 ${PANEL_IN}`}>
-            <SqlView sql={reply.sql} explanation={reply.explanation} />
-          </TabsContent>
-        </Tabs>
-      </Reveal>
+            </Suspense>
+          )}
+
+          {reply.warnings.length > 0 && (
+            <ul aria-label="Warnings" className="space-y-1.5">
+              {reply.warnings.map((warning, index) => (
+                <li
+                  key={`${warning.code}-${index}`}
+                  className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm"
+                >
+                  <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warn" />
+                  {warning.message}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {saved?.freshAt !== undefined && <FreshRowsNote saved={saved} freshAt={saved.freshAt} />}
+
+          {/* The chart first when one fits; otherwise the table opens (one row, no numbers…). The key:
+          after a re-run the Chart tab may appear, and it should open on it. */}
+          <Reveal delay={0.16}>
+            <Tabs
+              key={saved?.freshAt ?? 'first'}
+              defaultValue={chart.kind === 'none' ? 'table' : 'chart'}
+            >
+              <TabsList aria-label="Evidence">
+                {chart.kind !== 'none' && <TabsTrigger value="chart">Chart</TabsTrigger>}
+                <TabsTrigger value="table">Table</TabsTrigger>
+                <TabsTrigger value="sql">SQL</TabsTrigger>
+              </TabsList>
+              {chart.kind !== 'none' && (
+                <TabsContent value="chart" className={`pt-2 ${PANEL_IN}`}>
+                  <Suspense
+                    fallback={<Skeleton className="h-64 w-full motion-reduce:animate-none" />}
+                  >
+                    <ResultChart spec={chart} />
+                  </Suspense>
+                </TabsContent>
+              )}
+              <TabsContent value="table" className={`space-y-3 pt-2 ${PANEL_IN}`}>
+                {rowsNotStored ? (
+                  <RerunPanel reply={reply} n={saved?.n ?? 0} onRerun={onRerun} />
+                ) : (
+                  <RowsNote rowCount={reply.row_count} truncated={reply.truncated} />
+                )}
+                <HiddenColumnsNote columns={reply.columns} masked={reply.masked_columns} />
+                {reply.rows.length > 0 && (
+                  <ResultTable
+                    columns={reply.columns}
+                    rows={reply.rows}
+                    question={reply.question}
+                    masked={reply.masked_columns}
+                  />
+                )}
+                {!rowsNotStored && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={reply.rows.length === 0}
+                    onClick={() => {
+                      const name = csvFileName(reply.question)
+                      downloadCsv(name, toCsv(reply.columns, reply.rows))
+                      // A download gives no sign in the page itself; this one is polite and goes by itself.
+                      toast(`Downloaded ${name}`, {
+                        description: `${reply.rows.length.toLocaleString('en')} ${reply.rows.length === 1 ? 'row' : 'rows'}`,
+                      })
+                    }}
+                  >
+                    <Download aria-hidden="true" />
+                    Download CSV
+                  </Button>
+                )}
+              </TabsContent>
+              {/* Radix mounts a tab's content only when it opens, so Shiki loads on the first SQL click. */}
+              <TabsContent value="sql" className={`pt-2 ${PANEL_IN}`}>
+                <SqlView sql={reply.sql} explanation={reply.explanation} />
+              </TabsContent>
+            </Tabs>
+          </Reveal>
+        </div>
+      </div>
     </div>
   )
 }

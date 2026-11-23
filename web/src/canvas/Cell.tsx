@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react'
 
 import type { RerunResult } from '@/api/conversations'
 import type { TraceEvent } from '@/api/stream'
+import { ChannelBar } from '@/components/Instrument'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
@@ -47,10 +48,25 @@ type CellProps = {
   onRerun: (cellId: string, result: RerunResult) => void
 }
 
+/** The word in the entry's header for what came back (decoration: the body says it in full). */
+function statusWord(cell: CellData): string {
+  if (cell.status === 'running') return 'RUNNING'
+  if (cell.status === 'failed' || cell.reply === undefined) return 'FAILED'
+  switch (cell.reply.kind) {
+    case 'answer':
+      return 'ANSWER'
+    case 'clarification':
+      return 'QUESTION BACK'
+    case 'refusal':
+      return 'DECLINED'
+  }
+}
+
 /**
- * One question on the canvas, and whatever came back for it: a "readout" (Signal Lab, U8.3). The
- * frame (a mono index, the question as a heading) is shared; the body depends on the status and the
- * reply's `kind`. It rises into place when it is added, and glows softly while the agent works.
+ * One question on the canvas, and whatever came back for it: an entry in a lab notebook (U9.4,
+ * ADR 027; a "readout" since U8.3). The frame is shared: a channel bar with the entry's number and
+ * status, then the question as a command line. The body depends on the status and the reply's
+ * `kind`. It rises into place when it is added, and glows softly while the agent works.
  */
 export function Cell(props: CellProps) {
   const { cell, index, parentQuestion, onStop } = props
@@ -63,8 +79,11 @@ export function Cell(props: CellProps) {
       aria-labelledby={headingId}
       aria-describedby={isFollowUp ? `${cell.parentId}-question` : undefined}
       aria-busy={running}
+      // @container: the answer inside lays out by the entry's own width (the readings panel goes
+      // to the side from 48rem), not the window's, which also holds the menu and the history.
+      // No overflow-hidden: the follow-up elbow is drawn just outside the top-left corner.
       className={cn(
-        'relative rounded-cell border bg-surface p-4 transition-[box-shadow,border-color] duration-500 sm:p-5',
+        '@container relative rounded-cell border bg-surface transition-[box-shadow,border-color] duration-500',
         running && 'glow border-transparent',
         isFollowUp && 'ml-5 sm:ml-8',
       )}
@@ -86,29 +105,50 @@ export function Cell(props: CellProps) {
               vectorEffect="non-scaling-stroke"
             />
           </svg>
-          <p className="mb-1 truncate text-xs text-fg-muted">Following up on: {parentQuestion}</p>
+          <p className="truncate px-4 pt-2 text-xs text-fg-muted sm:px-5">
+            Following up on: {parentQuestion}
+          </p>
         </div>
       )}
       {index !== undefined && (
-        <p aria-hidden="true" className="label-mono mb-1.5 flex items-center gap-2">
-          <span className={cn('size-1.5 rounded-full', running ? 'bg-signal' : 'bg-input')} />
-          {`READOUT ${String(index + 1).padStart(2, '0')}`}
-        </p>
+        // The entry's header strip: its number, lit while it runs, and what came back. The same
+        // top radius as the card, so the strip's colour doesn't poke out of the rounded corners.
+        <div aria-hidden="true">
+          <ChannelBar
+            live={running}
+            label={`READOUT ${String(index + 1).padStart(2, '0')}`}
+            className={cn('px-4 sm:px-5', !isFollowUp && 'rounded-t-cell')}
+          >
+            <span className="label-mono">{statusWord(cell)}</span>
+          </ChannelBar>
+        </div>
       )}
-      <h2 id={headingId} className="mb-4 text-lg leading-snug font-semibold">
-        {cell.question}
-      </h2>
-      {/* Not after a fallback to POST /ask, which sends no steps: the answer is complete anyway. */}
-      {(cell.status === 'running' || cell.trace !== undefined) && (
-        <AgentRail
-          trace={cell.trace ?? NO_EVENTS}
-          status={cell.status}
-          stopped={cell.error?.code === 'stopped'}
-          onStop={() => onStop(cell.id)}
-          describedBy={headingId}
-        />
-      )}
-      <CellBody {...props} />
+      <div className="p-4 sm:p-5">
+        {/* The question as a command line: a prompt, then the words as typed (mono). The prompt
+            is outside the heading, so the entry is still named by the question alone. */}
+        <div className="mb-4 flex items-baseline gap-3">
+          <span aria-hidden="true" className="shrink-0 font-mono text-sm font-semibold text-signal">
+            qm&gt;
+          </span>
+          <h2
+            id={headingId}
+            className="min-w-0 font-mono text-base leading-snug font-medium wrap-break-word sm:text-lg"
+          >
+            {cell.question}
+          </h2>
+        </div>
+        {/* Not after a fallback to POST /ask, which sends no steps: the answer is complete anyway. */}
+        {(cell.status === 'running' || cell.trace !== undefined) && (
+          <AgentRail
+            trace={cell.trace ?? NO_EVENTS}
+            status={cell.status}
+            stopped={cell.error?.code === 'stopped'}
+            onStop={() => onStop(cell.id)}
+            describedBy={headingId}
+          />
+        )}
+        <CellBody {...props} />
+      </div>
     </Reveal>
   )
 }
@@ -147,20 +187,24 @@ function CellBody({
             reply={reply}
             saved={cell.saved}
             onRerun={(result) => onRerun(cell.id, result)}
+            actions={
+              <>
+                {/* Every cell has this button, so the description says which question it is for. */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-describedby={`${cell.id}-question`}
+                  onClick={() => onFollowUp(cell.id)}
+                >
+                  <CornerDownRight aria-hidden="true" />
+                  Follow up
+                </Button>
+                {standalone !== null && (
+                  <SaveQuestionButton cellId={cell.id} question={standalone} />
+                )}
+              </>
+            }
           />
-          {/* Every cell has this button, so the description says which question it is for. */}
-          <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              aria-describedby={`${cell.id}-question`}
-              onClick={() => onFollowUp(cell.id)}
-            >
-              <CornerDownRight aria-hidden="true" />
-              Follow up
-            </Button>
-            {standalone !== null && <SaveQuestionButton cellId={cell.id} question={standalone} />}
-          </div>
         </Suspense>
       )
     }
