@@ -10,6 +10,9 @@ for (const theme of THEMES) {
   test(`${theme} theme: ask an example, get the answer cell, see the chart, table and SQL`, async ({
     page,
   }) => {
+    // 16–20 s alone, and it went past the 30 s limit once in a full parallel run (2026-11-24):
+    // the same reason as "the whole flow" below. slow() gives it three times as long.
+    test.slow()
     await useTheme(page, theme)
     await page.goto('/')
     await apiStatusLoaded(page)
@@ -403,10 +406,9 @@ test('under reduced motion the rail is still: no spinning, and the words say wha
 
   const running = page.getByRole('article').locator('[aria-current="step"]')
   await expect(running).toContainText('running')
-  const animation = await page.evaluate(
-    "getComputedStyle(document.querySelector('[aria-current=step] svg')).animationName",
-  )
-  expect(animation).toBe('none')
+  // One retrying assertion on the locator, not a separate querySelector: the rail can re-render
+  // between two steps, and a one-off lookup then found nothing (flaky, seen 2026-11-24).
+  await expect(running.locator('svg').first()).toHaveCSS('animation-name', 'none')
 })
 
 test('on a phone the rail wraps without a sideways scroll, and Stop is reachable', async ({

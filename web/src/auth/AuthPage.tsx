@@ -5,7 +5,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
 import { logIn, signUp } from '@/api/auth'
 import { asApiError, type ApiError } from '@/api/client'
-import { safeNext, takeSessionEnded, useAuthStatus } from '@/api/session'
+import { safeNext, sessionEnded, takeSessionEnded, useAuthStatus } from '@/api/session'
 import { formatWait } from '@/canvas/wait'
 import { FIELD } from '@/components/field'
 import { Plate } from '@/components/Instrument'
@@ -48,8 +48,15 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const next = safeNext(params.get('next'))
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  // Read once: shown on this visit, not again after the next login.
-  const [ended] = useState(takeSessionEnded)
+  // Shown on this visit, not again after the next login. Read without using it up while rendering:
+  // React may render this page, throw that render away and render it again (navigation renders in
+  // a transition, and an auth update can interrupt it). A render that used the note up would leave
+  // the next one nothing to show (the flaky CI failure of 2026-11-16). It is used up in the effect
+  // below, which runs only once the page is really on screen.
+  const [ended] = useState(sessionEnded)
+  useEffect(() => {
+    if (ended) takeSessionEnded()
+  }, [ended])
   const [error, setError] = useState<ApiError | null>(null)
   const [busy, setBusy] = useState(false)
   // After a `rate_limited` (U7.5): when one more login or sign-up fits.

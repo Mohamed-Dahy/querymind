@@ -109,20 +109,34 @@ export const NO_SHELL = new Set(['/styleguide', '/welcome'])
  * fails a test by itself: after 3 s axe runs anyway and reports what it sees.
  */
 export async function motionSettled(page: Page) {
+  // Still for 400 ms in a row, not just at one instant: a reveal with a delay (the answer's
+  // evidence waits 0.16 s) sits at opacity 0 with nothing running yet, which looks settled, and
+  // then fades in while axe is measuring (seen 2026-11-24: its tabs failed contrast mid-fade).
+  await page.evaluate('window.__motionStillSince = undefined')
   // A string, like the other in-browser code here: the e2e TypeScript setup has no DOM types.
   const settled = `(() => {
     const moving = document.getAnimations().some((animation) => {
       const timing = animation.effect && animation.effect.getComputedTiming()
       return animation.playState === 'running' && timing && Number.isFinite(timing.endTime)
     })
-    if (moving) return false
-    return [...document.querySelectorAll('[style*="opacity"]')].every((element) => {
-      if (!(element instanceof HTMLElement)) return true
-      const opacity = parseFloat(getComputedStyle(element).opacity)
-      return opacity === 0 || opacity === 1
-    })
+    const still =
+      !moving &&
+      [...document.querySelectorAll('[style*="opacity"]')].every((element) => {
+        if (!(element instanceof HTMLElement)) return true
+        const opacity = parseFloat(getComputedStyle(element).opacity)
+        return opacity === 0 || opacity === 1
+      })
+    const now = performance.now()
+    if (!still) {
+      window.__motionStillSince = undefined
+      return false
+    }
+    window.__motionStillSince ??= now
+    return now - window.__motionStillSince >= 400
   })()`
-  await page.waitForFunction(settled, undefined, { timeout: 3000 }).catch(() => undefined)
+  await page
+    .waitForFunction(settled, undefined, { timeout: 3000, polling: 50 })
+    .catch(() => undefined)
 }
 
 /**

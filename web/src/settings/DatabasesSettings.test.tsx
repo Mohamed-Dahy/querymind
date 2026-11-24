@@ -78,7 +78,14 @@ describe('Settings → Databases', () => {
 
     await user.click(screen.getByText('How to make a read-only login'))
 
-    expect(await screen.findByText(/GRANT SELECT ON ALL TABLES IN SCHEMA public/)).toBeVisible()
+    // The whole <code> block's text: once Shiki has coloured it (fast when an earlier test already
+    // loaded Shiki, as on CI), each word is its own <span> and no single text node holds the line.
+    const recipe = await screen.findByText(
+      (_, element) =>
+        element?.tagName === 'CODE' &&
+        /GRANT SELECT ON ALL TABLES IN SCHEMA public/.test(element.textContent ?? ''),
+    )
+    expect(recipe).toBeVisible()
     expect(screen.getByLabelText('User')).toHaveAccessibleDescription(/database.s owner/)
   })
 

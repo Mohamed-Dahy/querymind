@@ -166,7 +166,11 @@ export function CanvasProvider({ children }: { children: ReactNode }) {
         if (!named) controller.abort()
       }
       dispatch({ type: 'reset' })
-      void navigate('/', { state })
+      // flushSync: the empty store and the new URL land in the same render. React Router would
+      // otherwise navigate in a transition (a render React may finish later), and in between the
+      // page still belongs to the old conversation's URL: a question sent then went into the old
+      // conversation, and the canvas then showed an empty `/` (seen in e2e, 2026-11-24).
+      void navigate('/', { state, flushSync: true })
     },
     [navigate],
   )

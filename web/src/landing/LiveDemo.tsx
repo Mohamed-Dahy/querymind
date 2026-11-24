@@ -103,12 +103,13 @@ export function LiveDemo() {
           <p aria-hidden="true" className="label-mono">
             INPUT
           </p>
-          <h3 id={headingId} className="mt-1 mb-4 font-mono text-base font-medium">
+          {/* h2: the demo is a section right under the page's h1 (Lighthouse heading-order). */}
+          <h2 id={headingId} className="mt-1 mb-4 font-mono text-base font-medium">
             <span aria-hidden="true" className="text-signal">
               &gt;{' '}
             </span>
             {REPLY.question}
-          </h3>
+          </h2>
           <AgentRail
             trace={EVENTS.slice(0, visible)}
             status={done ? 'done' : 'running'}

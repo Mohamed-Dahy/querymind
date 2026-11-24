@@ -57,7 +57,7 @@ test('before the app starts, the page says it is loading, in the right colours',
 
   await expect(page.getByText('Loading QueryMind…')).toBeVisible()
   const background = await page.evaluate('getComputedStyle(document.body).backgroundColor')
-  expect(background).toBe('rgb(15, 23, 42)') // --bg in the dark theme (#0F172A), not white
+  expect(background).toBe('rgb(10, 11, 13)') // --bg in the dark theme (#0A0B0D, Signal Lab since U8.1), not white
 
   release()
   await expect(page.getByRole('heading', { level: 1, name: 'Ask about your data' })).toBeVisible()

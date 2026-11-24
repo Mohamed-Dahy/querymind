@@ -428,11 +428,23 @@ export default function Styleguide() {
               </TabsContent>
             </Tabs>
             <Tabs defaultValue="key">
-              <TabsList variant="line">
+              {/* Wraps on a narrow page: three nowrap labels are wider than 320 px. */}
+              <TabsList variant="line" className="h-auto max-w-full flex-wrap">
                 <TabsTrigger value="key">Line tabs</TabsTrigger>
                 <TabsTrigger value="databases">slide a lime bar</TabsTrigger>
                 <TabsTrigger value="members">between them</TabsTrigger>
               </TabsList>
+              {/* A panel per tab: each tab's aria-controls must name an element that exists
+                  (axe: aria-valid-attr-value). Radix mounts only the open one. */}
+              <TabsContent value="key" className="pt-2 text-sm text-fg-muted">
+                The first tab&apos;s panel.
+              </TabsContent>
+              <TabsContent value="databases" className="pt-2 text-sm text-fg-muted">
+                The second tab&apos;s panel.
+              </TabsContent>
+              <TabsContent value="members" className="pt-2 text-sm text-fg-muted">
+                The third tab&apos;s panel.
+              </TabsContent>
             </Tabs>
           </article>
         </Section>

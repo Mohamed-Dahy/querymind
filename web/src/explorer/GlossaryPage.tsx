@@ -142,7 +142,9 @@ function Term({ metric }: { metric: MetricMeaning }) {
       id={termAnchor(name)}
       aria-label={title}
       // A link to this term (from a table's page) lights it up: `:target` is the term in the address.
-      className="flex scroll-mt-4 flex-col rounded-cell border bg-surface p-5 transition-[border-color,box-shadow] duration-200 target:border-signal target:glow"
+      // min-w-0: a grid item is otherwise never narrower than its longest word (a SQL name),
+      // which pushed a 320 px page 7 px sideways; the SQL block scrolls inside itself instead.
+      className="flex min-w-0 scroll-mt-4 flex-col rounded-cell border bg-surface p-5 transition-[border-color,box-shadow] duration-200 target:border-signal target:glow"
     >
       <h3 id={headingId} className="font-semibold tracking-tight">
         {title}{' '}

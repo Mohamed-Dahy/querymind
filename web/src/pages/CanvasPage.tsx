@@ -261,7 +261,10 @@ function Canvas({ conversationId }: { conversationId: string | undefined }) {
         <div
           className={cn(
             home &&
-              'overflow-hidden rounded-cell border bg-surface shadow-lg transition-[box-shadow,border-color] duration-300 focus-within:glow focus-within:border-transparent',
+              // relative: the panel paints above the crop marks' layer (positioned, so it would
+              // otherwise sit on top), and axe can measure the text in it. The marks still show:
+              // they stick out 8 px past the panel's corners.
+              'relative overflow-hidden rounded-cell border bg-surface shadow-lg transition-[box-shadow,border-color] duration-300 focus-within:glow focus-within:border-transparent',
           )}
         >
           {home && (

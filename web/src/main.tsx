@@ -1,7 +1,9 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { RouterProvider } from 'react-router'
+// From react-router/dom, not react-router: only this one can use ReactDOM.flushSync, which a
+// navigation with `flushSync: true` needs (New conversation, CanvasProvider).
+import { RouterProvider } from 'react-router/dom'
 
 import { createQueryClient } from './api/queryClient.ts'
 import { Toaster } from './components/ui/sonner.tsx'

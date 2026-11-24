@@ -1,4 +1,5 @@
 import { ArrowRight } from 'lucide-react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Link } from 'react-router'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -17,7 +18,44 @@ const ROW =
  * evals lab instead of showing anything made up.
  */
 export function Proof() {
-  const { data, isPending, isError } = useEvals()
+  const box = useRef<HTMLDivElement>(null)
+  const near = useNearScreen(box)
+  return (
+    <div ref={box}>
+      <Datasheet near={near} />
+    </div>
+  )
+}
+
+/**
+ * Whether the box is within about a screen of being seen (and stays true). GET /evals is 415 kB, and
+ * this datasheet is far down the page: fetched with the page, it competed with the app's own code on
+ * a slow phone and held back the first screen (Lighthouse mobile LCP 5.7 s vs 3.8 s without it,
+ * 2026-11-24). Without IntersectionObserver (unit tests' jsdom) it is true at once, like CountUp.
+ */
+function useNearScreen(box: RefObject<HTMLElement | null>): boolean {
+  const [near, setNear] = useState(() => typeof IntersectionObserver !== 'function')
+  useEffect(() => {
+    const element = box.current
+    if (near || element === null) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNear(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '800px 0px' },
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [box, near])
+  return near
+}
+
+function Datasheet({ near }: { near: boolean }) {
+  // Until the datasheet is near, the query waits: isPending, so the skeleton holds its place.
+  const { data, isPending, isError } = useEvals({ enabled: near })
 
   if (isPending) {
     return (

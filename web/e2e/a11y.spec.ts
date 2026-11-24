@@ -266,7 +266,20 @@ for (const { label, viewport } of ZOOMS) {
 // element overlaps (the explorer graph's nodes), text partly hidden by its scroll box (the long
 // table list), and SVG text (chart axes). Their text uses only colour tokens, and
 // src/styles/contrast.test.ts checks every token pair. Any other reason fails the test.
-const CANT_MEASURE = new Set(['bgOverlap', 'elmPartiallyObscured', 'imgNode'])
+//
+// Two more (2026-11-24), each with its own limit:
+// - elmPartiallyObscuring: the canvas's docked bar (U9.4) sits over the page that scrolls under
+//   it, as a docked bar must; its own text is on its solid --bg.
+// - shortTextContent, on SVG text only: a one-character chart tick ("0", "4") is the same SVG
+//   text as above, but axe files it under this code instead (it measured a ratio of 0: nothing).
+const CANT_MEASURE = new Set([
+  'bgOverlap',
+  'elmPartiallyObscured',
+  'elmPartiallyObscuring',
+  'imgNode',
+])
+const CANT_MEASURE_SVG_TEXT = new Set(['shortTextContent'])
+const SVG_TEXT = /(^|[\s>])(tspan|text)\b/
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme: axe measures, and passes, the contrast of text`, () => {
@@ -294,6 +307,10 @@ for (const theme of THEMES) {
             n.any
               .map((check) => (check.data as { messageKey?: string } | null)?.messageKey ?? '')
               .filter((reason) => !CANT_MEASURE.has(reason))
+              .filter(
+                (reason) =>
+                  !(CANT_MEASURE_SVG_TEXT.has(reason) && SVG_TEXT.test(n.target.join(' '))),
+              )
               .map((reason) => `${n.target.join(' ')} (${reason || 'no reason given'})`),
           )
         expect({ failed, unmeasured }).toEqual({ failed: [], unmeasured: [] })

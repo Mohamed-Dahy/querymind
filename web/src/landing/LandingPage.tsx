@@ -138,36 +138,32 @@ export default function LandingPage() {
             (e2e/a11y.spec.ts). */}
         <section aria-labelledby="hero-heading" className="canvas-grid relative border-b">
           <div className="mx-auto grid max-w-7xl items-start gap-x-12 gap-y-14 px-4 pt-12 pb-16 sm:pt-16 lg:grid-cols-12 lg:pt-20 lg:pb-24">
+            {/* The hero's words show at once, with no fade: they hold the page's largest paint,
+                and a browser counts text only once it is visible, so a fade-in made the page
+                score slow (Lighthouse mobile LCP 5.7 s, 2026-11-24). The demo beside them still
+                arrives with motion. */}
             <div className="lg:col-span-5 lg:pt-4">
-              <Reveal>
-                <Plate code="QM-1">AI DATA ANALYST · POSTGRESQL · READ-ONLY</Plate>
-              </Reveal>
-              <Reveal delay={0.06}>
-                <h1
-                  id="hero-heading"
-                  className="mt-7 text-5xl leading-[0.95] font-semibold tracking-[-0.035em] sm:text-6xl xl:text-7xl"
-                >
-                  Ask your database.{' '}
-                  <span className="mt-2 block text-signal">See every step it takes.</span>
-                </h1>
-              </Reveal>
-              <Reveal
-                as="p"
-                delay={0.12}
-                className="mt-7 max-w-xl text-lg leading-relaxed text-fg-muted"
+              <Plate code="QM-1">AI DATA ANALYST · POSTGRESQL · READ-ONLY</Plate>
+              <h1
+                id="hero-heading"
+                className="mt-7 text-5xl leading-[0.95] font-semibold tracking-[-0.035em] sm:text-6xl xl:text-7xl"
               >
+                Ask your database.{' '}
+                <span className="mt-2 block text-signal">See every step it takes.</span>
+              </h1>
+              <p className="mt-7 max-w-xl text-lg leading-relaxed text-fg-muted">
                 QueryMind turns a plain-language question into checked, read-only SQL, runs it, and
                 answers with a chart, the rows, the SQL and how sure it is. It shows its work,
                 repairs its own mistakes, and asks back when a question is unclear.
-              </Reveal>
-              <Reveal delay={0.18} className="mt-9 flex flex-wrap gap-3">
+              </p>
+              <div className="mt-9 flex flex-wrap gap-3">
                 <StartButtons loggedIn={loggedIn} />
                 <Button asChild size="lg" variant="ghost">
                   <Link to="/evals">See the evals lab</Link>
                 </Button>
-              </Reveal>
+              </div>
               {/* A readout of what is always true, as an instrument's fixed settings. */}
-              <Reveal delay={0.24}>
+              <div>
                 <dl className="mt-12 grid grid-cols-2 border-t border-l text-sm">
                   {[
                     ['MODE', 'Read-only role'],
@@ -181,7 +177,7 @@ export default function LandingPage() {
                     </div>
                   ))}
                 </dl>
-              </Reveal>
+              </div>
             </div>
 
             <Reveal delay={0.2} className="min-w-0 px-2 lg:col-span-7">
